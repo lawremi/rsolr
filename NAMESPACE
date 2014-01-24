@@ -1,0 +1,14 @@
+import(BiocGenerics)
+importFrom(restfulr, RestUri)
+importMethodsFrom(restfulr, create, read, update, delete, purgeCache)
+importFrom(graph, graphNEL)
+importClassesFrom(graph, graph)
+importFrom(rjson, fromJSON)
+importFrom(parallel, mcparallel)
+importFrom(tools, pskill)
+export(SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
+       copyFields, fieldTypes, name, version, schema, unmeta)
+exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
+              fieldNames)
+
+S3method(`names<-`, FieldTypeList)

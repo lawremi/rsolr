@@ -1,0 +1,34 @@
+#+TITLE: rsolr: an R interface for querying Solr
+
+* Architecture
+  Each Solr core is represented by an object providing a data frame
+  interface. The data are retrieved lazily, i.e., only the query is
+  updated unless we need to compute on the data. The data are cached
+  for accelerating repeated queries.
+
+  Important components:
+  * Handler object for Solr core (acts like a data frame)
+  * Translator from R expressions to Solr queries
+  * Caching engine (RCacheSuite)?
+  * Utilities for constructing REST queries
+  
+  For the handler object, we could extend IRanges::DataTable, which
+  provides facilities for implementing new types of tabular objects.
+
+* QueryTable [: DataTable]
+  Requires the following components:
+  * database [Database]: from which data are retrieved
+  * query [language]: constructed incrementally, lazily evaluated with database
+    
+* SolrCore [: Database]
+  * schema [SolrSchema]: provides rownames
+    (from <UniqueKey> field) and colnames (from other field names)
+  * client [RestfulClient]: for accessing the data via the REST API
+  
+* SolrSchema:
+  Should provide:
+  * Field names and types
+  * Unique key
+  * Ensure we have copy and dynamic fields
+  
+  
