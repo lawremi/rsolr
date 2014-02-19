@@ -23,9 +23,10 @@ Collate:
     DocCollection-class.R
     FieldInfo-class.R
     FieldType-class.R
+    SolrSummary-class.R
     SolrSchema-class.R
-    SolrCore-class.R
     SolrQuery-class.R
+    SolrCore-class.R
     test.R
     utils.R
     zzz.R

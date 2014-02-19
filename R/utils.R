@@ -52,3 +52,40 @@ simplify2array2 <- function(x) {
     simplify2array(x, higher=FALSE)
   }
 }
+
+elementLengths <- function(x) {
+  vapply(x, length, logical(1))
+}
+
+truncateTable <- function(x, nlevels) {
+  if (length(x) > nlevels) {
+    x <- c(head(x, nlevels-1L),
+                    "<other>"=sum(tail(x, -(nlevels-1L))))
+  }
+  x
+}
+
+formatTable <- function(x, nlevels) {
+  sorted.tab <- truncateTable(sort(x, decreasing=TRUE), nlevels)
+  c(paste0(names(sorted.tab), ": ", sorted.tab),
+    rep("", nlevels-length(sorted.tab)))
+}
+
+dfToTable <- function(x) {
+  factors <- x[-length(x)]
+  level.lens <- vapply(factors, function(xi) {
+    length(levels(xi))
+  }, integer(1))
+  tab <- as.table(array(0L, level.lens))
+  tab[as.matrix(factors)] <- x$count
+  tab
+}
+
+validHomogeneousList <- function(x, type) {
+  if (!all(as.logical(lapply(x, is, type))))
+    paste("all elements of", class(x), "must be", type, "objects")
+}
+
+top_prenv <- function(x) {
+  .Call2("top_prenv", substitute(x), parent.frame(), PACKAGE="rsolr")
+}

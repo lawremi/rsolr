@@ -36,6 +36,10 @@ setMethod("length", "SolrCore", function(x) {
 
 schema <- function(x) x@schema
 
+setMethod("staticFieldNames", "SolrCore", function(x) {
+  staticFieldNames(schema(x))
+})
+
 setMethod("purgeCache", "SolrCore", function(x) {
   purgeCache(x@uri)
 })
@@ -187,23 +191,112 @@ setMethod("[", "SolrCore", function(x, i, j, ..., drop = TRUE) {
   if (!missing(j)) {
     warning("argument 'j' is ignored")
   }
-  uk <- uniqueKey(schema(x))
-  if (missing(i)) {
-    q <- "*:*"
-  } else {
+  q <- SolrQuery()
+  if (!missing(i)) {
     if (!is.character(i) || any(is.na(i))) {
       stop("'i' must be character, without any NAs")
     }
-    q <- paste0(localParams(q.op="OR", df=uk),
-                paste0("(", paste(i, collapse=" "), ")"))
+    uk <- uniqueKey(schema(x))
+    q <- subset(q, as.name(uk) %in% .(i))
   }
-### TODO: add a setting on SolrCore that coerces to data.frame here?
-  read(x, q=q, ...)
+  x[q, ...]
 })
 
-setMethod("read", "SolrCore", function(x, q="*:*", ...) {
-  fromSolr(read(x@uri$select, q=q, wt="json", ...)$response$docs, schema(x))
+setMethod("[", c("SolrCore", "SolrQuery"), function(x, i, j, ..., drop = TRUE) {
+  if (!isTRUE(drop)) {
+    stop("'drop' must be TRUE")
+  }
+  if (!missing(j)) {
+    warning("argument 'j' is ignored")
+  }
+  if (length(list(...)) > 0L) {
+    warning("arguments in '...' are ignored")
+  }
+### TODO: add a setting on SolrCore that coerces to data.frame here?
+### Presumably it would do this by requesting the data as CSV
+  read(x, i)
 })
+
+setMethod("read", "SolrCore", function(x, query=SolrQuery()) {
+  if (!is(query, "SolrQuery")) {
+    stop("'query' must be a SolrQuery")
+  }
+  fromSolr(eval(query, x), schema(x))
+})
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Summary statistics
+###
+
+### Summaries can either be computed by calling methods on SolrCore,
+### or by incrementally constructing a query and passing it to
+### summary,SolrCore.
+
+setMethod("summary", "SolrCore",
+          function(object, of=staticFieldNames(object),
+                   query=summary(SolrQuery(), of, object))
+          {
+            if (!is(query, "SolrQuery")) {
+              stop("'query' must be a SolrQuery")
+            }
+            if (!missing(of) && !missing(query)) {
+              query <- summary(query, of, object)
+            }
+            SolrSummary(eval(query, object))
+          })
+
+setMethod("facets", "SolrCore",
+          function(x, query) facets(summary(x, query=query)))
+
+setMethod("stats", "SolrCore",
+          function(x, query) stats(summary(x, query=query)))
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Query Evaluation
+###
+
+setMethod("eval", c("SolrQuery", "SolrCore"),
+          function (expr, envir, enclos)
+          {
+            params <- prepareQueryParams(envir, expr)
+            response <- read(envir@uri$select, params)
+            ## some SOLR instances return text/plain for responses...
+            if (is.character(response)) {
+              mediaType <- switch(params$wt,
+                                  json="application/json",
+                                  csv="text/csv",
+                                  xml="application/xml")
+              media <- new(mediaType, response)
+              response <- as(media, mediaTarget(media))
+            }
+            ## if (isFaceted(expr)) {
+            ##   ## return a table
+            ## } else if (isAggregated(expr)) {
+            ##   ## return a data.frame like aggregate()
+            ## } else if (isRowCount(expr)) {
+            ##   ans <- response$response$numFound
+            ## } else {
+            ##   if (expr@drop && ncol(df) == 1L)
+            ##     ans <- response[[1]]
+            ## }
+            ## ans
+            response
+          })
+
+prepareQueryParams <- function(x, query) {
+  if (query$rows < 0L)
+    query$rows <- nrow(x) + query$rows
+  if (query$start < 0L)
+    query$start <- nrow(x) + query$start
+  ## if (isFaceted(query) || isAggregated(query) || isRowCount(query)) {
+    query$wt <- "json"
+    query$json.nl <- "map"
+  ## } else {
+  ##   query$wt <- "csv"
+  ##   query$csv.null <- "NA"
+  ## }
+  lapply(query@params, csv)
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Other commands

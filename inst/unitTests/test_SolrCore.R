@@ -1,6 +1,3 @@
-library(rsolr)
-library(RUnit)
-
 checkResponseIdentical <- function(response, input) {
   checkIdentical(unmeta(response), input)
 }
@@ -27,7 +24,7 @@ test_SolrCore_accessors <- function() {
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
     list(id="3", inStock=FALSE, price=3, timestamp_dt=Sys.time()),
-    list(id="4", inStock=TRUE, price=4, timestamp_dt=Sys.time()),
+    list(id="4", price=4, timestamp_dt=Sys.time()),
     list(id="5", inStock=FALSE, price=5, timestamp_dt=Sys.time())
     )
   sc[] <- docs
@@ -64,6 +61,6 @@ test_SolrCore_accessors <- function() {
   
   checkIdentical(sc["foo"], new("DocList"))
   checkIdentical(sc[["foo"]], NULL)
-  
+
   solr$kill()
 }

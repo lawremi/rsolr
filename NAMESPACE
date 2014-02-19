@@ -9,6 +9,6 @@ importFrom(tools, pskill)
 export(SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
-              fieldNames)
+              fieldNames, subset, facet)
 
 S3method(`names<-`, FieldTypeList)

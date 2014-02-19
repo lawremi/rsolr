@@ -89,8 +89,7 @@ setClass("FieldType",
 
 setClass("FieldTypeList", contains="list",
          validity=function(object) {
-           if (!all(as.logical(lapply(object, is, "FieldType"))))
-             "all elements of FieldTypeList must be FieldType objects"
+           validHomogeneousList(object, "FieldType")
          })
 
 `names<-.FieldTypeList` <- function(x, value) {

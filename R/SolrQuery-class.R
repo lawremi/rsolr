@@ -8,7 +8,25 @@
 ### alternative would be specifying a Solr query (which can be quite
 ### complex) in a single call. The current "best practice" for complex
 ### commands is to use a parameter object. For us, the parameter
-### object is a query, and the query is evaluated by a Solr core.
+### object is a query, and the query is evaluated by a Solr core. The
+### main argument for deferred query evaluation is to manage
+### complexity, but there is also opportunity for optimization by
+### batching queries.
+
+### There are many different types of queries, including:
+### - Documents: the actual data
+### - Table: counts for each unique value in a field, or matching a query
+### - Statistics: min/max/mean/sd/etc for an entire field, or each unique value
+### - Row count
+
+### Calling certain methods on a query object will generate a
+### particular type of query. But how is the query evaluated? There
+### could be a general eval,SolrQuery,SolrCore, or there could be
+### high-level methods on SolrCore that accept a query. Like
+### [,SolrCore would accept a document query. This is probably more
+### readable than eval(), because it should be clear to the reader
+### what is being returned. Thus, we will provide high-level methods
+### and have the eval method implement the low-level REST request.
 
 ### Problem with the lazy query evaluation approach:
 ### - Error checking is difficult until the end (the "ggplot2" problem)
@@ -20,7 +38,7 @@
 ### map Solr syntax to R syntax.
 
 ### Query component:
-## subset => &fq, &fl (via 'select=')
+## subset => &q, &fq, &fl (via 'select=')
 ## transform => &fl aliasing
 ## sort(x, by = "rating") => &sort
 ## window/head/tail => &start/&rows (tail needs number of documents first)
@@ -67,6 +85,8 @@ setClass("SolrQuery", representation(params = "list", drop = "logical",
 ### Constructor
 ###
 
+### TODO: consider switching this to take a single argument, 'expr',
+###       that would be passed to subset().
 SolrQuery <- function(...) {
   params <- list(q = "*:*", start = 0L, rows = .Machine$integer.max)
   args <- list(...)
@@ -87,6 +107,8 @@ setMethod("$<-", "SolrQuery", function(x, name, value) {
   x
 })
 
+params <- function(x) x@params
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Simple row counting
 ###
@@ -105,23 +127,28 @@ isRowCount <- function(x) x@nrow
 
 ### Not supporting '[' yet, because there is no server-side mechanism
 
-setMethod("subset", "SolrQuery", function(x, subset, select, drop = FALSE) {
+setMethod("subset", "SolrQuery", function(x, subset, fields, drop = FALSE) {
   if (!isTRUEorFALSE(drop))
     stop("'drop' must be TRUE or FALSE")
   if (!missing(subset)) {
     if (!identical(x$q, "*:*"))
       x <- initialize(x, params = c(x@params, fq = x$q))
-    vals <- Filter(Negate(is.null),
-                   mget(all.names(subset), parent.frame(2), ifnotfound = NULL))
-    expr <- substitute(subset, vals)
-    x$q <- translateToLuceneQuery(expr)
+    expr <- eval(call("bquote", substitute(subset), top_prenv(subset)))
+    x$q <- toLucene(expr, top_prenv(subset))
   }
-  if (!missing(select)) {
-    nl <- as.list(seq(length(x)))
-    ### FIXME: would be nice to have the list of field names
-    names(nl) <- names(x)
-    ints <- eval(substitute(select), nl, parent.frame(2))
-    x$fl <- intersect(x$fl, names(x)[ints])
+### NOTE: Would be nice to support a column expression for 'select' like
+###       subset.data.frame, but this style of column selection would
+###       not work in general, due to tricky things like dynamic
+###       fields. Bottom-line: Solr stores documents, not tables, so
+###       there is no ordering of the fields.
+  ## nl <- as.list(seq(length(x)))
+  ## names(nl) <- names(x)
+  ## ints <- eval(substitute(select), nl, top_prenv(subset))
+  ## x$fl <- intersect(x$fl, names(x)[ints])
+### So for now we use the argument name 'fields'
+### and just assume it is a character vector of field names:
+  if (!missing(fields)) {
+    x$fl <- intersect(x$fl, fields)
   }
   x@drop <- x@drop || drop
   x
@@ -198,11 +225,91 @@ setMethod("tail", "SolrQuery", function (x, n) {
 ### Facet component
 ###
 
-### If we switch to faceting, then we need to fix rows=0.
-### That means that start, sort, fl, etc no longer have any effect.
-### We need to issue a warning if they are present.
+postFilterParams <- c("start", "sort", "fl")
 
-### Remember to set facet.limit to a large value.
+setGeneric("facet", function(formula, data, ...) standardGeneric("facet"))
+
+### TODO:
+### - head(), tail() should use facet.limit/facet.offset PER facet.field
+### - sort() should use facet.sort='count' PER facet.field
+### GOTCHA: those will not work with facet.query, so we should warn
+
+setMethod("facet", c("formula", "SolrQuery"),
+          function(formula, data) {
+            if (data$start == 0L) {
+              data$start <- NULL
+            }
+            pf.params <- intersect(names(data@params), postFilterParams)
+            if (length(pf.params) > 0L) {
+              warning("post filter parameters (",
+                      paste(pf.params, collapse=", "),
+                      ") are ignored by faceting")
+            }
+            env <- attr(formula, ".Environment")
+            facetFunctions <- prepareFacetFunctions(env)
+            facet.params <- unlist(lapply(formula[-1], function(term) {
+              term <- eval(call("bquote", term, where=env))
+              if (is.name(term)) {
+                list(facet.field=as.character(term))
+              } else {
+                p <- eval(term, facetFunctions, env)
+                if (!is.list(p)) {
+                  stop("formula term '", term,
+                       "' must evaluate to list of Solr facet parameters")
+                }
+                p
+              }
+            }))
+            data@params <- c(data@params, facet.params)
+            data$rows <- 0L
+            data$facet.limit <- -1L
+            data$facet.sort <- "index"
+            data$facet.missing <- TRUE
+            data$facet <- TRUE
+            data
+          })
+
+### In a facet formula, the terms are translated into either a
+### facet.field (if a name) or a list of facet parameters (a
+### call). Any symbols that should be resolved in the caller should be
+### escaped with .() like bquote(). If a term is a call, the call
+### should evaluate to a list of facet terms. By default, 'cut' and
+### the relational/logical operators are overridden to generate terms.
+
+prepareFacetFunctions <- function(env) {
+  ans <- list(cut=facet_cut)
+  ans[c(">", ">=", "<", "<=", "==", "!=", "(", "&", "|", "!", "%in%")] <-
+    list(function(e1, e2) {
+      list(facet.query=toLucene(sys.call(), env))
+    })
+  ans
+}
+
+cutLabelsToLucene <- function(x) {
+  chartr("()", "{}", sub(",", " TO ", sub("[-]Inf", "*", x)))
+}
+
+### FIXME: no counting of NAs when xtabs(exclude=NULL)
+###        - could get closer with facet.range.other
+facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
+  var <- substitute(x)
+  if (length(gap <- unique(diff(breaks))) == 1L) {
+    facet.include <- if (right) "upper" else "lower"
+    if (include.lowest) {
+      facet.include <- paste0(facet.include, ",", "edge")
+    }
+    params <- list(facet.var.start=min(breaks), facet.var.end=max(breaks),
+                   facet.var.gap=gap, facet.var.include=facet.include)
+    names(params) <- sub("var", var, names(params))
+    c(facet.range=var, params)
+  }
+  else {
+    dummy.cut <- cut(integer(), breaks, include.lowest=include.lowest,
+                     right=right)
+    tokens <- cutLabelsToLucene(levels(dummy.cut))
+    list(facet.query=paste0(var, ":", tokens))
+  }
+}
 
 isFaceted <- function(x) {
   any(grepl("^facet\\.", names(x)))
@@ -268,96 +375,85 @@ translateToSolrFunction <- function(x) {
 ##   '(' => ([2])
 
 ## Wildcard and fuzzy searches are expected to be in ""
- 
-translateToLuceneQuery <- function(x) {
-  if (is.call(x)) {
-    call <- normComparisonCall(x)
-    call.name <- call[[1L]]
-    args <- call[-1L]
-    switch(call.name,
-           "==" = paste0(args[[1]], ":", args[[2]]),
-           "!=" = paste0("-", args[[1]], ":", args[[2]]),
-           ">" = paste0(args[[1L]], ":", paste0("{", args[[2L]], " TO *]")),
-           ">=" = paste0(args[[1L]], ":", paste0("[", args[[2L]], " TO *]")),
-           "<" = paste0(args[[1L]], ":", paste0("[* TO ", args[[2L]], "}")),
-           "<=" = paste0(args[[1L]], ":", paste0("[* TO ", args[[2L]], "]")),
-           "(" = paste0("(", translateToLuceneQuery(args), ")"),
-           "|" = paste(args[[1]], args[[2]]),
-           "&" = paste0("+", args[[1]], " +", args[[2]]),
-           "!" = paste0("-", args[[1]])
-           )
-  } else if (is.name(x)) {
-    as.character(x)
+
+### To represent a relational operation in Lucene, we need one symbol
+### and one literal. Logical operations can happen between two
+### sub-queries.
+
+toLucene <- function(x, env) {
+  .toLucene <- function(x) {
+    query <- if (is.call(x)) {
+      call <- normComparisonCall(x, env)
+      call.name <- call[[1L]]
+      args <- call[-1L]
+      switch(as.character(call.name),
+             "==" = paste0(args[[1]], ":", args[[2]]),
+             "!=" = paste0("-", args[[1]], ":", args[[2]]),
+             "%in%" = paste0(localParams(q.op="OR", df=args[[1]]),
+               paste0("(", paste(args[[2]], collapse=" "), ")")),
+             ">" = paste0(args[[1L]], ":", paste0("{", args[[2L]], " TO *]")),
+             ">=" = paste0(args[[1L]], ":", paste0("[", args[[2L]], " TO *]")),
+             "<" = paste0(args[[1L]], ":", paste0("[* TO ", args[[2L]], "}")),
+             "<=" = paste0(args[[1L]], ":", paste0("[* TO ", args[[2L]], "]")),
+             "(" = paste0("(", .toLucene(args), ")"),
+             "|" = paste0("(", .toLucene(args[[1]]), " ",
+               .toLucene(args[[2]]), ")"),
+             "&" = paste0("(+", .toLucene(args[[1]]), " +",
+               .toLucene(args[[2]]), ")"),
+             "!" = paste0("-", .toLucene(args[[1]])),
+             eval(x, env)
+             )
+    } else if (is.name(x)) {
+      paste0(x, ":true")
+    } else {
+      x
+    }
+    query <- as.character(query)
+    if (!isSingleString(query)) {
+      stop("'", x, "' did not evaluate to a single, non-NA string")
+    }
+    query
   }
+  .toLucene(x)
 }
 
-normComparisonCall <- function(x) {
-  if (length(x) == 3L) {
-    args <- x[-1L]
-    sym.ind <- which(sapply(args, is.name))
-    if (length(sym.ind) > 1L) {
-      stop("arguments in comparison must contain one symbol, and one literal: ",
-           csv(sapply(args, deparse)))
+isRelational <- function(x) {
+  as.character(x[[1]]) %in% c("==", "!=", ">", ">=", "<", "<=", "%in%")
+}
+
+isLogical <- function(x) {
+  as.character(x[[1]]) %in% c("&", "|", "!")
+}
+
+normComparisonCall <- function(x, env) {
+  args <- x[-1L]
+  if (isRelational(x)) {
+    call.arg <- vapply(args, is.call, logical(1))
+    args[call.arg] <- lapply(args[call.arg], eval, env)
+    name.arg <- vapply(args, is.name, logical(1))
+    name.ind <- which(name.arg)
+    if (length(name.ind) != 1L) {
+      stop("arguments in comparison must contain one symbol, ",
+           "and one non-symbol: ", csv(sapply(args, deparse)))
     }
-    if (sym.ind == 3L) {
+    x[-1L] <- args
+    if (name.ind == 3L) {
+      if (x[[1]] == quote(`%in%`)) {
+        stop("invalid %in% syntax")
+      }
       x <- call(chartr("<>", "><", x[[1L]]), x[[3L]], x[[2L]])
     }
-  } else {
-    x
+  } else if (isLogical(x)) {
+    if (any(!vapply(args, is.language, logical(1)))) {
+      stop("literal arguments are not allowed for logical operators")
+    }
   }
+  x
 }
 
 ## fieldValuePair <- function(x) {
 ##   paste0(x[[1L]], ":", deparse(x[[2L]]))
 ## }
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Evaluation
-###
-
-### The actual translation is to a Solr REST request, not (just) a
-### Lucene query. We need to support e.g. column-wise subsetting
-### ("fl"), faceting, paginated results (show/head/tail),
-### etc. Multiple filters might be sent as "fq" parameters, so that
-### each filter is cached sepatately. Any arithmetic needs to use
-### sum/sub/product/etc. The 'stats' component is especially useful,
-### as it yields the aggregate sum, min/max, mean, sd, etc.
-
-setMethod("eval", c("SolrQuery", "SolrCore"),
-          function (expr, envir, enclos)
-          {
-            params <- prepareQueryParams(envir, expr)
-            response <- do.call(read, c(envir, params))
-            ## some SOLR instances return text/plain for JSON...
-            if (params$wt == "json" && is.character(response))
-              response <- fromJSON(response)
-            if (isFaceted(expr)) {
-              ## return a table
-            } else if (isAggregated(expr)) {
-              ## return a data.frame like aggregate()
-            } else if (isRowCount(expr)) {
-              ans <- response$response$numFound
-            } else {
-              if (expr@drop && ncol(df) == 1L)
-                ans <- response[[1]]
-            }
-            ans
-          })
-
-prepareQueryParams <- function(x, query) {
-  if (query$rows < 0L)
-    query$rows <- nrow(x) + query$rows
-  if (query$start < 0L)
-    query$start <- nrow(x) + query$start
-  if (isFaceted(query) || isAggregated(query) || isRowCount(query)) {
-    query$wt <- "json"
-    query$json.nl <- "map"
-  } else {
-    query$wt <- "csv"
-    query$csv.null <- "NA"
-  }
-  lapply(query@params, csv)
-}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

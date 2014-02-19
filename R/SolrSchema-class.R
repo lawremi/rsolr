@@ -149,6 +149,12 @@ setMethod("fieldTypes", "SolrSchema",  function(x, fields) {
   }
 })
 
+setGeneric("staticFieldNames", function(x) standardGeneric("staticFieldNames"))
+
+setMethod("staticFieldNames", "SolrSchema", function(x) {
+  info <- fieldInfo(x)
+  names(info)[!dynamic(info)]
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Conversion
