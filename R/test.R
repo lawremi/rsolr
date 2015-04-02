@@ -3,7 +3,7 @@
 }
 
 uriPort <- function(x) {
-  XML::parseURI(x)$port
+  parseURI(x)$port
 }
 
 portIsOpen <- function(x) {
@@ -19,65 +19,18 @@ portIsOpen <- function(x) {
   else TRUE
 }
 
-.MavenSolr <- setRefClass("MavenSolr",
-                          fields = list(
-                            pom = "character",
-                            uri = "character"
-                            ),
-                          methods = list(
-                            start = function() {
-                              if (.self$isRunning()) {
-                                warning("server already running (port is open)")
-                                return()
-                              }
-                              log <- tempfile("solrlog")
-                              cmd <- paste("mvn -f", pom,
-                                           "jetty:run 2>&1 >", log, "&")
-                              system(cmd)
-                              message("Solr starting; if this takes more ",
-                                      "than a few minutes, please see log: ",
-                                      log)
-                              port <- uriPort(uri)
-                              while(!portIsOpen(port)) {
-                                Sys.sleep(0.1)
-                              }
-                              message("Solr started at: ", .self$uri)
-                            },
-                            kill = function() {
-                              if (.self$isRunning()) {
-                                system(paste("mvn -f", pom,
-                                             "jetty:stop 2>&1 >/dev/null"))
-                              } else {
-                                warning("Test solr not running")
-                              }
-                            },
-                            isRunning = function() {
-                              portIsOpen(uriPort(uri))
-                            },
-                            finalize = function() {
-                              if (.self$isRunning())
-                                .self$kill()
-                            }))
-
-MavenSolr <- function(start = TRUE)
-{
-  pom <- system.file("solr", "pom.xml", package="rsolr")
-  uri <- "http://localhost:8983/solr"
-  solr <- .MavenSolr$new(pom = pom, uri = uri)
-  if (start) {
-    solr$start()
-  }
-  solr
-}
-
 getSolrHome <- function() {
   file.path(tempdir(), "solr")
 }
 
-populateSolrHome <- function() {
+populateSolrHome <- function(customSchema=NULL) {
   solr.home <- getSolrHome()
   file.copy(system.file("example-solr", "solr", package="rsolr"),
             dirname(solr.home), recursive=TRUE)
+  if (!is.null(customSchema)) {
+    saveXML(customSchema,
+            file.path(solr.home, "collection1", "conf", "schema.xml"))
+  }
   solr.home
 }
 
@@ -93,10 +46,13 @@ buildCommandLine <- function() {
         "-jar", basename(getStartJar()))
 }
 
+setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
+
 .ExampleSolr <-
   setRefClass("ExampleSolr",
               fields = list(
-                uri = "character"
+                uri = "character",
+                customSchema = "SolrSchemaORNULL"
                 ),
               methods = list(
                 start = function() {
@@ -104,13 +60,14 @@ buildCommandLine <- function() {
                     warning("server already running (port is open)")
                     return()
                   }
-                  solr.home <- populateSolrHome()
+                  solr.home <- populateSolrHome(.self$customSchema)
                   cmd <- buildCommandLine()
                   system(paste(cmd, "&"))
-                  port <- uriPort(uri)
+                  port <- uriPort(.self$uri)
                   while(!portIsOpen(port)) {
                     Sys.sleep(0.1)
                   }
+                  Sys.sleep(1) # a bit more time to let it start
                   message("Solr started at: ", .self$uri)
                 },
                 kill = function() {
@@ -120,6 +77,11 @@ buildCommandLine <- function() {
                   } else {
                     warning("Test solr not running")
                   }
+                  port <- uriPort(uri)
+                  while(portIsOpen(port)) {
+                    Sys.sleep(0.1)
+                  }
+                  ##Sys.sleep(1) # wait a bit for it to stop
                 },
                 isRunning = function() {
                   portIsOpen(uriPort(uri))
@@ -129,12 +91,20 @@ buildCommandLine <- function() {
                     .self$kill()
                 }))
 
-TestSolr <- function(start = TRUE)
+TestSolr <- function(schema = NULL, start = TRUE)
 {
   uri <- "http://localhost:8983/solr"
-  solr <- .ExampleSolr$new(uri = uri)
+  solr <- .ExampleSolr$new(uri = uri, customSchema = schema)
   if (start) {
     solr$start()
   }
   solr
 }
+
+setMethod("show", "ExampleSolr", function(object) {
+  cat("ExampleSolr instance\n")
+  cat("uri: ", object$uri, "\n", sep="")
+  if (!is.null(object$customSchema)) {
+    cat("customSchema: ", name(object$customSchema), "\n", sep="")
+  }
+})

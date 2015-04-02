@@ -1,0 +1,132 @@
+#+TITLE: Introduction to rsolr
+
+* Introduction
+  The =rsolr= package provides an idiomatic (R-like) and extensible
+  interface between R and Solr, a search engine and database. Like an
+  onion, the interface consists of several layers, along a gradient of
+  abstraction, so that simple problems are solved simply, while more
+  complex problems may require some peeling and perhaps tears. The
+  interface is idiomatic, syntactically but also in terms of
+  /intent/. While Solr provides a search-oriented interface, we
+  recognize it as a document-oriented database. While not entirely
+  schemaless, its schema is extremely flexible, which makes Solr an
+  effective database for prototyping and adhoc analysis. R is designed
+  for manipulating data, so =rsolr= maps common R data manipulation
+  verbs to the Solr database and its (limited) support for
+  analytics. In other words, =rsolr= is for analysis, not search,
+  which has presented some fun challenges in design. Hopefully it is
+  useful --- we had not tried it until writing this document.
+
+  We have interfaced with all of the Solr features that are relevant
+  to data analysis, with the aim of implementing many of the
+  fundamental data munging operations. Those operations are listed in
+  the table below, along with how we have mapped those operations to
+  existing and well-known functions in the base R API. When called on
+  =rsolr= data structures, those functions should behave analogously
+  to the existing implementations for =data.frame=. Note that more
+  complex operations, such as joining and reshaping tables, are best
+  left to more sophisticated frameworks. After all, Solr is a search
+  engine. Give it a break.
+
+  | Operation      | R function  |
+  |----------------+-------------|
+  | Filtering      | =subset=    |
+  | Transformation | =transform= |
+  | Sorting        | =sort=      |
+  | Aggregation    | =aggregate= |
+  
+* Demonstration
+  
+** The Dataset
+   As part demonstration and part proof of concept, we will attempt to
+   follow the introductory workflow from the =dplyr= vignette. The
+   dataset describes all of the airline flights departing New York City
+   in 2013. It is provided by the =nycflights13= package, so please see
+   its documentation for more details.
+   #+begin_src R
+     library(nycflights13)
+     dim(flights)
+     head(flights)
+   #+end_src
+
+** Populating a Solr core
+   The first step is getting the data into a Solr /core/, which is
+   what Solr calls a database. This involves writing a schema in XML,
+   installing and configuring Solr, launching the server, and
+   populating the core with the actual data. Our expectation is that
+   most use cases of =rsolr= will involve accessing an existing,
+   centrally deployed, usually read-only Solr instance, so those are
+   typically not major concerns. However, to conveniently demonstrate
+   the software, we need to violate all of those assumptions.
+   Luckily, we have managed to embed an example Solr installation
+   within =rsolr=. We also provide a mechanism for autogenerating a
+   Solr schema from a =data.frame=. This could be useful in practice
+   for producing a template schema that can be tweaked and deployed in
+   shared Solr installations. Taken together, the process turns out to
+   not be very intimidating.
+
+   We begin by generating the schema and starting the demo Solr
+   instance. Note that this instance is really only meant for
+   demonstrations. You should not abuse it like the people abused the
+   poor built-in R HTTP daemon.
+   #+begin_src R
+     library(rsolr)
+     schema <- deriveSolrSchema(flights)
+     solr <- rsolr:::TestSolr(schema)
+   #+end_src
+   
+   Next, we need to populate core with our data. This requires a way
+   to interact with the Solr core from R. =rsolr= provides direct
+   access to cores, but for now we will manipulate the central /Solr/
+   object, which represents a dataset derived from a Solr core (rather
+   than the core itself).
+   #+begin_src R
+   sr <- Solr(solr$uri)
+   #+end_src
+   Finally, we load our data into the Solr dataset:
+   #+begin_src R
+   sr[] <- flights
+   #+end_src
+   This takes a while, since Solr has to generate all sorts of
+   indices, etc.
+
+   As Solr is a document store, the /Solr/ object represents a list of
+   documents. While a list is useful for ragged data (and hierarchical
+   data, but Solr does not really support that), when the data are
+   not ragged, we prefer a more regular shape, like a table. The Solr
+   schema is so dynamic that we could trivially define a schema with a
+   virtually infinite number of fields, and each document could have
+   its own unique set of fields. The /Solr/ object needs to represent
+   that complexity, while also providing facilities for when it makes
+   sense to treat the data as tabular. In this case, we have a static
+   schema, so we can retrieve the dimensions and look at the head of
+   the dataset:
+   #+begin_src R
+     dim(sr)
+     as.data.frame(head(sr))
+   #+end_src
+   Note that we needed to explicitly coerce the object to a data frame
+   in order to view it as a table.
+
+   Comparing the output above the that of the earlier call to
+   =head(flights)= reveals that the order of the columns has been
+   scrambled. This is to be expected: Solr does not have a fixed set
+   of fields, and thus does not enforce any ordering internally. We
+   can, however, control the order of the output:
+   #+begin_src R
+   sr <- sr[,colnames(flights)]
+   as.data.frame(head(sr))
+   #+end_src
+   Note that the =sr= object still contains no data --- the ordering
+   of the columns has been defined lazily and is only applied (by
+   Solr) on the query output.
+   
+   The simplest operation is filtering the data, i.e., restricting it
+   to a subset of interest. Even a search engine should be good at
+   that. Below, we use =subset= to restrict to the flights to those
+   departing on January 1 (2013).
+   #+begin_src R
+     subset(sr, month == 1 & day == 1)
+   #+end_src
+   
+   

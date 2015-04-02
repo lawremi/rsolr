@@ -2,56 +2,6 @@
 ### SolrSchema objects
 ### -------------------------------------------------------------------------
 
-### Some options for representing field types:
-
-### (a) Mirror Solr schema w/ fields/dynamicFields naming field types,
-###     and a separated named list of FieldType objects. This is the
-###     "normalized" design. To store the multivalued attribute, we
-###     will need a named logical vector slot mapping field name to
-###     multivalued. That is a bit ugly, because it assumes no
-###     overlap between field and dynamicField names. We may need a
-###     Field object that refers to type and has a multivalued slot.
-###
-### (b) Denormalize to have the (dynamic)Field slots be lists of
-###     FieldType objects that store the multivalued setting
-###     per-field. There would be one FieldType per field, and the
-###     schema definitions would be lost. This would avoid the
-###     headache of merging the multivalued setting into the FieldType
-###     sent to to/fromSolr(). But thanks to dynamic fields, there is
-###     always going to be a headache. This representation is simpler,
-###     but we lose the type definitions from the schema. Probably
-###     best from the user POV if we are consistent with the schema
-###     (even though we discard much of the information, we are at
-###     least a subset).
-###
-### (c) Represent both ordinary and dynamic fields with a table
-###     containing: fieldName, fieldTypeName, dynamic, multivalued. And
-###     then a fieldTypes[name] list.
-
-### Think top-down, a bit about the API:
-
-### - Perhaps a fields(x, which) function that returns a
-###   data.frame of information (name, type name, dynamic,
-###   multivalued), and is smart enough to resolve dynamic fields
-###   (dynamic is TRUE if a dynamic field was matched).  If which is
-###   missing, all fields and dynamic fields are described. This table
-###   is for user consumption, and just names types according to
-###   the schema.
-###
-### - Copy fields are kind of their own beast: copyFields(x) returns a
-###   named character vector (from=>to).
-###
-### - fieldTypes(x, fields) that returns a list of FieldType
-###   objects. If fields is specified, they are resolved against the
-###   field names, and multivalue information is merged; otherwise,
-###   just the field types are returned. The list is named by the name
-###   of the type. List probably needs special type to help with
-###   pretty-printing, at least.
-
-### All this points to (c), having a tabular representation of field
-### info (name, type name, dynamic, multivalued), with a separate
-### fieldTypes list slot.
-
 setOldClass("package_version")
 
 setClass("SolrSchema",
@@ -73,23 +23,51 @@ setClass("SolrSchema",
 ###
 
 ## unexported
-SolrSchema <- function(schema) {
-  new("SolrSchema",
-      name=schema$name,
-      version=package_version(schema$version),
-      uniqueKey=schema$uniqueKey,
-      fields=append(parseFields(schema$fields, dynamic=FALSE),
-        parseFields(schema$dynamicFields, dynamic=TRUE)),
-      copyFields=parseCopyFields(schema$copyFields),
-      fieldTypes=parseFieldTypes(schema$fieldTypes))
+parseSchema <- function(schema) {
+  fieldTypes <- parseFieldTypes(schema$fieldTypes)
+  SolrSchema(
+    name=schema$name,
+    version=package_version(schema$version),
+    uniqueKey=schema$uniqueKey,
+    fields=append(parseFields(schema$fields, fieldTypes, dynamic=FALSE),
+      parseFields(schema$dynamicFields, fieldTypes, dynamic=TRUE)),
+    copyFields=parseCopyFields(schema$copyFields),
+    fieldTypes=fieldTypes
+  )
 }
 
-parseFields <- function(fields, dynamic) {
-  new("FieldInfo",
-      name=as.character(pluck(fields, "name")),
-      typeName=as.character(pluck(fields, "type")),
-      multivalued=as.logical(pluck(fields, "multiValued", FALSE)),
-      dynamic=rep(dynamic, length(fields)))
+SolrSchema <- function(name, version, uniqueKey, fields, copyFields, fieldTypes)
+{
+  new("SolrSchema",
+      name=name,
+      version=version,
+      uniqueKey=uniqueKey,
+      fields=fields,
+      copyFields=copyFields,
+      fieldTypes=fieldTypes)
+}
+
+### FIXME: the multivalued, indexed, stored defaults come from the
+### type, so the NA values should be resolved, as long as the type
+### knows (if not, it depends on the Java class, so who knows).
+
+parseFields <- function(fields, fieldTypes, dynamic) {
+  typeName <- vpluck(fields, "type", character(1L))
+  resolveFromType <- function(attrName) {
+    attr <- vpluck(fields, attrName, logical(1L), required=FALSE)
+    accessor <- match.fun(attrName)
+    attr[is.na(attr)] <-
+      vapply(fieldTypes[typeName[is.na(attr)]], accessor, logical(1L))
+    attr
+  }
+  FieldInfo(name=vpluck(fields, "name", character(1L)),
+            typeName=typeName,
+            multivalued=resolveFromType("multivalued"),
+            dynamic=rep(dynamic, length(fields)),
+            required=resolveFromType("required"),
+            indexed=resolveFromType("indexed"),
+            stored=resolveFromType("stored"),
+            docValues=resolveFromType("docValues"))
 }
 
 parseCopyFields <- function(copy.fields) {
@@ -115,7 +93,9 @@ version <- function(x) x@version
 uniqueKey <- function(x) x@uniqueKey
 copyFields <- function(x) x@copyFields
 
-fieldInfo <- function(x, which) {
+setGeneric("fields", function(x, ...) standardGeneric("fields"))
+
+setMethod("fields", "SolrSchema", function(x, which) {
   if (missing(which)) {
     x@fields
   } else {
@@ -124,13 +104,12 @@ fieldInfo <- function(x, which) {
     }
     resolve(which, x@fields)
   }
-}
-
-setGeneric("fields", function(x, ...) standardGeneric("fields"))
-
-setMethod("fields", "SolrSchema", function(x, which) {
-  as.data.frame(fieldInfo(x, which))
 })
+
+`fields<-` <- function(x, value) {
+  x@fields <- value
+  x
+}
 
 setGeneric("fieldTypes", function(x, ...) standardGeneric("fieldTypes"))
 
@@ -141,19 +120,27 @@ setMethod("fieldTypes", "SolrSchema",  function(x, fields) {
     if (!is.character(fields) || any(is.na(fields))) {
       stop("'fields' must be a character vector without NAs")
     }
-    resolved.fields <- fieldInfo(x, fields)
+    resolved.fields <- fields(x, fields)
     types <- x@fieldTypes[typeName(resolved.fields)]
     new("FieldTypeList",
         mapply(resolve, types, as.list(resolved.fields),
-               MoreArgs=list(schema=schema)))
+               MoreArgs=list(schema=x)))
   }
 })
 
-setGeneric("staticFieldNames", function(x) standardGeneric("staticFieldNames"))
+`fieldTypes<-` <- function(x, value) {
+  x@fieldTypes <- value
+  x
+}
 
-setMethod("staticFieldNames", "SolrSchema", function(x) {
-  info <- fieldInfo(x)
-  names(info)[!dynamic(info)]
+setGeneric("staticFieldNames",
+           function(x, include.hidden = FALSE)
+           standardGeneric("staticFieldNames"),
+           signature="x")
+
+setMethod("staticFieldNames", "SolrSchema", function(x, include.hidden = FALSE) {
+  info <- fields(x)
+  names(info)[!dynamic(info) & (include.hidden | !hidden(info))]
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -183,7 +170,7 @@ resolveUniqueKey <- function(x, type) {
 setMethod("toSolr", c("ANY", "SolrSchema"),
           function(x, type) {
             ans <- convertCollection(x, type, toSolr)
-            unname(resolveUniqueKey(ans, type))
+            unid(resolveUniqueKey(ans, type))
           })
 
 resolveIds <- function(x, type) {
@@ -201,17 +188,233 @@ resolveMeta <- function(x) {
   x
 }
 
-setMethod("fromSolr", c("ANY", "SolrSchema"),
+fromSolr_default <- function(x, type) {
+  ans <- convertCollection(x, type, fromSolr)
+  ans <- resolveIds(ans, type)
+  ans <- resolveMeta(ans)
+  origin(ans) <- NULL # for now
+  ans
+}
+
+fromSolr_grouped <- function(x, type) {
+  lapply(x$grouped, function(xi) {
+    setNames(lapply(pluck(xi$groups, "doclist"),
+                    function(d) fromSolr_default(d$docs, type)),
+             as.character(pluck(xi$groups, "groupValue")))
+  })
+}
+
+setMethod("fromSolr", c("ANY", "SolrSchema"), fromSolr_default)
+
+setMethod("fromSolr", c("list", "SolrSchema"),
           function(x, type) {
-            ans <- convertCollection(x, type, fromSolr)
-            ans <- resolveIds(ans, type)
-            ans <- resolveMeta(ans)
-            ans
+            callNextMethod(x$response$docs, type)
           })
+
+setMethod("fromSolr", c("data.frame", "SolrSchema"), fromSolr_default)
+
+setMethod("fromSolr", c("ANY", "missing"), function(x, type) {
+  fromSolr(x, augment(schema(core(origin(x))), query(origin(x))))
+})
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Augmentation: if we request new fields with 'fl', we have
+### to add those fields to our schema during conversion.
+###
+
+augment <- function(x, query) {
+  fl <- params(query)$fl
+  mode(fl) <- "character"
+  new.fl <- fl[nzchar(names(fl))]
+  computed <- grepl("(", new.fl, fixed=TRUE)
+  x <- augmentComputed(x, new.fl[computed])
+  x <- augmentAliases(x, new.fl[!computed])
+  x
+}
+
+augmentAliases <- function(x, fl) {
+  alias.info <- fields(x)[fl]
+  names(alias.info) <- names(fl)
+  fields(x) <- append(fields(x), alias.info)
+  x
+}
+
+augmentComputed <- function(x, fl) {
+  if (length(fl) == 0L) {
+    return(x)
+  }
+  computed.info <- FieldInfo(name=names(fl),
+                             typeName="..computed..",
+                             dynamic=FALSE,
+                             multivalued=FALSE)
+  computed.type <- FieldTypeList(..computed.. = new("solr.DoubleField"))
+  fields(x) <- append(fields(x), computed.info)
+  fieldTypes(x) <- append(fieldTypes(x), computed.type)
+  x
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Coercion
+###
+
+asAttr <- function(x) {
+  ans <- as.character(x)
+  if (is.logical(x)) {
+    ans <- tolower(ans)
+  }
+  ans
+}
+
+fieldNodes <- function(x, dynamic=FALSE) {
+  f <- fields(x)
+  f <- f[dynamic(f) == dynamic]
+  mapply(function(...) {
+    newXMLNode(if (dynamic) "dynamicField" else "field", attrs=list(...))
+  }, name=names(f), type=typeName(f), required=asAttr(required(f)),
+     indexed=asAttr(indexed(f)), stored=asAttr(stored(f)),
+     multiValued=asAttr(multivalued(f)),
+     docValues=asAttr(docValues(f)))
+}
+
+dynamicFieldNodes <- function(x) {
+  fieldNodes(x, dynamic=TRUE)
+}
+
+copyFieldNodes <- function(x) {
+  copyEdges <- edges(copyFields(x))
+  if (length(copyEdges) > 0L) {
+    copyEdges <- stack(copyEdges)
+    apply(copyEdges, 1L, function(e) {
+      newXMLNode("copyField", attrs=list(source=e[[2L]], dest=e[[1L]]))
+    })
+  } else {
+    list()
+  }
+}
+
+typeNodes <- function(x) {
+  types <- fieldTypes(x)
+  mapply(function(t, nm) {
+    newXMLNode("fieldType",
+               attrs=list(name=nm,
+                 class=asAttr(class(t)),
+                 indexed=asAttr(indexed(t)),
+                 stored=asAttr(stored(t)),
+                 multiValued=asAttr(multivalued(t))))
+  }, types, names(types))
+}
+
+setAs("SolrSchema", "XMLDocument", function(from) {
+  newXMLDoc(node=as(from, "XMLNode"))
+})
+
+setAs("SolrSchema", "XMLNode", function(from) {
+  newXMLNode("schema",
+             attrs=list(name=name(from),
+               version=as.character(version(from))),
+             if (!is.null(uniqueKey(from)))
+               newXMLNode("uniqueKey", uniqueKey(from)),
+             newXMLNode("fields", .children=c(fieldNodes(from),
+                                    dynamicFieldNodes(from))),
+             copyFieldNodes(from),
+             newXMLNode("types", .children=typeNodes(from)))
+})
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Export
+###
+
+setMethod("saveXML", "SolrSchema",
+          function(doc, file = NULL, compression = 0, indent = TRUE,
+                   prefix = "<?xml version=\"1.0\"?>\n",  doctype = NULL,
+                   encoding = getEncoding(doc), ...)
+            {
+              doc <- as(doc, "XMLDocument")
+              callGeneric()
+            })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Autogeneration
+###
+
+setGeneric("deriveSolrSchema",
+           function(x, name=deparse(substitute(x)), ...)
+             standardGeneric("deriveSolrSchema"),
+           signature="x")
+
+isDocValueType <- function(x) {
+  is(x, "solr.StrField") ||
+    is(x, "solr.TrieIntField") ||
+      is(x, "solr.TrieDoubleField")
+}
+
+setMethod("deriveSolrSchema", "ANY",
+          function(x, name=deparse(substitute(x)), ...) {
+            x <- as.data.frame(x)
+            callGeneric()
+          })
+
+setMethod("deriveSolrSchema", "data.frame",
+          function(x, name=deparse(substitute(x)), version="1.5",
+                   uniqueKey=NULL, required=character(), indexed=colnames(x),
+                   stored=colnames(x), includeVersionField=TRUE)
+            {
+              if (!isSingleString(name)) {
+                stop("'name' must be a single, non-NA string")
+              }
+              if (!is.null(uniqueKey) && !isSingleString(uniqueKey)) {
+                stop("if not NULL, 'uniqueKey' must be a single, non-NA string")
+              }
+              if (!is.null(uniqueKey) && !uniqueKey %in% colnames(x)) {
+                stop("'uniqueKey' does not name a column in 'x'")
+              }
+              required <- normColIndex(x, required)
+              indexed <- normColIndex(x, indexed)
+              stored <- normColIndex(x, stored)
+              types <- lapply(x, solrType)
+              names(types) <- vapply(x, class, character(1L))
+              docValues <- names(x) %in% required &
+                vapply(types, isDocValueType, logical(1L))
+              fields <- FieldInfo(names(x),
+                                  typeName=names(types),
+                                  dynamic=FALSE,
+                                  multivalued=vapply(x, is.list, logical(1L)),
+                                  required=required,
+                                  indexed=indexed,
+                                  stored=stored,
+                                  docValues=docValues)
+              if (!is.null(uniqueKey)) {
+                fields[uniqueKey] <- FieldInfo(uniqueKey, typeName="character",
+                                               indexed=TRUE, stored=TRUE,
+                                               required=TRUE)
+                types$character <- solrType(character())
+              }
+              if (includeVersionField) {
+                versionField <- FieldInfo("_version_", typeName="long",
+                                          indexed=TRUE, stored=TRUE)
+                fields <- append(fields, versionField)
+                types[[typeName(versionField)]] <- new("solr.TrieLongField")
+              }
+              copyFields <- new("graphNEL")
+              types <- types[!duplicated(names(types))]
+              SolrSchema(name, as.package_version(version),
+                         uniqueKey, fields, copyFields,
+                         FieldTypeList(types))
+            })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show
 ###
+
+copyEdgesAsCharacter <- function(object) {
+  copyEdges <- edges(copyFields(object))
+  if (length(copyEdges) > 0L) {
+    copyEdges <- stack(copyEdges)
+    paste0(copyEdges[[2L]], "=>", copyEdges[[1L]])
+  } else {
+    character()
+  }
+}
 
 setMethod("show", "SolrSchema", function(object) {
   cat("SolrSchema object\n")
@@ -219,8 +422,7 @@ setMethod("show", "SolrSchema", function(object) {
   cat(labeledLine("name", name(object), count=FALSE),
       labeledLine("version", version(object), count=FALSE),
       labeledLine("uniqueKey", uniqueKey(object), count=FALSE),
-      labeledLine("fields", name(fieldInfo(object))),
-      labeledLine("copyFields", paste0(names(copyFields(object)), "=>",
-                                       copyFields(object))),
+      labeledLine("fields", name(fields(object))),
+      labeledLine("copyFields", copyEdgesAsCharacter(object)),
       sep="")
 })

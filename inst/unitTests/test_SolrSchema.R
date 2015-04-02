@@ -1,0 +1,31 @@
+test_SolrSchema_creation <- function() {
+  data(Cars93, package="MASS")
+  Cars93$Man.trans.avail <- Cars93$Man.trans.avail == "Yes"
+  Cars93$Model <- as.character(Cars93$Model)
+
+  schema <- deriveSolrSchema(Cars93)
+  doc <- as(schema, "XMLDocument")
+  checkIdentical(XML::saveXML(doc), XML::saveXML(schema))
+
+  solr <- rsolr:::TestSolr(schema)
+  sr <- Solr(solr$uri)
+  sr[] <- Cars93
+  ## Differences: columns are in arbitrary order, factors lost
+  checkDfIdentical <- function(df, truth) {
+    df <- df[names(truth)]
+    factorCols <- vapply(truth, is.factor, logical(1L))
+    df[factorCols] <- mapply(factor, df[factorCols],
+                             lapply(truth[factorCols], levels), SIMPLIFY=FALSE)
+    checkIdentical(truth, df)
+  }
+  checkDfIdentical(as.data.frame(sr), Cars93)
+  
+  schema <- deriveSolrSchema(Cars93, uniqueKey="Model")
+  solr$kill()
+  solr <- rsolr:::TestSolr(schema)
+  sr <- Solr(solr$uri)
+  sr[] <- Cars93
+  df <- as.data.frame(sr["Integra",])
+  rownames(df) <- NULL
+  checkDfIdentical(df, subset(Cars93, Model=="Integra"))
+}

@@ -5,6 +5,10 @@
 ### Represents a Solr core; responsible for obtaining the Solr schema
 ### and processing Solr queries.
 
+### We assume that the schema is relatively static and thus cache it
+### during initialization. In theory though, we could retrieve it from
+### the URI dynamically.
+
 setClass("SolrCore",
          representation(uri="RestUri",
                         schema="SolrSchema"))
@@ -18,7 +22,7 @@ SolrCore <- function(uri, ...) {
     uri <- RestUri(uri, ...)
   else if (length(list(...)) > 0L)
     warning("arguments in '...' are ignored when uri is a RestUri")
-  schema <- SolrSchema(read(uri$schema)$schema)
+  schema <- parseSchema(read(uri$schema)$schema)
   new("SolrCore", uri=uri, schema=schema)
 }
 
@@ -30,76 +34,27 @@ setGeneric("name", function(x) standardGeneric("name"))
 setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
-setMethod("length", "SolrCore", function(x) {
-  eval(nrow(SolrQuery()), x)
+setMethod("nrow", "SolrCore", function(x) {
+  nrow(.Solr(x))
 })
 
 schema <- function(x) x@schema
-
-setMethod("staticFieldNames", "SolrCore", function(x) {
-  staticFieldNames(schema(x))
-})
-
-setMethod("purgeCache", "SolrCore", function(x) {
-  purgeCache(x@uri)
-})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
 
-## What to do with x[] <- objs?  Is it a replace-all, or do we assume
-## the IDs are inherent in the object as the default and add them? The
-## latter is probably a much more common use-case. If we choose the
-## latter, then how does one delete records? x[i] <- NULL would work
-## for named records, but what about deleting everything? That is not
-## too hard to do with update() directly...
+setGeneric("updateParams", function(x) standardGeneric("updateParams"))
 
-setReplaceMethod("[", "SolrCore", function(x, i, j, ..., value) {
-  if (!missing(j)) {
-    warning("argument 'j' is ignored")
-  }
-  if (is.null(value)) {
-    if (missing(i)) {
-      stop("'i' must be specified when 'value' is NULL")
-    }
-    value <- list(NULL)
-  }
-  value <- as(value, "DocCollection")
-  if (!missing(i)) {
-    value <- value[recycleVector(seq_len(NROW(value)), length(i)),]
-    ids(value) <- i
-  }
-  update(x, value, ...)
+setMethod("updateParams", "ANY", function(x) {
+  list()
 })
 
-setReplaceMethod("[", c("SolrCore", "SolrQuery"), function(x, i, j, ..., value) {
-  if (is.null(value)) {
-    if (!isSimpleQuery(i)) {
-      stop("query 'i' must only specify 'q' parameter")
-    }
-    update(x, I(list(delete=list(query=i$q))))
-  } else {
-    stop("unable to replace by query")
-  }
+setMethod("updateParams", "data.frame", function(x) {
+  list(map="NA:")
 })
 
-setReplaceMethod("$", "SolrCore", function(x, name, value) {
-  x[[name]] <- value
-  x
-})
-
-setReplaceMethod("[[", "SolrCore", function(x, i, j, ..., value) {
-  if (!missing(j))
-    warning("argument 'j' is ignored")
-  if (missing(i))
-    stop("argument 'i' cannot be missing")
-  x[i, ...] <- list(value)
-  x
-})
-
-### TODO: support multi-valued csv fields by adding
-### f.[field].split=true, probably via generic updateParams(value).
+### FIXME: multivalued fields not supported for CSV upload; Solr needs Avro...
 
 setMethod("update", "SolrCore", function(object, value, commit=TRUE, ...) {
   if (!isTRUEorFALSE(commit)) {
@@ -111,29 +66,17 @@ setMethod("update", "SolrCore", function(object, value, commit=TRUE, ...) {
     value <- toUpdate(value, schema(object))
   }
   media <- as(value, "Media")
-  query.params <- list()
+  query.params <- updateParams(value)
   if (commit) {
-    query.params <- commitQueryParams(...)
+    query.params <- c(query.params, commitQueryParams(...))
   }
   create(object@uri$update, media, query.params)
   invisible(object)
 })
 
-## setGeneric("toUpdate", function(x) standardGeneric("toUpdate"))
-## setMethod("toUpdate", "ANY", identity)
-## setMethod("toUpdate", "DocList", function(x) {
-##   delete <- vapply(x, is.null, logical(1))
-##   if (any(delete)) {
-##     x[!delete] <- lapply(x[!delete], function(xi) list(doc=xi))
-##     x[delete] <- lapply(names(x)[delete], function(nm) list(id=nm))
-##     setNames(x, ifelse(delete, "delete", "add"))
-##   }
-##   x
-## })
-
 setGeneric("toUpdate", function(x, ...) standardGeneric("toUpdate"))
 setMethod("toUpdate", "ANY", toSolr)
-setMethod("toUpdate", "DocList", function(x, ...) {
+setMethod("toUpdate", "list", function(x, ...) {
   delete <- vapply(x, is.null, logical(1))
   if (any(delete)) {
     x[!delete] <- lapply(toSolr(x[!delete], ...), function(xi) list(doc=xi))
@@ -144,158 +87,181 @@ setMethod("toUpdate", "DocList", function(x, ...) {
   }
 })
 
-
 isSimpleQuery <- function(x) {
-  simple <- SolrQuery()
-  x$q <- simple$q
-  identical(x, simple)
+  params(x)$fq <- NULL
+  identical(x, SolrQuery())
 }
 
 setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
-  x[which] <- NULL
-  invisible(x)
+  if (!isSimpleQuery(which)) {
+    warning("delete() cannot handle 'which' more complex than ",
+            "'subset(SolrQuery(), [expr])'")
+  }
+  query <- params(which)$fq
+  if (is.null(query)) {
+    query <- params(which)$q
+  }
+  invisible(update(x, I(list(delete=list(query=query)))))
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### READ
 ###
 
-localParams <- function(...) {
-  args <- list(...)
-  paste0("{!", paste0(names(args), "=", args, collapse=" "), "}")
-}
-
-setMethod("$", "SolrCore", function(x, name) {
-  x[[name]]
-})
-
-setMethod("[[", "SolrCore", function(x, i, j, ...) {
-  if (!missing(j) || length(list(...)) > 0L)
-    warning("argument 'j' and arguments in '...' are ignored")
-  if (missing(i))
-    stop("'i' cannot be missing")
-  if (!isSingleString(i))
-    stop("'i' must be a single, non-NA string")
-  docs <- x[i, ...]
-  if (length(docs) == 0L) {
-    NULL
-  } else {
-    docs[[1]]
-  }
-})
-
-setMethod("[", "SolrCore", function(x, i, j, ..., drop = TRUE) {
-  if (!isTRUE(drop)) {
-    stop("'drop' must be TRUE")
-  }
-  if (!missing(j)) {
-    warning("argument 'j' is ignored")
-  }
-  q <- SolrQuery()
-  if (!missing(i)) {
-    if (!is.character(i) || any(is.na(i))) {
-      stop("'i' must be character, without any NAs")
-    }
-    uk <- uniqueKey(schema(x))
-    q <- subset(q, as.name(uk) %in% .(i))
-  }
-  x[q, ...]
-})
-
-setMethod("[", c("SolrCore", "SolrQuery"), function(x, i, j, ..., drop = TRUE) {
-  if (!isTRUE(drop)) {
-    stop("'drop' must be TRUE")
-  }
-  if (!missing(j)) {
-    warning("argument 'j' is ignored")
-  }
-  if (length(list(...)) > 0L) {
-    warning("arguments in '...' are ignored")
-  }
-### TODO: add a setting on SolrCore that coerces to data.frame here?
-### Presumably it would do this by requesting the data as CSV
-  read(x, i)
-})
-
-setMethod("read", "SolrCore", function(x, query=SolrQuery()) {
-  if (!is(query, "SolrQuery")) {
-    stop("'query' must be a SolrQuery")
-  }
-  fromSolr(eval(query, x), schema(x))
-})
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Summary statistics
-###
-
-### Summaries can either be computed by calling methods on SolrCore,
-### or by incrementally constructing a query and passing it to
-### summary,SolrCore.
-
-setMethod("summary", "SolrCore",
-          function(object, of=staticFieldNames(object),
-                   query=summary(SolrQuery(), of, object))
+setMethod("read", "SolrCore",
+          function(x, query=SolrQuery(), as=c("list", "data.frame"))
           {
             if (!is(query, "SolrQuery")) {
               stop("'query' must be a SolrQuery")
             }
-            if (!missing(of) && !missing(query)) {
-              query <- summary(query, of, object)
-            }
-            SolrSummary(eval(query, object))
+            responseType(query) <- match.arg(as)
+            fromSolr(eval(query, x))
           })
 
-setMethod("facets", "SolrCore",
-          function(x, query) facets(summary(x, query=query)))
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Summarizing
+###
 
-setMethod("stats", "SolrCore",
-          function(x, query) stats(summary(x, query=query)))
+summary.SolrCore <- function(object,
+                             of=setdiff(staticFieldNames(schema(object)),
+                               uniqueKey(schema(object))),
+                             query=summary(SolrQuery(), object, of), ...)
+{
+  if (!is(query, "SolrQuery")) {
+    stop("'query' must be a SolrQuery")
+  }
+  if (!missing(of) && !missing(query)) {
+    query <- summary(query, object, of, ...)
+  }
+  SolrSummary(eval(query, object))
+}
+
+setMethod("summary", "SolrCore", summary.SolrCore)
+
+setMethod("facet", c("SolrCore", "SolrQuery"),
+          function(x, by) {
+            facets(summary(x, query=by))
+          })
+
+setMethod("stats", c("SolrCore", "SolrQuery"),
+          function(x, which) {
+            if (!enablesStats(which)) {
+              stop("'which' does not enable stats")
+            }
+            stats(summary(x, query=which))
+          })
+
+setMethod("groups", c("SolrCore", "SolrQuery"), function(x, by=SolrQuery()) {
+  if (!is(by, "SolrQuery")) {
+    stop("'by' must be a SolrQuery")
+  }
+  fromSolr_grouped(eval(by, x), schema(x))
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Query Evaluation
 ###
 
+processSolrResponse <- function(response, type) {
+  ## some SOLR instances return text/plain for responses...
+  ## this also happens for errors
+  if (is.character(response)) {
+    mediaType <- switch(type,
+                        json="application/json",
+                        csv="text/csv",
+                        xml="application/xml")
+    media <- new(mediaType, response)
+    response <- as(media, mediaTarget(media))
+  }
+  response
+}
+
+## Unfortunately Solr does not describe errors with CSV output (!)
+## So we reissue the query with JSON when one occurs
+SolrErrorHandler <- function(core, query) {
+  function(e) {
+    if (!is(e, "HTTPError")) {
+      stop(e)
+    }
+    if (params(query)$wt == "json") {
+      response <- processSolrResponse(attr(e, "body"), params(query)$wt)
+      stop("[", response$error$code, "] ", response$error$msg,
+           if (!is.null(response$error$trace))
+             paste("\nJava stacktrace:\n", response$error$trace),
+           call.=FALSE)
+    } else {
+      params(query)$wt <- "json"
+      eval(query, core)
+    }
+  }
+}
+
+origin <- function(x) attr(x, "origin")
+
+`origin<-` <- function(x, value) {
+  attr(x, "origin") <- value
+  x
+}
+
 setMethod("eval", c("SolrQuery", "SolrCore"),
           function (expr, envir, enclos)
           {
             params <- prepareQueryParams(envir, expr)
-            response <- read(envir@uri$select, params)
-            ## some SOLR instances return text/plain for responses...
-            if (is.character(response)) {
-              mediaType <- switch(params$wt,
-                                  json="application/json",
-                                  csv="text/csv",
-                                  xml="application/xml")
-              media <- new(mediaType, response)
-              response <- as(media, mediaTarget(media))
-            }
-            ## if (isFaceted(expr)) {
-            ##   ## return a table
-            ## } else if (isAggregated(expr)) {
-            ##   ## return a data.frame like aggregate()
-            ## } else if (isRowCount(expr)) {
-            ##   ans <- response$response$numFound
-            ## } else {
-            ##   if (expr@drop && ncol(df) == 1L)
-            ##     ans <- response[[1]]
-            ## }
-            ## ans
+            expected.type <- params["wt"]
+            response <- tryCatch(read(envir@uri$select, params),
+                                 error = SolrErrorHandler(envir, expr))
+            response <- processSolrResponse(response, expected.type)
+            origin(response) <- .Solr(envir, expr)
             response
           })
 
+prepareBoundsParams <- function(p, nrows) {
+  ans_start <- 0L
+  ans_rows <- .Machine$integer.max
+
+  stopifnot(identical(length(p$start), length(p$rows)))
+  
+  for (i in seq_along(p$start)) {
+    head_minus <- p$rows[i] < 0L
+    if (isTRUE(head_minus)) {
+      ans_rows <- min(ans_rows, nrows) + p$rows[i]
+    } else {
+      ans_rows <- min(ans_rows, p$rows[i], na.rm=TRUE)
+    }
+    tail_plus <- p$start[i] < 0L
+    if (tail_plus) {
+      ans_start <- ans_start + min(ans_rows, nrows) + p$start[i]
+      if (is.na(p$rows[i]))
+        ans_rows <- min(ans_rows, abs(p$start[i]))
+    } else {
+      ans_start <- ans_start + p$start[i]
+      if (is.na(p$rows[i]))
+        ans_rows <- min(ans_rows, nrows) - p$start[i]
+    }
+  }
+  
+  p$start <- ans_start
+  p$rows <- ans_rows
+
+  p
+}
+
+resultLength <- function(x, query) {
+  solr <- .Solr(x, query)
+  ans <- if (identical(params(query)$group, "true"))
+    ngroup(solr)
+  else nrow(solr)
+  if (length(ans) > 1L) {
+    warning("ambiguous result length (multiple groupings)")
+  }
+  ans
+}
+
 prepareQueryParams <- function(x, query) {
-  if (query$rows < 0L)
-    query$rows <- nrow(x) + query$rows
-  if (query$start < 0L)
-    query$start <- nrow(x) + query$start
-  ## if (isFaceted(query) || isAggregated(query) || isRowCount(query)) {
-    query$wt <- "json"
-    query$json.nl <- "map"
-  ## } else {
-  ##   query$wt <- "csv"
-  ##   query$csv.null <- "NA"
-  ## }
-  lapply(query@params, csv)
+  params(query) <- prepareBoundsParams(params(query), resultLength(x, query))
+  if (is.null(responseType(query)))
+    responseType(query) <- "list"
+  as.character(query)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -330,6 +296,15 @@ setMethod("commit", "SolrCore", commit_SolrCore)
 setMethod("show", "SolrCore", function(object) {
   cat("SolrCore object\n")
   cat("name:", name(object), "\n")
-  cat("length:", length(object), "\n")
-  cat("schema:", length(fieldInfo(object@schema)), "fields\n")
+  cat("nrow:", nrow(object), "\n")
+  cat("schema:", length(fields(schema(object))), "fields\n")
+})
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Utilities
+###
+
+setMethod("purgeCache", "SolrCore", function(x) {
+  purgeCache(x@uri)
+  invisible(x)
 })

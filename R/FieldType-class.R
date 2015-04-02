@@ -84,7 +84,12 @@
 ###
 
 setClass("FieldType",
-         representation(multivalued="logical"),
+         representation(multivalued="logical",
+                        indexed="logical",
+                        stored="logical"),
+         prototype(multivalued=FALSE,
+                   indexed=FALSE,
+                   stored=FALSE),
          contains="VIRTUAL")
 
 setClass("FieldTypeList", contains="list",
@@ -96,6 +101,19 @@ setClass("FieldTypeList", contains="list",
   names(x@.Data) <- value
   x
 }
+
+FieldTypeList <- function(...) {
+  args <- list(...)
+  if (length(args) == 1L && is.list(args[[1L]])) {
+    args <- args[[1L]]
+  }
+  new("FieldTypeList", args)
+}
+
+setMethod("append", c("FieldTypeList", "FieldTypeList"),
+          function(x, values, after = length(x)) {
+            new("FieldTypeList", callNextMethod())
+          })
 
 setClass("LogicalField", contains=c("FieldType", "VIRTUAL"))
 setClass("CharacterField", contains=c("FieldType", "VIRTUAL"))
@@ -164,7 +182,9 @@ setClass("solr.ExternalFileField", contains="NumericField")
 ###
 
 setMethod("resolve", c("FieldType", "FieldInfo"), function(x, field, schema) {
-  x@multivalued <- x@multivalued || field@multivalued
+  x@multivalued <- field@multivalued
+  x@indexed <- field@indexed
+  x@stored <- field@stored
   x
 })
 
@@ -174,7 +194,7 @@ setMethod("resolve", c("SubTypeFieldType", "FieldInfo"),
             x@subFieldType <- if (is.character(x@subFieldType)) {
               fieldTypes(schema)[[x@subFieldType]]
             } else if (!is.null(x@subFieldSuffix)) {
-              typeNames <- typeName(fieldInfo(schema, subFieldNames(x, field)))
+              typeNames <- typeName(fields(schema, subFieldNames(x, field)))
               types <- fieldTypes(schema)[typeNames]
               if (length(unique(typeNames)) == 1L) {
                 types[[1]]
@@ -210,6 +230,23 @@ setMethod("solrMode", "NumericField", function(x) "numeric")
 setMethod("solrMode", "IntegerField", function(x) "integer")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Solr types for R classes
+###
+
+setGeneric("solrType", function(x) standardGeneric("solrType"))
+
+setMethod("solrType", "logical", function(x) new("solr.BoolField"))
+setMethod("solrType", "integer", function(x) new("solr.TrieIntField"))
+setMethod("solrType", "numeric", function(x) new("solr.TrieDoubleField"))
+setMethod("solrType", "character", function(x) new("solr.StrField"))
+setMethod("solrType", "factor", function(x) new("solr.StrField"))
+setMethod("solrType", "list",
+          function(x) {
+            type <- solrType(unlist(x, use.names=FALSE))
+            initialize(type, multivalued=TRUE)
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Conversion
 ###
 
@@ -220,7 +257,9 @@ setMethod("toSolr", c("ANY", "FieldType"), function(x, type) {
   as.vector(x, mode=solrMode(type))
 })
 
-setMethod("fromSolr", c("ANY", "FieldType"), function(x, type) identity(x))
+setMethod("fromSolr", c("ANY", "FieldType"), function(x, type) {
+  as.vector(x, mode=solrMode(type))
+})
 
 setMethod("fromSolr", c("character", "solr.BinaryField"),
           function(x, type) {
@@ -270,6 +309,8 @@ setGeneric("parseFieldType",
 
 setMethod("parseFieldType", "FieldType", function(x, proto) {
   proto@multivalued <- if (is.null(x$multivalued)) FALSE else x$multivalued
+  proto@indexed <- if (is.null(x$indexed)) TRUE else x$indexed
+  proto@stored <- if (is.null(x$stored)) TRUE else x$stored
   proto
 })
 

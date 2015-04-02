@@ -1,6 +1,6 @@
 Package: rsolr
 Type: Package
-Title: R to Solr query interface
+Title: R to Solr interface
 Version: 0.0.0
 Author: Michael Lawrence, Jan Vogel
 Maintainer: Michael Lawrence <michafla@gene.com>
@@ -13,20 +13,24 @@ Description: An R API for querying Apache Solr databases.  Each Solr
 License: file GNE_LICENSE
 Imports:
     restfulr,
-    BiocGenerics,
-    methods,
-    graph
+    graph,
+    rjson,
+    XML
 Depends:
-    BiocGenerics,
+    R (>= 3.2.0),
+    BiocGenerics (>= 0.13.3),
     methods
 Collate:
     DocCollection-class.R
+    Expression-class.R
     FieldInfo-class.R
     FieldType-class.R
     SolrSummary-class.R
     SolrSchema-class.R
     SolrQuery-class.R
     SolrCore-class.R
+    Solr-class.R
+    SolrAggregation-class.R
     test.R
     utils.R
     zzz.R

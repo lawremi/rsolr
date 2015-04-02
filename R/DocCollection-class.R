@@ -7,8 +7,19 @@
 ### data.frame. These differ from ordinary lists and data.frames by
 ### the relationship between the list and data.frame representation. A
 ### DocList has elements corresponding to the *rows* of a data.frame,
-### not the columns. This means that a DocDataFrame will yield the
-### correct JSON when converted.
+### not the columns.
+###
+### Thus, we need a separate abstraction, and any
+### DocCollection object is contracted to implement this API:
+### - Two dimensional [,] extraction
+### - ids() returns the document IDs
+### - fieldNames() returns the names of the unique document fields
+###
+### The data.frame object already supports the first, and it would be
+### easy to add data.frame methods for the second two, but we want a
+### data.frame that extends DocCollection, so that methods based on
+### the DocCollection API can restrict their signature to
+### DocCollection.
 ###
 
 setClass("DocCollection")
@@ -54,6 +65,17 @@ setAs("list", "DocDataFrame", function(from) {
   new("DocDataFrame", as.data.frame(from))
 })
 
+setAs("DocDataFrame", "data.frame", function(from) {
+  as.data.frame(setNames(from@.Data, names(from)),
+                row.names=rownames(from), optional=TRUE, stringsAsFactors=FALSE)
+})
+
+## 'c' is a primitive, so we could define an S4 method without an S3 method,
+## but the S4 generic for 'c' is problematic
+c.DocCollection <- function(...) {
+  as(NextMethod(), "DocCollection")
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
 ###
@@ -64,13 +86,22 @@ setMethod("ids", "DocDataFrame", function(x) rownames)
 
 setGeneric("ids<-", function(x, value) standardGeneric("ids<-"))
 setReplaceMethod("ids", "DocList", function(x, value) {
-  names(x@.Data) <- value
-  x
+  if (is.null(value)) { 
+    unname(x) # FIXME: names(x@.Data) <- NULL does not behave as expected
+  } else {
+    names(x@.Data) <- value
+    x
+  }
 })
 setReplaceMethod("ids", "DocDataFrame", function(x, value) {
   rownames(x) <- value
   x
 })
+
+unid <- function(x) {
+  ids(x) <- NULL
+  x
+}
 
 setGeneric("fieldNames", function(x) standardGeneric("fieldNames"))
 setMethod("fieldNames", "DocList", function(x) {
@@ -85,29 +116,30 @@ uncommonFields <- function(x, j) {
 }
 
 setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
+  if (!isTRUEorFALSE(drop)) {
+    stop("'drop' should be TRUE or FALSE")
+  }
   if (!missing(i)) {
-### callNextMethod(x, i) broken because [ is primitive
+### FIXME: callNextMethod(x, i) broken because [ is primitive
     d <- x@.Data
     names(d) <- names(x)
     ans <- d[i]
   } else {
     ans <- x
   }
+  dropped <- FALSE
   if (!missing(j)) {
     if (!is.character(j)) {
       stop("'j' must be character")
     }
-    badj <- uncommonFields(x, j)
-    if (length(badj) > 0L) {
-      stop("fields ", paste(badj, collapse=", "), " not found in all documents")
-    }
-    if (drop) {
-      ans <- simplify2array2(lapply(ans, `[[`, j))
+    if (drop && length(j) == 1L) {
+      ans <- simplify2array2(lapply(unname(ans), `[[`, j))
+      dropped <- TRUE
     } else {
       ans <- lapply(ans, `[`, j)
     }
   }
-  if (drop && ((!missing(j) && length(j) == 1L) || !missing(drop))) {
+  if (dropped) {
     ans
   } else {
     initialize(x, ans)
@@ -116,7 +148,7 @@ setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
 
 setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
   if (missing(j)) {
-    x@.Data[i] <- value # broken: callNextMethod()
+    x@.Data[i] <- value # FIXME: broken: callNextMethod()
     return(x)
   }
   if (missing(i)) {
@@ -187,12 +219,17 @@ setGeneric("convertFields",
            signature="x")
 
 setMethod("convertFields", "DocDataFrame", function(x, types, FUN) {
-  initialize(x, as.data.frame(mapply(FUN, x, types, SIMPLIFY=FALSE)))
+  initialize(x, as.data.frame(mapply(FUN, x, types, SIMPLIFY=FALSE),
+                              optional=TRUE, stringsAsFactors=FALSE))
 })
 
 setMethod("convertFields", "DocList", function(x, types, FUN) {
   initialize(x, lapply(x, function(xi) {
-    mapply(FUN, xi, types[names(xi)], SIMPLIFY=FALSE)
+    if (is.null(xi)) {
+      NULL
+    } else {
+      mapply(FUN, xi, types[names(xi)], SIMPLIFY=FALSE)
+    }
   }))
 })
 
@@ -204,4 +241,11 @@ setMethod("show", "DocList", function(object) {
   cat("DocList object\n")
   meta(object) <- NULL
   show(do.call(list, object))
+})
+
+setMethod("show", "DocDataFrame", function(object) {
+  cat("DocDataFrame object (", nrow(object), "x", ncol(object), ")\n", sep="")
+  meta(object) <- NULL
+  out <- makePrettyMatrixForCompactPrinting(object)
+  print(out, quote=FALSE, right=TRUE, max=length(out))
 })

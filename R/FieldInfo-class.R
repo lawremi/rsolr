@@ -5,24 +5,20 @@
 ### Internal helper class
 ###
 
-slotLengths <- function(x) {
-  vapply(slotNames(x), function(s) length(slot(x, s)), integer(1))
-}
-
-slotHasNAs <- function(x) {
-  vapply(slotNames(x), function(s) any(is.na(slot(x, s))), logical(1))
-}
-
 setClass("FieldInfo",
          representation(name="character",
                         typeName="character",
                         dynamic="logical",
-                        multivalued="logical"),
+                        multivalued="logical",
+                        required="logical",
+                        indexed="logical",
+                        stored="logical",
+                        docValues="logical"),
          validity=function(object) {
-           if (length(unique(slotLengths(object))) != 1L)
-             "all slots must have the same length"
-           if (any(slotHasNAs(object)))
-             "one or more slots contain NA values"
+           c(if (length(unique(slotLengths(object))) != 1L)
+               "all slots must have the same length",
+             if (any(slotHasNAs(object)))
+               "one or more slots contain NA values")
          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -32,12 +28,25 @@ setClass("FieldInfo",
 dynamic <- function(x) x@dynamic
 multivalued <- function(x) x@multivalued
 typeName <- function(x) x@typeName
+indexed <- function(x) x@indexed
+stored <- function(x) x@stored
+hidden <- function(x) grepl("^_.*_$", names(x))
+required <- function(x) x@required
+docValues <- function(x) x@docValues
 
 setMethod("length", "FieldInfo", function(x) length(x@name))
 
 setMethod("names", "FieldInfo", function(x) x@name)
 
+setReplaceMethod("names", "FieldInfo", function(x, value) {
+  x@name <- as.character(value)
+  x
+})
+
 setMethod("[", "FieldInfo", function(x, i, j, ..., drop=TRUE) {
+  if (!missing(j) || length(list(...)) || !missing(drop)) {
+    warning("arguments 'j', 'drop' and those in '...' are ignored")
+  }
   if (is.character(i)) {
     i <- match(i, x@name)
   }
@@ -45,8 +54,51 @@ setMethod("[", "FieldInfo", function(x, i, j, ..., drop=TRUE) {
              name=x@name[i],
              typeName=x@typeName[i],
              dynamic=x@dynamic[i],
-             multivalued=x@multivalued[i])
+             multivalued=x@multivalued[i],
+             required=x@required[i],
+             indexed=x@indexed[i],
+             stored=x@stored[i],
+             docValues=x@docValues[i])
 })
+
+setReplaceMethod("[", c(x="FieldInfo", value="FieldInfo"),
+                 function(x, i, j, ..., value) {
+                   if (!missing(j) || length(list(...))) {
+                     warning("argument 'j', and those in '...' are ignored")
+                   }
+                   if (is.character(i)) {
+                     i <- match(i, x@name)
+                   }
+                   replaceSlot <- function(xs, vs) {
+                     xs[i] <- vs
+                     xs
+                   }
+                   xs <- mapply(replaceSlot,
+                                slotsAsList(x)[slotNames("FieldInfo")],
+                                slotsAsList(value)[slotNames("FieldInfo")],
+                                SIMPLIFY=FALSE)
+                   do.call(initialize, c(list(x), xs))
+                 })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Constructor
+###
+
+FieldInfo <- function(name, typeName, dynamic=FALSE, multivalued=FALSE,
+                      required=FALSE, indexed=FALSE, stored=FALSE,
+                      docValues=FALSE)
+{
+  len <- length(name)
+  new("FieldInfo",
+      name=name,
+      typeName=recycleVector(typeName, len),
+      dynamic=recycleVector(dynamic, len),
+      multivalued=recycleVector(multivalued, len),
+      required=recycleVector(required, len),
+      indexed=recycleVector(indexed, len),
+      stored=recycleVector(stored, len),
+      docValues=recycleVector(docValues, len))
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Combination
@@ -59,7 +111,11 @@ setMethod("append", c("FieldInfo", "FieldInfo"),
                        typeName=append(x@typeName, values@typeName, after),
                        dynamic=append(x@dynamic, values@dynamic, after),
                        multivalued=append(x@multivalued, values@multivalued,
-                         after))
+                         after),
+                       required=append(x@required, values@required, after),
+                       indexed=append(x@indexed, values@indexed, after),
+                       stored=append(x@stored, values@stored, after),
+                       docValues=append(x@docValues, values@docValues, after))
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -73,7 +129,8 @@ as.data.frame.FieldInfo <-
       warning("all arguments besides 'x' are ignored")
     }
     with(attributes(x),
-         data.frame(row.names=name, typeName, dynamic, multivalued))
+         data.frame(row.names=name, typeName, dynamic, multivalued,
+                    required, indexed, stored, docValues))
   }
 
 setAs("FieldInfo", "data.frame", function(from) as.data.frame(from))

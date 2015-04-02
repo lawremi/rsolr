@@ -11,15 +11,21 @@ test_SolrCore_accessors <- function() {
   solr <- rsolr:::TestSolr()
   sc <- SolrCore(solr$uri)
 
+  checkIdentical(name(sc), "example")
+  checkIdentical(nrow(sc), 0L)
   checkIdentical(uniqueKey(schema(sc)), "id")
   
   doc <- list(id="1112211111", name="my name!")
-  sc[[doc$id,commit=FALSE]] <- doc
-  checkIdentical(sc[[doc$id]], NULL)
+  dc <- as(list(doc), "DocCollection")
+  update(sc, dc, commit=FALSE)
+  q <- SolrQuery(id == .(doc$id))
+  checkIdentical(read(sc, q), dc[NULL])
+
   checkIdentical(commit(sc), 0L)
-  checkIdentical(sc[[doc$id]], NULL) # still NULL for 30s because of cache
+  checkIdentical(read(sc, q), dc[NULL]) # still NULL for 30s because of cache
   purgeCache(sc)
-  checkResponseIdentical(sc[[doc$id]], doc)
+  ids(dc) <- doc$id
+  checkResponseIdentical(read(sc, q), dc)
 
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
@@ -27,40 +33,38 @@ test_SolrCore_accessors <- function() {
     list(id="4", price=4, timestamp_dt=Sys.time()),
     list(id="5", inStock=FALSE, price=5, timestamp_dt=Sys.time())
     )
-  sc[] <- docs
+
+  update(sc, docs)
 
   docs <- as(docs, "DocCollection")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
-  ids(docs) <- as.character(rsolr:::pluck(docs, "id"))
-  
-  checkResponseEquals(sc[as.character(2:4)], docs[1:3])
+  ids(docs) <- docs[,"id"]
 
-  sc[[doc$id]] <- NULL
-  checkResponseEquals(sc[], docs)
-  sc[as.character(2:4)] <- NULL
+  q <- SolrQuery(id %in% as.character(2:4))
+  checkResponseEquals(read(sc, q), docs[1:3])
+
+  q <- SolrQuery(id == .(doc$id))
+  delete(sc, q)
+  checkResponseEquals(read(sc), docs)
+  del <- list()
+  del[as.character(2:4)] <- list(NULL)
+  update(sc, del)
   purgeCache(sc)
-  checkResponseEquals(sc[], docs[4])
+  checkResponseEquals(read(sc), docs[4])
   delete(sc)
   purgeCache(sc)
-  checkResponseEquals(sc[], new("DocList"))
+  checkResponseEquals(read(sc), new("DocList"))
 
   docs[,"id"] <- NULL
-  sc[] <- docs
+  update(sc, docs)
   docs[,"id"] <- ids(docs)
   purgeCache(sc)
-  checkResponseEquals(sc[], docs)
-  delete(sc)
+  checkResponseEquals(read(sc), docs)
 
-  ids <- ids(docs)
-  ids(docs) <- NULL
-  docs[,"id"] <- NULL
-  sc[ids,] <- docs
-  docs[,"id"] <- ids
+  del <- c(del, list(doc))
+  update(sc, del)
   purgeCache(sc)
-  checkResponseEquals(sc[], docs)
-  
-  checkIdentical(sc["foo"], new("DocList"))
-  checkIdentical(sc[["foo"]], NULL)
+  checkResponseEquals(read(sc), c(dc, docs["5"]))
 
   solr$kill()
 }
