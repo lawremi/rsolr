@@ -116,16 +116,6 @@ configure <- function(x, ...) {
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Simple row counting
-###
-
-setMethod("nrow", "SolrQuery", function(x) {
-  params(x)$rows <- 0L
-  params(x)$start <- 0L # for consistency with 'rows'
-  x
-})
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr query component
 ###
 
@@ -252,15 +242,17 @@ setMethod("rev", "SolrQuery", rev.SolrQuery)
 ## head(x, +n) => (+)rows = min(rows, n)
 ## tail(x, +n) => (-)start = start+min(rows, NROWS)-n; rows = min(rows, n)
 ## tail(x, -n) => (+)start = start+n; rows = min(rows, NROWS)-n
- 
-setMethod("window", "SolrQuery", function (x, start = 1L, end = NA_integer_) {
+
+window.SolrQuery <- function (x, start = 1L, end = NA_integer_) {
   if (!isSingleNumber(start))
     stop("'start' must be a single, non-NA number")
   if (!is.na(end) && !isSingleNumber(end))
     stop("'end' must be a single number")
   rows <- end - start + 1L
   setOutputBounds(x, start, rows)
-})
+}
+
+setMethod("window", "SolrQuery", window.SolrQuery)
 
 setOutputBounds <- function(x, start = 1L, rows = NA_integer_) {
   start <- start - 1L
@@ -273,26 +265,27 @@ setOutputBounds <- function(x, start = 1L, rows = NA_integer_) {
 }
 
 boundsParams <- function(p, start, rows) {
+  if (identical(rows, 0L)) { # simplify for trivial case of no results
+    p$start <- p$rows <- NULL
+  }
   p$start <- c(p$start, start)
   p$rows <- c(p$rows, rows)
   p
 }
 
 windowFacetParams <- function(p, offset, limit) {
-  if (!is.null(p$facet.query) || !is.null(p$facet.pivot)) {
+  if (!is.null(p$facet.query) || !is.null(plapply$facet.pivot)) {
     stop("window() does not support complex faceting")
   }
-  if (!isTRUE(limit > 0L)) {
+  if (!isTRUE(limit >= 0L)) {
     stop("limit/end must be specified in facet bound restriction")
   }
   
   fields <- p[names(p) == "facet.field"]
   if (length(fields > 0L)) {
     prefix <- paste0("f.", fields, ".facet")
-    p[paste0(prefix, ".offset")] <-
-      lapply(p[paste0(prefix, ".offset")], max, offset)
-    p[paste0(prefix, ".limit")] <-
-      lapply(p[paste0(prefix, ".limit")], min, limit)
+    p[paste0(prefix, ".offset")] <- pmax(p[paste0(prefix, ".offset")], offset)
+    p[paste0(prefix, ".limit")] <- pmin(p[paste0(prefix, ".limit")], limit)
   }
   p
 }

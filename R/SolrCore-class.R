@@ -9,6 +9,12 @@
 ### during initialization. In theory though, we could retrieve it from
 ### the URI dynamically.
 
+### TODO: consider getting the actual schema XML via the admin file
+### handler, then we cast it to a media type, and parse it via
+### dispatch. This will give us the fields in the original schema
+### order. This at least lets the user/admin order the fields, instead
+### of always forcing lexicographic order.
+
 setClass("SolrCore",
          representation(uri="RestUri",
                         schema="SolrSchema"))
@@ -22,7 +28,7 @@ SolrCore <- function(uri, ...) {
     uri <- RestUri(uri, ...)
   else if (length(list(...)) > 0L)
     warning("arguments in '...' are ignored when uri is a RestUri")
-  schema <- parseSchema(read(uri$schema)$schema)
+  schema <- readSchema(uri)
   new("SolrCore", uri=uri, schema=schema)
 }
 
@@ -34,11 +40,71 @@ setGeneric("name", function(x) standardGeneric("name"))
 setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
-setMethod("nrow", "SolrCore", function(x) {
-  nrow(.Solr(x))
+setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
+  emptyQuery <- head(query, 0L)
+  responseType(emptyQuery) <- "list"
+  numFound <- as.integer(eval(emptyQuery, x)$response$numFound)
+  p <- prepareBoundsParams(params(query), numFound)
+  min(numFound, p$rows)
 })
 
 schema <- function(x) x@schema
+
+readLuke <- function(x) {
+  read(x@uri$admin$luke, list(numTerms=0L, wt="json"))
+}
+
+subsetByPatterns <- function(x, patterns) {
+  matches <- vapply(glob2rx(patterns), grepl, logical(length(x)), x)
+  x[rowSums(matches) > 0L]
+}
+
+orderFieldsBySchema <- function(x, schema) {
+  m <- vapply(glob2rx(names(fields(schema))), grepl, logical(length(x)), x)
+  x[order(max.col(m, "first"))]
+}
+
+setMethod("fieldNames", "SolrCore",
+          function(x, patterns = NULL, onlyStored = FALSE, onlyIndexed = FALSE,
+                   includeStatic = FALSE)
+{
+  ## The Luke request handler will not always be available, and this
+  ## will fail in those cases. Thus, if the client code wants to be
+  ## robust, then it can decide to get the fields from the schema, but
+  ## that needs to be an explicit compromise, since dynamic fields
+  ## will not be resolved.
+  if (!is.null(patterns) && (!is.character(patterns) || any(is.na(patterns)))) {
+    stop("if non-NULL, 'patterns' must be a character vector without NAs")
+  }
+  if (!isTRUEorFALSE(includeStatic)) {
+    stop("'includeStatic' must be TRUE or FALSE")
+  }
+  if (!isTRUEorFALSE(onlyStored)) {
+    stop("'onlyStored' must be TRUE or FALSE")
+  }
+  if (!isTRUEorFALSE(onlyIndexed)) {
+    stop("'onlyIndexed' must be TRUE or FALSE")
+  }
+  luke <- readLuke(x)
+  ans <- names(luke$fields)
+  internal <- grepl("^_|____", ans)
+  ans <- ans[!internal]
+  if (includeStatic) {
+    schemaFields <- fields(schema(x))
+    ans <- union(ans, names(schemaFields)[!dynamic(schemaFields) &
+                                            !hidden(schemaFields)])
+  }
+  if (onlyStored || onlyIndexed) {
+    fields <- fields(schema(x), ans)
+    keep <- (if (onlyStored) stored(fields) else TRUE) &
+            (if (onlyIndexed) indexed(fields) else TRUE)
+    ans <- ans[keep]
+  }
+  if (!is.null(patterns)) {
+    ans <- subsetByPatterns(ans, patterns)
+  }
+  orderFieldsBySchema(ans, schema(x))
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -54,16 +120,21 @@ setMethod("updateParams", "data.frame", function(x) {
   list(map="NA:")
 })
 
-### FIXME: multivalued fields not supported for CSV upload; Solr needs Avro...
+### FIXME: multivalued fields not supported for CSV upload
 
-setMethod("update", "SolrCore", function(object, value, commit=TRUE, ...) {
+setMethod("update", "SolrCore", function(object, value, commit=TRUE,
+                                         atomic=FALSE, ...)
+{
   if (!isTRUEorFALSE(commit)) {
     stop("'commit' must be TRUE or FALSE")
+  }
+  if (!isTRUEorFALSE(atomic)) {
+    stop("'atomic' must be TRUE or FALSE")
   }
   if (is(value, "AsIs")) {
     class(value) <- setdiff(class(value), "AsIs")
   } else {
-    value <- toUpdate(value, schema(object))
+    value <- toUpdate(value, schema=schema(object), atomic=atomic)
   }
   media <- as(value, "Media")
   query.params <- updateParams(value)
@@ -75,14 +146,43 @@ setMethod("update", "SolrCore", function(object, value, commit=TRUE, ...) {
 })
 
 setGeneric("toUpdate", function(x, ...) standardGeneric("toUpdate"))
-setMethod("toUpdate", "ANY", toSolr)
-setMethod("toUpdate", "list", function(x, ...) {
+setMethod("toUpdate", "ANY", function(x, schema, atomic=FALSE, ...) {
+  x <- toSolr(x, schema, ...)
+  if (atomic) {
+    if (is.null(uniqueKey(schema))) {
+      stop("modifying documents requires a 'uniqueKey' in the schema")
+    }
+    x <- unname(lapply(as(x, "DocList"), function(xi) {
+      uk <- names(xi) == uniqueKey(schema)
+      xi[is.na(xi)] <- list(NULL)
+      xi[!uk] <- lapply(xi[!uk], function(f) list(set = f))
+      xi
+    }))
+  }
+  x
+})
+
+dropNAs <- function(x) {
+  if (is.list(x)) {
+    x[is.na(x)] <- NULL
+  }
+  x
+}
+
+setMethod("toUpdate", "list", function(x, schema, atomic=FALSE, ...) {
+  if (is.data.frame(x)) {
+    return(callNextMethod())
+  }
   delete <- vapply(x, is.null, logical(1))
-  if (any(delete)) {
-    x[!delete] <- lapply(toSolr(x[!delete], ...), function(xi) list(doc=xi))
+  if (!atomic && any(delete)) {
+    x[!delete] <- lapply(toSolr(x[!delete], schema, ...),
+                         function(xi) list(doc=xi))
     x[delete] <- lapply(names(x)[delete], function(nm) list(id=nm))
     setNames(x, ifelse(delete, "delete", "add"))
   } else {
+    if (!atomic) {
+      x <- lapply(x, dropNAs)
+    }
     callNextMethod()
   }
 })
@@ -117,6 +217,22 @@ setMethod("read", "SolrCore",
             responseType(query) <- match.arg(as)
             fromSolr(eval(query, x))
           })
+
+readSchemaFromREST <- function(uri) {
+  parseSchemaFromREST(read(uri$schema)$schema)
+}
+
+readSchemaXMLFile <- function(uri) {
+  parseSchemaXML(read(uri$admin$file, file="schema.xml"))
+}
+
+readSchema <- function(uri) {
+  tryCatch(readSchemaXMLFile(uri), error = function(e) {
+    warning("Failed to retrieve schema XML file. Falling back to REST access. ",
+            "Fields will be sorted lexicographically.")
+    readSchemaFromREST(uri)
+  })
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Summarizing
@@ -211,7 +327,7 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
             response <- tryCatch(read(envir@uri$select, params),
                                  error = SolrErrorHandler(envir, expr))
             response <- processSolrResponse(response, expected.type)
-            origin(response) <- .Solr(envir, expr)
+            origin(response) <- .SolrList(envir, expr)
             response
           })
 
@@ -247,10 +363,10 @@ prepareBoundsParams <- function(p, nrows) {
 }
 
 resultLength <- function(x, query) {
-  solr <- .Solr(x, query)
+  solr <- .SolrList(x, query)
   ans <- if (identical(params(query)$group, "true"))
     ngroup(solr)
-  else nrow(solr)
+  else length(solr)
   if (length(ans) > 1L) {
     warning("ambiguous result length (multiple groupings)")
   }
@@ -296,7 +412,7 @@ setMethod("commit", "SolrCore", commit_SolrCore)
 setMethod("show", "SolrCore", function(object) {
   cat("SolrCore object\n")
   cat("name:", name(object), "\n")
-  cat("nrow:", nrow(object), "\n")
+  cat("ndoc:", ndoc(object), "\n")
   cat("schema:", length(fields(schema(object))), "fields\n")
 })
 

@@ -4,6 +4,7 @@ test_SolrSchema_creation <- function() {
   Cars93$Model <- as.character(Cars93$Model)
 
   schema <- deriveSolrSchema(Cars93)
+  checkIdentical(name(schema), "Cars93")
   doc <- as(schema, "XMLDocument")
   checkIdentical(XML::saveXML(doc), XML::saveXML(schema))
 

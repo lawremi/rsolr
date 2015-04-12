@@ -30,6 +30,8 @@ Collate:
     SolrQuery-class.R
     SolrCore-class.R
     Solr-class.R
+    SolrList-class.R
+    SolrFrame-class.R
     SolrAggregation-class.R
     test.R
     utils.R

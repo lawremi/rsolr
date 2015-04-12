@@ -17,19 +17,8 @@
 
 setClass("Solr",
          representation(core="SolrCore",
-                        query="SolrQuery"))
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Constructor
-###
-
-.Solr <- function(core, query=SolrQuery()) {
-  new("Solr", core=core, query=query)
-}
-
-Solr <- function(uri, ...) {
-  .Solr(SolrCore(uri, ...))
-}
+                        query="SolrQuery"),
+         contains="VIRTUAL")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
@@ -43,40 +32,44 @@ query <- function(x) x@query
   x
 }
 
-setMethod("dim", "Solr", function(x) {
-  c(nrow(x), ncol(x))
+setMethod("ids", "Solr", function(x) {
+  uk <- uniqueKey(schema(core(x)))
+  if (!is.null(uk))
+    x[,uk]
+  else NULL
 })
 
-setMethod("ncol", "Solr", function(x) {
-  fl <- params(query(x))$fl
+normFL <- function(fl) {
+  if (is.null(names(fl)))
+    fl
+  else {
+    fl[names(fl) != ""] <- names(fl)[names(fl) != ""]
+    unname(fl)
+  }
+}
+
+setMethod("fieldNames", "Solr", function(x, ...)
+{
+  fl <- normFL(params(query(x))$fl)
   glob <- grepl("*", fl, fixed=TRUE)
   if (any(glob)) {
-    f <- fields(schema(core(x)))
-    if (any(dynamic(f))) {
-      NA_integer_ # we punt, instead of trying to resolve globs against globs
-    } else {
-      sum(stored(f) & !hidden(f))
-    }
+    fieldNames(core(x), patterns=fl, ...)
   } else {
-    length(fl)
+    fl
   }
 })
 
-setMethod("nrow", "Solr", function(x) {
-  length(x)
+setMethod("nfield", "Solr", function(x) {
+  length(fieldNames(x))
 })
 
-setMethod("length", "Solr", function(x) {
-  as.integer(eval(nrow(query(x)), core(x))$response$numFound)
+setMethod("ndoc", "Solr", function(x) {
+  ndoc(core(x), query(x))
 })
 
 setMethod("ngroup", "Solr", function(x) {
   groupings <- eval(ngroup(query(x)), core(x))$grouped
   vapply(groupings, function(g) length(g$groups), integer(1L))
-})
-
-setMethod("names", "Solr", function(x) {
-  x[,uniqueKey(schema(core(x)))]
 })
 
 setMethod("staticFieldNames", "Solr", function(x) {
@@ -86,52 +79,9 @@ setMethod("staticFieldNames", "Solr", function(x) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
-## What to do with x[] <- objs?  Is it a replace-all, or do we assume
-## the IDs are inherent in the object as the default and add them? It
-## seems to make sense for [<- to take the ids from value for the
-## default of 'i'. Then the value of NULL is a special case, where 'i'
-## defaults to everything. But that is very inconsistent with existing
-## behavior in R. Instead, we need an extra argument, 'insert', to
-## indicate that we do not want to replace the existing data.
-
-setReplaceMethod("[", "Solr", function(x, i, j, insert=FALSE, ..., value) {
-  if (!missing(j)) {
-    warning("argument 'j' is ignored")
-  }
-  if (!isTRUEorFALSE(insert)) {
-    stop("'insert' must be TRUE or FALSE")
-  }
-  if (insert && is.null(value)) {
-    stop("cannot insert a 'value' of NULL")
-  }
-  if (!insert && missing(i)) {
-    core <- delete(core(x), query(x), ...)
-  }
-  if (!is.null(value) || !missing(i)) {
-    if (is.null(value)) {
-      value <- list(NULL)
-    }
-    value <- as(value, "DocCollection")
-    if (!missing(i)) {
-      value <- value[recycleVector(seq_len(NROW(value)), length(i)),]
-      ids(value) <- i
-    }
-    core <- update(core(x), value, ...)
-  }
-  initialize(x, core=purgeCache(core))
-})
 
 setReplaceMethod("$", "Solr", function(x, name, value) {
   x[[name]] <- value
-  x
-})
-
-setReplaceMethod("[[", "Solr", function(x, i, j, ..., value) {
-  if (!missing(j))
-    warning("argument 'j' is ignored")
-  if (missing(i))
-    stop("argument 'i' cannot be missing")
-  x[i, ...] <- list(value)
   x
 })
 
@@ -143,56 +93,16 @@ setMethod("$", "Solr", function(x, name) {
   x[[name]]
 })
 
-setMethod("[[", "Solr", function(x, i, j, ...) {
-  if (missing(i))
-    stop("'i' cannot be missing")
-  if (!isSingleString(i))
-    stop("'i' must be a single, non-NA string")
-  docs <- as.list(if (!missing(j)) x[i, j, ..., drop=FALSE] else x[i, ...])
-  if (length(docs) == 0L) {
-    NULL
-  } else {
-    docs[[1L]]
-  }
-})
-
-setMethod("[", "Solr", function(x, i, j, ..., drop = TRUE) {
-  if (!isTRUEorFALSE(drop)) {
-    stop("'drop' must be TRUE or FALSE")
-  }
-  query <- query(x)
-  if (!missing(i)) {
-    if (!is.character(i) || any(is.na(i))) {
-      stop("'i' must be character, without any NAs")
-    }
-    query <- subset(query, as.name(.(uniqueKey(schema(core(x))))) %in% .(i))
-  }
-  if (!missing(j)) {
-    query <- subset(query,
-                    fields = if (!missing(i))
-                               union(j, uniqueKey(schema(core(x))))
-                             else j)
-  }
-  query(x) <- query
-  read <- drop && !missing(j) && length(j) == 1L
-  if (read) {
-    ans <- as.data.frame(x)
-    ## ensure things are in the correct order
-    if (!missing(i)) {
-      ans <- ans[i,j]
-    } else {
-      ans <- ans[,j]
-    }
-    ans
-  } else {
-    x
-  }
-})
-
 setMethod("subset", "Solr", function(x, ...) {
   query(x) <- subset(query(x), ...)
   x
 })
+
+window.Solr <- function (x, start = 1L, end = NA_integer_) {
+  query(x) <- window(query(x), start=start, end=end)
+  x
+}
+setMethod("window", "Solr", window.Solr)
 
 head.Solr <- function (x, n = 6L, ...) {
   query(x) <- head(query(x), n, ...)
@@ -269,22 +179,44 @@ setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
 ### Coercion
 ###
 
-as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE)
+fillMissingFields <- function(x, fieldNames, schema) {
+  fields <- fields(schema, setdiff(fieldNames, names(x)))
+  modes <- solrMode(fieldTypes(schema)[typeName(fields)])
+  x[names(fields)] <- lapply(modes, as, object=rep(NA, nrow(as.data.frame(x))))
+  x
+}
+
+setMethod("as.data.frame", "Solr",
+          function(x, row.names = NULL, optional = FALSE, fill = FALSE)
 {
   if (!isTRUEorFALSE(optional)) {
     stop("'optional' must be TRUE or FALSE")
   }
   df <- read(core(x), query(x), as="data.frame")
+  fn <- fieldNames(x, onlyStored=TRUE, includeStatic=fill)
+  if (fill) {
+    df <- fillMissingFields(df, fn, schema(core(x)))
+  }
+  df <- df[,intersect(fn, colnames(df)),drop=FALSE]
   if (!optional) {
     colnames(df) <- make.names(colnames(df), unique = TRUE)
   }
-  if (!is.null(row.names)) {
-    rownames(df) <- row.names
+  uk <- uniqueKey(schema(core(x)))
+  if (isTRUE(row.names) && !is.null(uk)) {
+    row.names <- df[[uk]]
+    if (is.null(row.names)) {
+      row.names <- ids(x)
+    }
   }
+  rownames(df) <- row.names
   df
-}
+})
 
-setMethod("as.data.frame", "Solr", as.data.frame.Solr)
+as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE,
+                               fill = FALSE)
+{
+  as.data.frame(x, row.names=row.names, optional=optional, fill=fill)
+}
 
 as.list.Solr <- function(x) {
   read(core(x), query(x))
@@ -297,15 +229,17 @@ setMethod("as.list", "Solr", as.list.Solr)
 ###
 
 setMethod("show", "Solr", function(object) {
-  cat("Solr object\n")
-  cat("core: '", name(core(object)), "' with ", nrow(object), " rows and ",
-      length(fields(schema(core(object)))), " fields\n", sep="")
+  cat(class(object), "object\n")
+  cat("core: '", name(core(object)), "' (", ndoc(object), "x", nfield(object),
+      ")\n", sep="")
   query <- as.character(query(object))
   defaults <- as.character(SolrQuery())
   drop <- which(defaults[names(query)] == query)
   if (length(drop) > 0L) {
     query <- query[names(query) %in% names(query)[-drop]]
   }
-  labeled.query <- paste0(names(query), "='", query, "'")
+  labeled.query <- if (length(query) > 0L) {
+     paste0(names(query), "='", query, "'")
+  } else character()
   cat(BiocGenerics:::labeledLine("query", labeled.query))
 })

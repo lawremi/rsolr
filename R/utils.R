@@ -137,6 +137,8 @@ normColIndex <- function(x, f) {
   f
 }
 
+ROWNAMES <- function (x) if (length(dim(x)) != 0L) rownames(x) else names(x)
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Pretty printing stolen from S4Vectors
 ###
@@ -162,8 +164,9 @@ get_showTailLines <- function()
   .get_showLines(5L, "showTailLines") 
 }
 
-.rownames2 <- function(names=NULL, len=NULL, nhead=NULL, ntail=NULL)
+prettyRownames <- function(x, len=NULL, nhead=NULL, ntail=NULL)
 {
+  names <- ROWNAMES(x)
   if (is.null(nhead) && is.null(ntail)) {
     ## all lines
     if (len == 0L)
@@ -189,7 +192,7 @@ get_showTailLines <- function()
 }
 
 makeNakedMat_default <- function(x) {
-  m <- as.matrix(as.data.frame(x))
+  m <- as.matrix(data.frame(x))
   mode(m) <- "character"
   m
 }
@@ -204,14 +207,14 @@ makePrettyMatrixForCompactPrinting <-
 
   if (lx < (nhead + ntail + 1L)) {
     ans <- makeNakedMat.FUN(x)
-    ans_rownames <- .rownames2(names(x), lx)
+    ans_rownames <- prettyRownames(x, lx)
   } else {
     ans_top <- makeNakedMat.FUN(head(x, nhead))
     ans_bottom <- makeNakedMat.FUN(tail(x, ntail))
     ans <- rbind(ans_top,
                  matrix(rep.int("...", ncol(ans_top)), nrow=1L),
                  ans_bottom)
-    ans_rownames <- .rownames2(names(x), lx, nhead, ntail)
+    ans_rownames <- prettyRownames(x, lx, nhead, ntail)
   }
   rownames(ans) <- format(ans_rownames, justify="right")
   ans

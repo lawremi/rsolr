@@ -22,8 +22,38 @@ setClass("SolrSchema",
 ### Constructor
 ###
 
-## unexported
-parseSchema <- function(schema) {
+parseSchemaXML <- function(doc) {
+  attrsToList <- function(x) {
+    lapply(x, function(xi) {
+      attrs <- as.list(xmlAttrs(xi))
+      logicals <- attrs == "true" | attrs == "false"
+      attrs[logicals] <- as.logical(attrs[logicals])
+      attrs
+    })
+  }
+  schema <- xmlRoot(doc)
+  uniqueKey <- schema[["uniqueKey"]]
+  if (!is.null(uniqueKey)) {
+    uniqueKey <- xmlValue(uniqueKey)
+  }
+  likeREST <-
+    list(name=xmlAttrs(schema)["name"],
+         version=as.numeric(xmlAttrs(schema)["version"]),
+         uniqueKey=uniqueKey,
+         fields=attrsToList(getNodeSet(schema, "//schema/fields/field")),
+         dynamicFields=attrsToList(getNodeSet(schema,
+           "//fields/dynamicField")),
+         copyFields=attrsToList(getNodeSet(schema, "//copyField")),
+         fieldTypes=attrsToList(getNodeSet(schema,
+           "//types/fieldType | //types/fieldtype")))
+  ans <- parseSchemaFromREST(likeREST)
+  ## do not force dynamic fields after static fields
+  fieldsInOrder <- unlist(getNodeSet(schema, "//fields//@name"), use.names=FALSE)
+  fields(ans) <- fields(ans)[fieldsInOrder]
+  ans
+}
+
+parseSchemaFromREST <- function(schema) {
   fieldTypes <- parseFieldTypes(schema$fieldTypes)
   SolrSchema(
     name=schema$name,
@@ -338,9 +368,10 @@ setMethod("saveXML", "SolrSchema",
 ###
 
 setGeneric("deriveSolrSchema",
-           function(x, name=deparse(substitute(x)), ...)
-             standardGeneric("deriveSolrSchema"),
-           signature="x")
+           function(x, name=deparse(substitute(x)), ...) {
+             force(name)
+             standardGeneric("deriveSolrSchema")
+           }, signature="x")
 
 isDocValueType <- function(x) {
   is(x, "solr.StrField") ||
@@ -349,13 +380,13 @@ isDocValueType <- function(x) {
 }
 
 setMethod("deriveSolrSchema", "ANY",
-          function(x, name=deparse(substitute(x)), ...) {
+          function(x, name, ...) {
             x <- as.data.frame(x)
-            callGeneric()
+            deriveSolrSchema(x, name, ...)
           })
 
 setMethod("deriveSolrSchema", "data.frame",
-          function(x, name=deparse(substitute(x)), version="1.5",
+          function(x, name, version="1.5",
                    uniqueKey=NULL, required=character(), indexed=colnames(x),
                    stored=colnames(x), includeVersionField=TRUE)
             {
@@ -421,7 +452,8 @@ setMethod("show", "SolrSchema", function(object) {
   labeledLine <- BiocGenerics:::labeledLine
   cat(labeledLine("name", name(object), count=FALSE),
       labeledLine("version", version(object), count=FALSE),
-      labeledLine("uniqueKey", uniqueKey(object), count=FALSE),
+      if (!is.null(uniqueKey(object)))
+        labeledLine("uniqueKey", uniqueKey(object), count=FALSE),
       labeledLine("fields", name(fields(object))),
       labeledLine("copyFields", copyEdgesAsCharacter(object)),
       sep="")

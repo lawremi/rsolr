@@ -1,37 +1,42 @@
 useDynLib(rsolr)
 import(methods)
 import(BiocGenerics)
-importFrom(restfulr, RestUri)
-importMethodsFrom(restfulr, create, read, update, delete, purgeCache,
-                  mediaTarget)
+import(restfulr)
 importFrom(graph, graphNEL, edges)
 importClassesFrom(graph, graph)
 importFrom(rjson, fromJSON)
-importFrom(XML, parseURI, newXMLNode, newXMLDoc, saveXML)
+importFrom(XML, parseURI, newXMLNode, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
+           xmlValue, getNodeSet)
 #importClassesFrom(XML, XMLDocument, XMLNode)
 importFrom(parallel, mcparallel)
 importFrom(tools, pskill)
 importFrom(utils, stack)
 
-export(Solr, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
+export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta, facets,
        query, core, params, "params<-")
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               fieldNames, subset, xtabs, facet, stats, transform, summary,
               head, tail, rev, aggregate, count, mean, sd, var, window,
-              groups, deriveSolrSchema)
+              groups, deriveSolrSchema, ndoc, nfield, as.data.frame)
+exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
 S3method(`names<-`, FieldTypeList)
 S3method(as.data.frame, SolrStats)
 S3method(as.data.frame, SolrStatsFacet)
 S3method(as.data.frame, SolrStatsList)
 S3method(as.data.frame, FieldInfo)
+S3method(as.data.frame, DocList)
+S3method(as.data.frame, Solr)
+S3method(as.data.frame, SolrFrame)
 S3method(c, DocCollection)
 S3method(as.character, SolrQuery)
 S3method(summary, SolrCore)
+S3method(window, SolrQuery)
 S3method(head, SolrQuery)
 S3method(tail, SolrQuery)
 S3method(rev, SolrQuery)
+S3method(window, Solr)
 S3method(head, Solr)
 S3method(tail, Solr)
 

@@ -36,7 +36,6 @@
   | Aggregation    | =aggregate= |
   
 * Demonstration
-  
 ** The Dataset
    As part demonstration and part proof of concept, we will attempt to
    follow the introductory workflow from the =dplyr= vignette. The
@@ -50,6 +49,7 @@
    #+end_src
 
 ** Populating a Solr core
+   
    The first step is getting the data into a Solr /core/, which is
    what Solr calls a database. This involves writing a schema in XML,
    installing and configuring Solr, launching the server, and
@@ -75,13 +75,20 @@
      solr <- rsolr:::TestSolr(schema)
    #+end_src
    
-   Next, we need to populate core with our data. This requires a way
-   to interact with the Solr core from R. =rsolr= provides direct
-   access to cores, but for now we will manipulate the central /Solr/
-   object, which represents a dataset derived from a Solr core (rather
-   than the core itself).
+   Next, we need to populate the core with our data. This requires a
+   way to interact with the core from R. =rsolr= provides direct
+   access to cores, as well as two high-level interfaces that
+   represent a dataset derived from a core (rather than the core
+   itself). The two interfaces each correspond to a particular shape
+   of data. /SolrList/ behaves like a list, while /SolrFrame/ behaves
+   like a table (data frame). /SolrList/ is useful for when the data
+   are ragged, as is often the case for data stored in Solr. The Solr
+   schema is so dynamic that we could trivially define a schema with a
+   virtually infinite number of fields, and each document could have
+   its own unique set of fields. However, since our data are tabular,
+   we will use /SolrFrame/ for this exercise.
    #+begin_src R
-   sr <- Solr(solr$uri)
+   sr <- SolrFrame(solr$uri)
    #+end_src
    Finally, we load our data into the Solr dataset:
    #+begin_src R
@@ -90,37 +97,22 @@
    This takes a while, since Solr has to generate all sorts of
    indices, etc.
 
-   As Solr is a document store, the /Solr/ object represents a list of
-   documents. While a list is useful for ragged data (and hierarchical
-   data, but Solr does not really support that), when the data are
-   not ragged, we prefer a more regular shape, like a table. The Solr
-   schema is so dynamic that we could trivially define a schema with a
-   virtually infinite number of fields, and each document could have
-   its own unique set of fields. The /Solr/ object needs to represent
-   that complexity, while also providing facilities for when it makes
-   sense to treat the data as tabular. In this case, we have a static
-   schema, so we can retrieve the dimensions and look at the head of
-   the dataset:
+   As /SolrFrame/ behaves much like a base R data frame, we can
+   retrieve the dimensions and look at the head of the dataset:
    #+begin_src R
      dim(sr)
-     as.data.frame(head(sr))
+     head(sr)
    #+end_src
-   Note that we needed to explicitly coerce the object to a data frame
-   in order to view it as a table.
+   The =head()= method returns virtually instantaneously, because the
+   query is executed lazily, whenever the data are requested. One
+   example of a request is when we print the object, as above.
 
    Comparing the output above the that of the earlier call to
-   =head(flights)= reveals that the order of the columns has been
-   scrambled. This is to be expected: Solr does not have a fixed set
-   of fields, and thus does not enforce any ordering internally. We
-   can, however, control the order of the output:
-   #+begin_src R
-   sr <- sr[,colnames(flights)]
-   as.data.frame(head(sr))
-   #+end_src
-   Note that the =sr= object still contains no data --- the ordering
-   of the columns has been defined lazily and is only applied (by
-   Solr) on the query output.
+   =head(flights)= reveals that the data are virtually identical. As
+   Solr is just a search engine (on steroids), a significant amount of
+   engineering was required to achieve that result.
    
+** Restriction
    The simplest operation is filtering the data, i.e., restricting it
    to a subset of interest. Even a search engine should be good at
    that. Below, we use =subset= to restrict to the flights to those
@@ -128,5 +120,35 @@
    #+begin_src R
      subset(sr, month == 1 & day == 1)
    #+end_src
-   
+   Note how the records at the bottom contain missing values. Solr
+   does not provide any facilities for missing value representation,
+   but we mimic it by excluding those fields from those documents.
+
+   We can also extract ranges of data using the canonical =window()=
+   function:
+   #+begin_src R
+     window(sr, start=1L, end=10L)
+   #+end_src
+   Or, as we have already seen, the more convenient:
+   #+begin_src R
+     head(sr, 10L)
+   #+end_src
+   It is unfortunately not feasible to randomly access Solr records by
+   index, because numeric indexing is a foreign concept to a search
+   engine. Solr does however support retrieval by a key that has a
+   unique value for each document. These data lack such a key, but it
+   is easy to add one and indicate as such to =deriveSolrSchema()=.
+
+** Sorting
+   To sort the data, we just call =sort()= and describe the order by
+   passing a formula via the =by= argument. For example, we sort by
+   year, breaking ties with month, then day:
+   #+begin_src R
+   sort(sr, by = ~ year + month + day)
+   #+end_src
+
+   To sort in decreasing order, just pass =decreasing=TRUE= as usual:
+   #+begin_src R
+   sort(sr, by = ~ arr_delay, decreasing=TRUE)
+   #+end_src
    

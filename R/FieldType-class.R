@@ -115,6 +115,10 @@ setMethod("append", c("FieldTypeList", "FieldTypeList"),
             new("FieldTypeList", callNextMethod())
           })
 
+setMethod("[", "FieldTypeList", function(x, i, j, ..., drop=TRUE) {
+  initialize(x, callNextMethod())
+})
+
 setClass("LogicalField", contains=c("FieldType", "VIRTUAL"))
 setClass("CharacterField", contains=c("FieldType", "VIRTUAL"))
 setClass("NumericField", contains=c("FieldType", "VIRTUAL"))
@@ -228,6 +232,9 @@ setMethod("solrMode", "LogicalField", function(x) "logical")
 setMethod("solrMode", "CharacterField", function(x) "character")
 setMethod("solrMode", "NumericField", function(x) "numeric")
 setMethod("solrMode", "IntegerField", function(x) "integer")
+setMethod("solrMode", "FieldTypeList", function(x) {
+  vapply(x, solrMode, character(1L))
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr types for R classes
@@ -254,11 +261,19 @@ setGeneric("toSolr", function(x, type, ...) standardGeneric("toSolr"))
 setGeneric("fromSolr", function(x, type, ...) standardGeneric("fromSolr"))
 
 setMethod("toSolr", c("ANY", "FieldType"), function(x, type) {
-  as.vector(x, mode=solrMode(type))
+  ans <- as.vector(x, solrMode(type))
+  if (mode(x) != mode(ans)) {
+    ans <- toSolr(ans, type)
+  }
+  ans
 })
 
 setMethod("fromSolr", c("ANY", "FieldType"), function(x, type) {
-  as.vector(x, mode=solrMode(type))
+  ans <- as.vector(x, solrMode(type))
+  if (mode(x) != mode(ans)) {
+    ans <- fromSolr(ans, type)
+  }
+  ans
 })
 
 setMethod("fromSolr", c("character", "solr.BinaryField"),

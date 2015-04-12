@@ -51,6 +51,18 @@ setAs("ANY", "DocList", function(from) {
   new("DocList", lapply(from, as.list))
 })
 
+as.data.frame.DocList <- function(from) {
+  df <- restfulr:::raggedListToDF(from)
+  rownames(df) <- ids(from)
+  df
+  ## allFields <- fieldNames(from)
+  ## proto <- setNames(as.list(rep(NA, length(allFields))), allFields)
+  ## do.call(rbind.data.frame, lapply(from, function(x) {
+  ##   proto[names(x)] <- x
+  ##   proto
+  ## }))
+}
+
 setAs("data.frame", "DocList", function(from) {
   new("DocList", split(from, rownames(from)))
 })
@@ -81,8 +93,7 @@ c.DocCollection <- function(...) {
 ###
 
 setGeneric("ids", function(x) standardGeneric("ids"))
-setMethod("ids", "DocList", function(x) names(x))
-setMethod("ids", "DocDataFrame", function(x) rownames)
+setMethod("ids", "DocCollection", function(x) ROWNAMES(x))
 
 setGeneric("ids<-", function(x, value) standardGeneric("ids<-"))
 setReplaceMethod("ids", "DocList", function(x, value) {
@@ -103,11 +114,28 @@ unid <- function(x) {
   x
 }
 
-setGeneric("fieldNames", function(x) standardGeneric("fieldNames"))
+setGeneric("fieldNames", function(x, ...) standardGeneric("fieldNames"))
 setMethod("fieldNames", "DocList", function(x) {
   as.character(unique(unlist(lapply(x, names), use.names=FALSE)))
 })
 setMethod("fieldNames", "DocDataFrame", function(x) names(x))
+
+setGeneric("fieldNames<-", function(x, value) standardGeneric("fieldNames<-"))
+setReplaceMethod("fieldNames", "DocList", function(x, value) {
+  x@.Data <- lapply(x, setNames, value)
+  x
+})
+setReplaceMethod("fieldNames", "DocDataFrame", function(x, value) {
+  colnames(x) <- value
+  x
+})
+
+setGeneric("ndoc", function(x) standardGeneric("ndoc"))
+setMethod("ndoc", "DocCollection", function(x) NROW(x))
+
+setGeneric("nfield", function(x) standardGeneric("nfield"))
+setMethod("nfield", "DocCollection", function(x) NCOL(x))
+setMethod("nfield", "DocList", function(x) length(unique(fieldNames(x))))
 
 uncommonFields <- function(x, j) {
   fieldtab <- table(unlist(lapply(x, names), use.names=FALSE))
@@ -170,6 +198,14 @@ setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
    x
 })
 
+setMethod("[", "DocDataFrame", function(x, i, j, ..., drop = TRUE) {
+  ans <- callNextMethod()
+  if (is.data.frame(ans)) {
+    ans <- as(ans, "DocCollection")
+  }
+  ans
+})
+
 setGeneric("meta", function(x) standardGeneric("meta"))
 
 setMethod("meta", "ANY", function(x) {
@@ -220,7 +256,8 @@ setGeneric("convertFields",
 
 setMethod("convertFields", "DocDataFrame", function(x, types, FUN) {
   initialize(x, as.data.frame(mapply(FUN, x, types, SIMPLIFY=FALSE),
-                              optional=TRUE, stringsAsFactors=FALSE))
+                              optional=TRUE, stringsAsFactors=FALSE,
+                              row.names=rownames(x)))
 })
 
 setMethod("convertFields", "DocList", function(x, types, FUN) {
@@ -237,15 +274,26 @@ setMethod("convertFields", "DocList", function(x, types, FUN) {
 ### Show
 ###
 
+setMethod("show", "DocCollection", function(object) {
+  cat(class(object), " (", ndoc(object), "x", nfield(object), ")\n", sep="")
+})
+
+showDoc <- function(x, title) {
+  rep(":", length(x))
+  out <- matrix(as.character(x),
+                dimnames=setNames(list(names(x), ""), c(title, "")))
+  print(out, quote=FALSE, right=TRUE, max=length(out))
+}
+
 setMethod("show", "DocList", function(object) {
-  cat("DocList object\n")
-  meta(object) <- NULL
-  show(do.call(list, object))
+  callNextMethod()
+  if (length(object) > 0L) {
+    showDoc(object[[1L]], "First document")
+  }
 })
 
 setMethod("show", "DocDataFrame", function(object) {
-  cat("DocDataFrame object (", nrow(object), "x", ncol(object), ")\n", sep="")
-  meta(object) <- NULL
+  callNextMethod()
   out <- makePrettyMatrixForCompactPrinting(object)
   print(out, quote=FALSE, right=TRUE, max=length(out))
 })
