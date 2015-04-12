@@ -7,9 +7,9 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
-test_Solr_accessors <- function() {
+test_SolrList_accessors <- function() {
   solr <- rsolr:::TestSolr()
-  s <- Solr(solr$uri)
+  s <- SolrList(solr$uri)
 
   checkEquals(SolrCore(solr$uri), core(s))
   checkIdentical(SolrQuery(), query(s))
@@ -18,8 +18,10 @@ test_Solr_accessors <- function() {
   s[[doc$id]] <- doc
   checkResponseIdentical(s[[doc$id]], doc)
   checkResponseIdentical(eval(call("$", s, as.name(doc$id))), doc)
-  checkIdentical(nrow(s), 1L)
+  checkIdentical(length(s), 1L)
   checkIdentical(names(s), doc$id)
+  checkIdentical(ids(s), doc$id)
+  checkIdentical(fieldNames(s), c("id", "name", "text"))
 
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
@@ -30,6 +32,8 @@ test_Solr_accessors <- function() {
   s[insert=TRUE] <- docs
 
   docs <- as(docs, "DocCollection")
+  checkIdentical(ids(s), c(docs[,"id"], doc$id))
+  
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- docs[,"id"]
   
@@ -38,16 +42,16 @@ test_Solr_accessors <- function() {
   checkIdentical(s[rev(ids(docs)),"inStock"], rev(docs[,"inStock"]))
 
   s[[doc$id]] <- NULL
-  checkResponseEquals(as.list(s[]), docs)
+  checkResponseEquals(as.list(s), docs)
   s[as.character(2:4)] <- NULL
-  checkResponseEquals(as.list(s[]), docs[4])
+  checkResponseEquals(as.list(s), docs[4])
   s[] <- NULL
-  checkResponseEquals(as.list(s[]), new("DocList"))
+  checkResponseEquals(as.list(s), new("DocList"))
 
   docs[,"id"] <- NULL
   s[insert=TRUE] <- docs
   docs[,"id"] <- ids(docs)
-  checkResponseEquals(as.list(s[]), docs)
+  checkResponseEquals(as.list(s), docs)
   s[] <- NULL
 
   ids <- ids(docs)
@@ -56,8 +60,26 @@ test_Solr_accessors <- function() {
   s[ids,] <- docs
   ids(docs) <- ids
   docs[,"id"] <- ids(docs)
-  checkResponseEquals(as.list(s[]), docs)
+  checkResponseEquals(as.list(s), docs)
 
+  s[,"price"] <- s[,"price"] + 1L
+  checkIdentical(s[,"price"], docs[,"price"] + 1L)
+  s[,"price"] <- docs[,"price",drop=FALSE]
+  checkIdentical(s[,"price"], docs[,"price"])
+  s[,"price"] <- NULL
+  noPrice <- docs
+  noPrice[,"price"] <- NULL
+  checkResponseEquals(as.list(s), noPrice)
+  checkIdentical(s[,"price"], rep(NA_real_, 4))
+  s[,"price"] <- docs[,"price"]
+  
+  i <- c("4", "5")
+  s[i,"price"] <- docs[i,"price"] + 1L
+  checkIdentical(s[i,"price"], docs[i,"price"] + 1L)
+  s[i,"price"] <- NULL
+  checkIdentical(s[i,"price"], c(NA_real_, NA_real_))
+
+  s[] <- docs
   del <- list()
   del[as.character(2:4)] <- list(NULL)
   del <- c(del, list(doc))
@@ -68,14 +90,14 @@ test_Solr_accessors <- function() {
 
   checkIdentical(as.list(s["foo"]), new("DocList", list()))
   checkIdentical(s[["foo"]], NULL)
-  
+
   d5 <- docs[["5"]]
   df <- data.frame(id=c(doc$id, d5$id),
+                   name=c(doc$name, NA),
+                   price=c(NA, d5$price),
+                   inStock=c(NA, FALSE),
                    timestamp_dt=as.POSIXct(c(NA, d5$timestamp_dt), "UTC",
                      "1970-01-01"),
-                   price=c(NA, d5$price),
-                   name=c(doc$name, NA),
-                   inStock=c(NA, FALSE),
                    stringsAsFactors=FALSE)
   rownames(df) <- df$id
   checkResponseEquals(as.data.frame(s), as(df, "DocDataFrame"), tolerance=1)
@@ -87,9 +109,9 @@ test_Solr_accessors <- function() {
   solr$kill()
 }
 
-test_Solr_queries <- function() {
+test_SolrList_queries <- function() {
   solr <- rsolr:::TestSolr()
-  s <- Solr(solr$uri)
+  s <- SolrList(solr$uri)
 
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
