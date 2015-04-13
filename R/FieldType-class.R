@@ -233,7 +233,6 @@ setMethod("solrMode", "CharacterField", function(x) "character")
 setMethod("solrMode", "NumericField", function(x) "numeric")
 setMethod("solrMode", "IntegerField", function(x) "integer")
 setMethod("solrMode", "FieldTypeList", function(x) {
-setMethod("solrMode", "FieldTypeList", function(x) {
   vapply(x, solrMode, character(1L))
 })
 

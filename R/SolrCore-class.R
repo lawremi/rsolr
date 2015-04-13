@@ -50,7 +50,6 @@ setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
 
 schema <- function(x) x@schema
 
-<<<<<<< .mine
 globMatchMatrix <- function(x, patterns) {
     vapply(glob2rx(patterns), grepl, logical(length(x)), x)
 }

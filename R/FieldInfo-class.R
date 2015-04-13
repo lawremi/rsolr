@@ -124,16 +124,22 @@ setMethod("append", c("FieldInfo", "FieldInfo"),
 
 as.data.frame.FieldInfo <-
   function(x, row.names = NULL, optional = FALSE, ...) {
-    if (!missing(row.names) || !missing(optional) ||
-        length(list(...)) > 0L) {
-      warning("all arguments besides 'x' are ignored")
-    }
-    with(attributes(x),
-         data.frame(row.names=name, typeName, dynamic, multivalued,
-                    required, indexed, stored, docValues))
+    as.data.frame(x, row.names=row.names, optional=optional, ...)
   }
 
-setAs("FieldInfo", "data.frame", function(from) as.data.frame(from))
+setMethod("as.data.frame", "FieldInfo",
+          function(x, row.names = NULL, optional = FALSE, ...) {
+              if (!missing(row.names) || !missing(optional) ||
+                  length(list(...)) > 0L) {
+                  warning("all arguments besides 'x' are ignored")
+              }
+              with(attributes(x),
+                   data.frame(row.names=name, typeName, dynamic, multivalued,
+                              required, indexed, stored, docValues))
+          })
+          
+setAs("FieldInfo", "data.frame",
+      function(from) as.data.frame(from, optional=TRUE))
 
 as.list.FieldInfo <- function(x) {
   lapply(seq_len(length(x)), function(i) {

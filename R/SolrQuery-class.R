@@ -254,7 +254,7 @@ setMethod("window", "SolrQuery", function (x, start = 1L, end = NA_integer_) {
     stop("'end' must be a single number")
   rows <- end - start + 1L
   setOutputBounds(x, start, rows)
-}
+})
 
 setMethod("window", "SolrQuery", window.SolrQuery)
 
