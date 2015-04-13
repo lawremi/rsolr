@@ -164,6 +164,8 @@ translateToSolrFunction <- function(expr, env) {
   as.character(translate(expr, SolrFunctionExpression(), env=env))
 }
 
+transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
+
 ### CHECKME: what happens when an alias already exists?
 setMethod("transform", "SolrQuery", function (`_data`, ...) {
   e <- as.list(substitute(list(...))[-1L])
@@ -243,7 +245,9 @@ setMethod("rev", "SolrQuery", rev.SolrQuery)
 ## tail(x, +n) => (-)start = start+min(rows, NROWS)-n; rows = min(rows, n)
 ## tail(x, -n) => (+)start = start+n; rows = min(rows, NROWS)-n
 
-window.SolrQuery <- function (x, start = 1L, end = NA_integer_) {
+window.SolrQuery <- function(x, ...) window(x, ...)
+
+setMethod("window", "SolrQuery", function (x, start = 1L, end = NA_integer_) {
   if (!isSingleNumber(start))
     stop("'start' must be a single, non-NA number")
   if (!is.na(end) && !isSingleNumber(end))
@@ -621,6 +625,8 @@ parseStatsFormula <- function(x) {
 ### Summary (combination of facets and stats)
 ###
 
+summary.SolrQuery <- function(object, ...) summary(object, ...)
+
 setMethod("summary", "SolrQuery",
           function(object, schema,
                    of=setdiff(staticFieldNames(schema), uniqueKey(schema)))
@@ -684,14 +690,14 @@ paramToCSV <- function(x) {
   else x
 }
 
-as.character.SolrQuery <- function(x, ...) {
+setMethod("as.character", "SolrQuery", function(x, ...) {
   p <- params(x)
   p$fl <- list(paramToCSV(p$fl))
   p$start <- list(paramToCSV(p$start))
   p$rows <- list(paramToCSV(p$rows))
   param.names <- rep(names(p), elementLengths(unlist(p, recursive=FALSE)))
   setNames(unlist(p, use.names=FALSE), param.names)
-}
+})
 
 setAs("SolrQuery", "character", function(from) as.character.SolrQuery(from))
 

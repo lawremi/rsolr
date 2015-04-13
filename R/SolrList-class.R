@@ -20,6 +20,10 @@ SolrList <- function(uri, ...) {
   .SolrList(SolrCore(uri, ...))
 }
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Accessors
+###
+
 setMethod("length", "SolrList", function(x) {
   ndoc(x)
 })
@@ -63,12 +67,12 @@ setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
       if (is.null(value)) {
         value <- list(setNames(rep(list(NULL), length(j)), j))
       }
+      if (missing(i) && !(uniqueKey(schema(core(x))) %in% j)) {
+        i <- ids(x)
+      }
     }
     if (is.null(value)) {
       value <- list(NULL)
-    }
-    if (missing(i) && atomic && !(uniqueKey(schema(core(x))) %in% j)) {
-      i <- ids(x)
     }
     value <- as(value, "DocCollection")
     if (!missing(j)) {

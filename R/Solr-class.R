@@ -90,19 +90,20 @@ setReplaceMethod("$", "Solr", function(x, name, value) {
 ###
 
 setMethod("$", "Solr", function(x, name) {
-  x[[name]]
-})
+              x[[name]]
+          })
 
 setMethod("subset", "Solr", function(x, ...) {
   query(x) <- subset(query(x), ...)
   x
 })
 
-window.Solr <- function (x, start = 1L, end = NA_integer_) {
-  query(x) <- window(query(x), start=start, end=end)
-  x
-}
-setMethod("window", "Solr", window.Solr)
+window.Solr <- function(x, ...) window(x, ...)
+
+setMethod("window", "Solr", function (x, ...) {
+              query(x) <- window(query(x), ...)
+              x
+          })
 
 head.Solr <- function (x, n = 6L, ...) {
   query(x) <- head(query(x), n, ...)
@@ -119,6 +120,8 @@ setMethod("tail", "Solr", tail.Solr)
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Transforming
 ###
+
+transform.Solr <- function(`_data`, ...) transform(`_data`, ...)
 
 setMethod("transform", "Solr", function (`_data`, ...) {
   query(`_data`) <- transform(query(`_data`), ...)
@@ -155,7 +158,7 @@ setMethod("xtabs", "Solr",
           {
             if (!all(names(match.call())[-1L] %in%
                      c("formula", "data", "exclude"))) {
-              stop("all args except 'formula', 'data' and 'exclude' are ignored")
+              stop("all args but 'formula', 'data' and 'exclude' are ignored")
             }
             q <- facet(query(data), formula, useNA=is.null(exclude))
             facet(core(data), q)[[1L]]
@@ -179,10 +182,14 @@ setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
 ### Coercion
 ###
 
+as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE, ...)
+    as.data.frame(x, row.names=row.names, optional=optional, ...)
+
 fillMissingFields <- function(x, fieldNames, schema) {
   fields <- fields(schema, setdiff(fieldNames, names(x)))
-  modes <- solrMode(fieldTypes(schema)[typeName(fields)])
-  x[names(fields)] <- lapply(modes, as, object=rep(NA, nrow(as.data.frame(x))))
+  modes <- fieldTypes(schema)[typeName(fields)]
+  x[names(fields)] <- lapply(modes, fromSolr,
+                             object=rep(NA, nrow(as.data.frame(x))))
   x
 }
 
@@ -218,6 +225,10 @@ as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE,
   as.data.frame(x, row.names=row.names, optional=optional, fill=fill)
 }
 
+setAs("Solr", "data.frame", function(from) {
+          as.data.frame(from, optional=TRUE)
+      })
+
 as.list.Solr <- function(x) {
   read(core(x), query(x))
 }
@@ -229,9 +240,8 @@ setMethod("as.list", "Solr", as.list.Solr)
 ###
 
 setMethod("show", "Solr", function(object) {
-  cat(class(object), "object\n")
-  cat("core: '", name(core(object)), "' (", ndoc(object), "x", nfield(object),
-      ")\n", sep="")
+  cat(class(object), " (", ndoc(object), "x", nfield(object), ")\n", sep="")
+  cat("core: '", name(core(object)), "'\n", sep="")
   query <- as.character(query(object))
   defaults <- as.character(SolrQuery())
   drop <- which(defaults[names(query)] == query)

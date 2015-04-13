@@ -82,6 +82,35 @@ setAs("DocDataFrame", "data.frame", function(from) {
                 row.names=rownames(from), optional=TRUE, stringsAsFactors=FALSE)
 })
 
+setAs("DocList", "data.frame", function(from) {
+          as(from, "DocDataFrame")
+      })
+
+setAs("DocList", "DocDataFrame", function(from) {
+          as.data.frame(from, optional=TRUE)
+      })
+
+as.data.frame.DocCollection <-
+    function (x, row.names = NULL, optional = FALSE) {
+        as.data.frame(x, row.names=row.names, optional=optional)
+    }
+
+setMethod("as.data.frame", "DocList",
+          function (x, row.names = NULL, optional = FALSE) {
+              if (!isTRUEorFALSE(optional)) {
+                  stop("'optional' must be TRUE or FALSE")
+              }
+              ans <- as(restfulr:::raggedListToDF(x), "DocDataFrame")
+              if (is.null(row.names)) {
+                  row.names <- ids(x)
+              }
+              rownames(ans) <- row.names
+              if (!optional) {
+                  names(ans) <- make.names(ans)
+              }
+              ans
+          })
+
 ## 'c' is a primitive, so we could define an S4 method without an S3 method,
 ## but the S4 generic for 'c' is problematic
 c.DocCollection <- function(...) {
@@ -143,6 +172,14 @@ uncommonFields <- function(x, j) {
   setdiff(j, common)
 }
 
+setGeneric("ndoc", function(x, ...) standardGeneric("ndoc"))
+setMethod("ndoc", "DocList", function(x) length(x))
+setMethod("ndoc", "DocDataFrame", function(x) nrow(x))
+
+setGeneric("nfield", function(x, ...) standardGeneric("nfield"))
+setMethod("nfield", "ANY", function(x) length(fieldNames(x)))
+setMethod("nfield", "DocList", function(x) sum(elementLengths(x)))
+
 setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
   if (!isTRUEorFALSE(drop)) {
     stop("'drop' should be TRUE or FALSE")
@@ -174,6 +211,15 @@ setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
   }
 })
 
+setMethod("[", "DocDataFrame", function(x, i, j, ..., drop = TRUE) {
+              ans <- callNextMethod()
+              if (is.data.frame(ans)) {
+                  as(ans, "DocDataFrame")
+              } else {
+                  ans
+              }
+          })
+
 setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
   if (missing(j)) {
     x@.Data[i] <- value # FIXME: broken: callNextMethod()
@@ -198,13 +244,10 @@ setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
    x
 })
 
-setMethod("[", "DocDataFrame", function(x, i, j, ..., drop = TRUE) {
-  ans <- callNextMethod()
-  if (is.data.frame(ans)) {
-    ans <- as(ans, "DocCollection")
-  }
-  ans
-})
+setReplaceMethod("[", "DocDataFrame", function(x, i, j, ..., value) {
+                     x <- S3Part(x)
+                     as(callGeneric(), "DocDataFrame")
+                 })
 
 setGeneric("meta", function(x) standardGeneric("meta"))
 

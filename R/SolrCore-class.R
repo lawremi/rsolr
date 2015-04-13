@@ -50,61 +50,62 @@ setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
 
 schema <- function(x) x@schema
 
-readLuke <- function(x) {
-  read(x@uri$admin$luke, list(numTerms=0L, wt="json"))
+<<<<<<< .mine
+globMatchMatrix <- function(x, patterns) {
+    vapply(glob2rx(patterns), grepl, logical(length(x)), x)
 }
 
 subsetByPatterns <- function(x, patterns) {
-  matches <- vapply(glob2rx(patterns), grepl, logical(length(x)), x)
-  x[rowSums(matches) > 0L]
+    x[rowSums(globMatchMatrix(x, patterns)) > 0L]
 }
 
 orderFieldsBySchema <- function(x, schema) {
-  m <- vapply(glob2rx(names(fields(schema))), grepl, logical(length(x)), x)
-  x[order(max.col(m, "first"))]
+    schemaNames <- names(fields(schema))
+    order(max.col(globMatchMatrix(x, schemaNames), ties.method="first"))
 }
 
 setMethod("fieldNames", "SolrCore",
           function(x, patterns = NULL, onlyStored = FALSE, onlyIndexed = FALSE,
                    includeStatic = FALSE)
-{
-  ## The Luke request handler will not always be available, and this
-  ## will fail in those cases. Thus, if the client code wants to be
-  ## robust, then it can decide to get the fields from the schema, but
-  ## that needs to be an explicit compromise, since dynamic fields
-  ## will not be resolved.
-  if (!is.null(patterns) && (!is.character(patterns) || any(is.na(patterns)))) {
-    stop("if non-NULL, 'patterns' must be a character vector without NAs")
-  }
-  if (!isTRUEorFALSE(includeStatic)) {
-    stop("'includeStatic' must be TRUE or FALSE")
-  }
-  if (!isTRUEorFALSE(onlyStored)) {
-    stop("'onlyStored' must be TRUE or FALSE")
-  }
-  if (!isTRUEorFALSE(onlyIndexed)) {
-    stop("'onlyIndexed' must be TRUE or FALSE")
-  }
-  luke <- readLuke(x)
-  ans <- names(luke$fields)
-  internal <- grepl("^_|____", ans)
-  ans <- ans[!internal]
-  if (includeStatic) {
-    schemaFields <- fields(schema(x))
-    ans <- union(ans, names(schemaFields)[!dynamic(schemaFields) &
-                                            !hidden(schemaFields)])
-  }
-  if (onlyStored || onlyIndexed) {
-    fields <- fields(schema(x), ans)
-    keep <- (if (onlyStored) stored(fields) else TRUE) &
-            (if (onlyIndexed) indexed(fields) else TRUE)
-    ans <- ans[keep]
-  }
-  if (!is.null(patterns)) {
-    ans <- subsetByPatterns(ans, patterns)
-  }
-  orderFieldsBySchema(ans, schema(x))
-})
+              {
+                  if (!is.null(patterns) &&
+                      (!is.character(patterns) || any(is.na(patterns)))) {
+                      stop("if non-NULL, 'patterns' must be a ",
+                           "character vector without NAs")
+                  }
+                  if (!isTRUEorFALSE(includeStatic)) {
+                      stop("'includeStatic' must be TRUE or FALSE")
+                  }
+                  if (!isTRUEorFALSE(onlyStored)) {
+                      stop("'onlyStored' must be TRUE or FALSE")
+                  }
+                  if (!isTRUEorFALSE(onlyIndexed)) {
+                      stop("'onlyIndexed' must be TRUE or FALSE")
+                  }
+                  ans <- tryCatch(names(readLuke(x)$fields),
+                                  error = function(e) {
+                                      warning("Luke request handler ",
+                                              "unavailable --- ",
+                                              "consider 'includeStatic=TRUE'")
+                                      character()
+                                  })
+                  internal <- grep("^_|____", ans)
+                  ans <- ans[!internal]
+                  if (includeStatic) {
+                      f <- fields(schema(x))
+                      ans <- union(ans, names(f)[!dynamic(f) & !hidden(f)])
+                  }
+                  if (onlyStored || onlyIndexed) {
+                      f <- fields(schema(x), ans)
+                      keep <- (if (onlyStored) stored(f) else TRUE) &
+                              (if (onlyIndexed) indexed(f) else TRUE)
+                      ans <- ans[keep]
+                  }
+                  if (!is.null(patterns)) {
+                      ans <- filterByPatterns(ans, patterns)
+                  }
+                  ans[orderFieldsBySchema(ans, schema(x))]
+              })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -239,7 +240,7 @@ readSchema <- function(uri) {
 ###
 
 summary.SolrCore <- function(object,
-                             of=setdiff(staticFieldNames(schema(object)),
+                             of=setdiff(fieldNames(object),
                                uniqueKey(schema(object))),
                              query=summary(SolrQuery(), object, of), ...)
 {

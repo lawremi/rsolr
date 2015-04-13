@@ -48,7 +48,8 @@ parseSchemaXML <- function(doc) {
            "//types/fieldType | //types/fieldtype")))
   ans <- parseSchemaFromREST(likeREST)
   ## do not force dynamic fields after static fields
-  fieldsInOrder <- unlist(getNodeSet(schema, "//fields//@name"), use.names=FALSE)
+  fieldsInOrder <- unlist(getNodeSet(schema, "//fields//@name"),
+                          use.names=FALSE)
   fields(ans) <- fields(ans)[fieldsInOrder]
   ans
 }
@@ -105,7 +106,6 @@ parseCopyFields <- function(copy.fields) {
   source <- as.character(pluck(copy.fields, "source"))
   nodes <- union(dest, source)
   edgeL <- split(dest, factor(source, nodes))
-  ##edgeL <- lapply(split(match(dest, nodes), source), function(x) list(edges=x))
   graphNEL(nodes, edgeL, "directed")
 }
 

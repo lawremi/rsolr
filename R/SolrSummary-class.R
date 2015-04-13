@@ -283,34 +283,57 @@ parseSolrStatsFacets <- function(x) {
 ### Coercion
 ###
 
-as.data.frame.SolrStats <- function(x, row.names = NULL, optional = FALSE, ...) {
-  slots <- slotsAsList(x)
-  slots$facets <- NULL
-  as.data.frame(slots, row.names=row.names, optional=optional, ...)
-}
-setMethod("as.data.frame", "SolrStats", as.data.frame.SolrStats)
-
-as.data.frame.SolrStatsFacet <- function(x, row.names = NULL, optional = FALSE,
-                                         ...)
+as.data.frame.SolrStats <- function(x, row.names = NULL, optional = FALSE,
+                                    ...)
 {
-  df <- NextMethod()
-  rownames(df) <- levels(x)
-  colnames(df)[1] <- field(x)
-  df$field <- NULL
-  df
+    as.data.frame(x, row.names = NULL, optional = FALSE, ...)
 }
-setMethod("as.data.frame", "SolrStatsFacet", base::as.data.frame)
+
+setMethod("as.data.frame", "SolrStats",
+          function(x, row.names = NULL, optional = FALSE, ...)
+              {
+                  slots <- slotsAsList(x)
+                  slots$facets <- NULL
+                  as.data.frame(slots, row.names=row.names, optional=optional,
+                                ...)
+              })
+
+setMethod("as.data.frame", "SolrStatsFacet",
+          function(x, row.names = NULL, optional = FALSE, ...)
+        {
+            df <- callNextMethod()
+            rownames(df) <- levels(x)
+            colnames(df)[1] <- field(x)
+            df$field <- NULL
+            df
+        })
+
+setAs("SolrStats", "data.frame", function(from) {
+          as.data.frame(from, optional=TRUE)
+      })
 
 as.data.frame.SolrStatsList <- function(x, row.names = NULL, optional = FALSE,
                                         ...)
 {
-  dummyForEmptyCase <- new("SolrStats")
-  data.frame(field=rep(as.character(names(x)), elementLengths(x)),
-             do.call(rbind, lapply(c(dummyForEmptyCase, x), as.data.frame,
-                                   row.names=row.names, optional=optional)),
-             stringsAsFactors=FALSE, ...)
+    as.data.frame(x, row.names = NULL, optional = FALSE, ...)
 }
-setMethod("as.data.frame", "SolrStatsList", as.data.frame.SolrStatsList)
+
+setMethod("as.data.frame", "SolrStatsList",
+          function(x, row.names = NULL, optional = FALSE, ...)
+              {
+                  dummyForEmptyCase <- new("SolrStats")
+                  df <- do.call(rbind,
+                                lapply(c(dummyForEmptyCase, x),
+                                       as.data.frame, row.names=row.names,
+                                       optional=optional))
+                  data.frame(field=rep(as.character(names(x)),
+                                 elementLengths(x)),
+                             df, stringsAsFactors=FALSE, ...)
+              })
+
+setAs("SolrStatsList", "data.frame", function(from) {
+          as.data.frame(from, optional=TRUE)
+      })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

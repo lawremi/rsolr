@@ -12,7 +12,7 @@ test_SolrCore_accessors <- function() {
   sc <- SolrCore(solr$uri)
 
   checkIdentical(name(sc), "example")
-  checkIdentical(nrow(sc), 0L)
+  checkIdentical(ndoc(sc), 0L)
   checkIdentical(uniqueKey(schema(sc)), "id")
   
   doc <- list(id="1112211111", name="my name!")
@@ -26,7 +26,8 @@ test_SolrCore_accessors <- function() {
   purgeCache(sc)
   ids(dc) <- doc$id
   checkResponseIdentical(read(sc, q), dc)
-
+  checkIdentical(ndoc(sc), length(dc))
+  
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
     list(id="3", inStock=FALSE, price=3, timestamp_dt=Sys.time()),
