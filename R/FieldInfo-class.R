@@ -123,8 +123,8 @@ setMethod("append", c("FieldInfo", "FieldInfo"),
 ###
 
 as.data.frame.FieldInfo <-
-  function(x, row.names = NULL, optional = FALSE, ...) {
-    as.data.frame(x, row.names=row.names, optional=optional, ...)
+    function(x, row.names = NULL, optional = FALSE, ...) {
+      as.data.frame(x, row.names=row.names, optional=optional, ...)
   }
 
 setMethod("as.data.frame", "FieldInfo",
@@ -164,7 +164,11 @@ setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
   dyn.field <- dyn.field[order(nchar(names(dyn.field)), decreasing=TRUE)]
   rx <- setNames(glob2rx(names(dyn.field)), names(dyn.field))
   hits <- lapply(rx, grep, dyn.x, value=TRUE)
-  dyn.ind <- as.character(with(stack(hits), ind[match(dyn.x, values)]))
+  dyn.ind <- if (length(hits) > 0L) {
+      as.character(with(stack(hits), ind[match(dyn.x, values)]))
+  } else {
+      character()
+  }
   if (any(is.na(dyn.ind))) {
     stop("field(s) ",
          paste(dyn.x[is.na(dyn.ind)], collapse = ", "),

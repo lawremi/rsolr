@@ -97,15 +97,17 @@ setMethod("tail", "SolrAggregation", function (x, n = 6L) {
   window(x, start = -n + 1L)
 })
 
-setMethod("unique", "SolrAggregation", function (x, n) {
+setMethod("unique", "SolrAggregation", function (x, incomparables = FALSE) {
+  if (!identical(incomparables, FALSE)) {
+    stop("'incomparables' not supported")
+  }
   if (length(formula(x)) != 3L) {
     stop("formula must have an LHS and RHS")
   }
   rhs <- formula(x)[[3L]]
   lhs <- formula(x)[[2L]]
   f <- as.formula(call("~", call("+", rhs, lhs)))
-  ans <- subset(as.data.frame(xtabs(f, solr(x))), Freq > 0L, select=-Freq)
-  ans[order(ans[[1L]]),]
+  uniqueBy(solr(x), f)
 })
 
 ## TODO using Solr 5.x Analytics Component:

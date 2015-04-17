@@ -140,7 +140,7 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
   query(x) <- query
   readColumn <- drop && !missing(j) && length(j) == 1L
   if (readColumn) {
-    ans <- as.data.frame(x, row.names=TRUE)
+    ans <- as.data.frame(x, row.names=!missing(i))
     ## ensure things are in the correct order
     if (!missing(i)) {
       ans <- ans[i,j]

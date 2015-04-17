@@ -10,7 +10,6 @@ checkResponseEquals <- function(response, input, tolerance=1) {
 test_SolrCore_accessors <- function() {
   solr <- rsolr:::TestSolr()
   sc <- SolrCore(solr$uri)
-
   checkIdentical(name(sc), "example")
   checkIdentical(ndoc(sc), 0L)
   checkIdentical(uniqueKey(schema(sc)), "id")

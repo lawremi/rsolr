@@ -20,6 +20,7 @@ test_SolrSchema_creation <- function() {
     checkIdentical(truth, df)
   }
   checkDfIdentical(as.data.frame(sr), Cars93)
+### TODO: check single column extraction
   
   schema <- deriveSolrSchema(Cars93, uniqueKey="Model")
   solr$kill()

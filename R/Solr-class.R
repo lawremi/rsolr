@@ -67,11 +67,6 @@ setMethod("ndoc", "Solr", function(x) {
   ndoc(core(x), query(x))
 })
 
-setMethod("ngroup", "Solr", function(x) {
-  groupings <- eval(ngroup(query(x)), core(x))$grouped
-  vapply(groupings, function(g) length(g$groups), integer(1L))
-})
-
 setMethod("staticFieldNames", "Solr", function(x) {
   staticFieldNames(schema(core(x)))
 })
@@ -94,7 +89,7 @@ setMethod("$", "Solr", function(x, name) {
           })
 
 setMethod("subset", "Solr", function(x, ...) {
-  query(x) <- subset(query(x), ...)
+  query(x) <- subset(query(x), ..., select.from=fieldNames(x, onlyStored=TRUE))
   x
 })
 
@@ -178,6 +173,23 @@ setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
   FUN(SolrAggregation(formula, data), ...)
 })
 
+uniqueBy <- function(x, by) {
+    ans <- subset(as.data.frame(xtabs(by, x)), Freq > 0L, select=-Freq)
+    ans <- ans[order(ans[[1L]]),,drop=FALSE]
+    rownames(ans) <- NULL
+    as(ans, "DocCollection")
+}
+
+setMethod("unique", "Solr", function (x, incomparables = FALSE) {
+              if (!identical(incomparables, FALSE)) {
+                  stop("'incomparables' not supported")
+              }
+              f <- as.formula(paste("~",
+                                    paste(fieldNames(x, onlyIndexed=TRUE),
+                                          collapse="+")))
+              uniqueBy(x, f)
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###
@@ -189,7 +201,7 @@ fillMissingFields <- function(x, fieldNames, schema) {
   fields <- fields(schema, setdiff(fieldNames, names(x)))
   modes <- fieldTypes(schema)[typeName(fields)]
   x[names(fields)] <- lapply(modes, fromSolr,
-                             object=rep(NA, nrow(as.data.frame(x))))
+                             x=rep(NA, nrow(as.data.frame(x))))
   x
 }
 
@@ -209,7 +221,10 @@ setMethod("as.data.frame", "Solr",
     colnames(df) <- make.names(colnames(df), unique = TRUE)
   }
   uk <- uniqueKey(schema(core(x)))
-  if (isTRUE(row.names) && !is.null(uk)) {
+  if (isTRUE(row.names)) {
+    if (is.null(uk)) {
+      stop("automatic rownames requested, but schema lacks a 'uniqueKey'")
+    }
     row.names <- df[[uk]]
     if (is.null(row.names)) {
       row.names <- ids(x)
@@ -249,7 +264,7 @@ setMethod("show", "Solr", function(object) {
     query <- query[names(query) %in% names(query)[-drop]]
   }
   labeled.query <- if (length(query) > 0L) {
-     paste0(names(query), "='", query, "'")
+    paste0(names(query), "='", query, "'")
   } else character()
   cat(BiocGenerics:::labeledLine("query", labeled.query))
 })

@@ -128,6 +128,7 @@ test_SolrList_queries <- function() {
   ## CHECK: subset() queries
   ss <- subset(s, id %in% 2:4)
   checkResponseEquals(as.list(ss), docs[1:3])
+### TODO: check 'select' interface
 
   ## CHECK: sort
   sorted <- sort(s, by = ~ price)
@@ -144,6 +145,8 @@ test_SolrList_queries <- function() {
   tform.docs <- docs
   tform.docs[,"negPrice"] <- tform.docs[,"price"] * -1
   checkResponseEquals(as.list(tformed), tform.docs)
+
+  ## TODO: CHECK: unique()
   
   ## CHECK: facet
   checkFacet <- function(formula, counts, solr=s) {

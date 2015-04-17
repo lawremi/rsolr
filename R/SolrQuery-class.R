@@ -120,29 +120,24 @@ configure <- function(x, ...) {
 ###
 
 setMethod("subset", "SolrQuery",
-          function(x, subset, fields,
-                   translation.target = SolrQParserExpression())
+          function(x, subset, select, fields,
+                   translation.target = SolrQParserExpression(),
+                   select.from = character())
 {
   if (!missing(subset)) {
     expr <- eval(call("bquote", substitute(subset), top_prenv(subset)))
     query <- translate(expr, translation.target, top_prenv(subset))
     params(x) <- c(params(x), fq = as.character(query))
   }
-### NOTE: Would be nice to support a column expression for 'select' like
-###       subset.data.frame, but this style of column selection would
-###       not work in general, due to tricky things like dynamic
-###       fields. Bottom-line: Solr stores documents, not tables, so
-###       there is no ordering of the fields.
-  ## nl <- as.list(seq(length(x)))
-  ## names(nl) <- names(x)
-  ## ints <- eval(substitute(select), nl, top_prenv(subset))
-  ## x$fl <- intersect(x$fl, names(x)[ints])
-### So for now we use the argument name 'fields'
-### and just assume it is a character vector of field names or globs:
-  if (!missing(fields)) {
-    if (!is.character(fields)) {
-      stop("field names should be character")
+  if (!missing(select)) {
+    if (!missing(fields)) {
+      stop("only one of 'fields' and 'select' can be specified")
     }
+    inds <- as.list(seq_along(select.from))
+    names(inds) <- select.from
+    fields <- select.from[eval(substitute(select), inds, top_prenv(select))]
+  }
+  if (!missing(fields)) {
     x <- restrictToFields(x, fields)
   }
   x
@@ -184,6 +179,18 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
                           setNames(identity.aliases, identity.aliases))
   `_data`
 })
+
+### Also exists in S4Vectors!
+setGeneric("rename", function(x, ...) standardGeneric("rename"))
+
+setMethod("rename", "SolrQuery", function(x, ...) {
+              map <- c(...)
+              if (!is.character(map) || any(is.na(map))) {
+                  stop("arguments in '...' must be character and not NA")
+              }
+              params(x)$fl <- c(params(x)$fl, map)
+              x
+          })
 
 parseSortFormula <- function(x) {
   if (length(x) != 2L) {
@@ -255,8 +262,6 @@ setMethod("window", "SolrQuery", function (x, start = 1L, end = NA_integer_) {
   rows <- end - start + 1L
   setOutputBounds(x, start, rows)
 })
-
-setMethod("window", "SolrQuery", window.SolrQuery)
 
 setOutputBounds <- function(x, start = 1L, rows = NA_integer_) {
   start <- start - 1L
@@ -361,13 +366,6 @@ setMethod("groups", c("SolrQuery", "formula"), function(x, by, ...) {
     stop("'by' must be a formula with a single term")
   }
   groups(x, exprs[[1L]], env=attr(by, ".Environment"), ...)
-})
-
-setGeneric("ngroup", function(x, ...) standardGeneric("ngroup"))
-
-setMethod("ngroup", "SolrQuery", function(x) {
-  params(x)$group.limit <- 0L
-  x
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -562,6 +560,7 @@ enablesFacet <- function(x) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Stats component
 ###
+### NOTE: obsolete as of Solr 5.1, but we will keep it for 4.x instances
 
 enablesStats <- function(x) {
   identical(params(x)$stats, "true")
@@ -575,13 +574,6 @@ setMethod("stats", c("SolrQuery", "character"), function(x, which) {
                  setNames(which, rep("stats.field", length(which))))
   x
 })
-
-##setMethod("stats", c("SolrQuery", "call"), function(x, which) {
-### TODO: as of Solr 5.0:
-  ## SOLR-6354: stats.field can now be used to generate stats over the
-  ## numeric results of arbitrary functions, ie:
-  ## stats.field={!func}product(price,popularity) (hossman)
-##})
 
 setMethod("stats", c("SolrQuery", "formula"), function(x, which) {
   f <- parseStatsFormula(which)
@@ -605,7 +597,6 @@ parseStatsFormula <- function(x) {
     if (lhs[[1L]] == quote(c)) {
       lhs <- lhs[-1L]
     } else {
-### TODO: see SOLR-6354 note above
       stop("formula LHS must be a single name or names combined with c()")
     }
   }
@@ -620,6 +611,34 @@ parseStatsFormula <- function(x) {
   }
   list(fields=fields, facet=facet)
 }
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Analytics
+###
+
+### Solr 5.1 introduced an awesome aggregation framework.
+
+### What we need to do:
+
+### - Rewrite faceting to use the JSON request format
+###   We can use http://wiki.apache.org/solr/SystemInformationRequestHandlers
+###   to determine the version; then pass some sort of format parameter
+###   to SolrQuery, i.e., "json" for the new stuff.
+### - facets() needs to support list of function calls for computing
+###   statistics.
+### - aggregate,Solr() needs to support list of functions, or arbitrarily
+###   named, quoted expressions.
+### - support up-front split(x, y? ~ x), followed by aggregate calls
+###   that do not require a formula...
+###   - could that GroupedSolr object have a sort method? sure...
+
+### Available statistics:
+### sum => sum
+### avg => mean
+### sumsq ~> var, sd
+### min/max => min/max
+### unique => countUnique? nunique?
+### percentile => quantile, median
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Summary (combination of facets and stats)

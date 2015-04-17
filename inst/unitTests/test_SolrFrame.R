@@ -75,9 +75,12 @@ test_SolrFrame_accessors <- function() {
   checkEquals(s[["timestamp_dt"]], allDocs$timestamp_dt, tolerance=1)
   s$price <- allDocs$price + 1L
   checkIdentical(s$price, allDocs$price + 1L)
+### TODO: check that s["price"] remains a data frame
   s[,"price"] <- allDocs$price
   checkIdentical(s[,"price"], allDocs$price)
 
+### TODO: check that grob-based extraction gets the column order right
+  
   allDocs2 <- within(allDocs, {
     price <- price+1L
     inStock <- !inStock
@@ -99,6 +102,8 @@ test_SolrFrame_accessors <- function() {
   stail <- tail(s, 2L)
   checkIdentical(nrow(stail), 2L)
   checkDFResponseEquals(as.data.frame(stail), tail(allDocs, 2L))
+
+### TODO: check that rename(), once fixed in Solr itself
   
   solr$kill()
 }

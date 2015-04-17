@@ -63,6 +63,19 @@ setMethod("fieldNames", "SolrFrame", function(x, includeStatic=TRUE, ...) {
   callNextMethod(x, includeStatic=includeStatic, ...)
 })
 
+setMethod("rename", "Solr", function(x, ...) {
+              map <- c(...)
+              if (!is.character(map) || any(is.na(map))) {
+                  stop("arguments in '...' must be character and not NA")
+              }
+              badOldNames <- setdiff(map, names(x))
+              if (length(badOldNames))
+                  stop("Some 'from' names in value not found on 'x': ",
+                       paste(badOldNames, collapse = ", "))
+              query(x) <- rename(query(x), map)
+              x
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
@@ -109,7 +122,10 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
   }
   oneD <- (nargs() - !missing(drop)) == 2L
   if (oneD) {
-    return(x[,i,drop=drop])
+    if (!missing(drop) && drop) {
+      stop("'drop' must be FALSE for list-style extraction")
+    }
+    return(x[,i,drop=FALSE,...])
   }
   x <- as(x, "SolrList")
   ans <- callGeneric()

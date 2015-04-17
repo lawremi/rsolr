@@ -244,11 +244,6 @@ setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
    x
 })
 
-setReplaceMethod("[", "DocDataFrame", function(x, i, j, ..., value) {
-                     x <- S3Part(x)
-                     as(callGeneric(), "DocDataFrame")
-                 })
-
 setGeneric("meta", function(x) standardGeneric("meta"))
 
 setMethod("meta", "ANY", function(x) {

@@ -295,60 +295,65 @@ asAttr <- function(x) {
   ans
 }
 
-fieldNodes <- function(x, dynamic=FALSE) {
-  f <- fields(x)
+addFieldNodes <- function(xml, schema, dynamic=FALSE) {
+  f <- fields(schema)
   f <- f[dynamic(f) == dynamic]
   mapply(function(...) {
-    newXMLNode(if (dynamic) "dynamicField" else "field", attrs=list(...))
+    xml$addNode(if (dynamic) "dynamicField" else "field", attrs=list(...))
   }, name=names(f), type=typeName(f), required=asAttr(required(f)),
      indexed=asAttr(indexed(f)), stored=asAttr(stored(f)),
      multiValued=asAttr(multivalued(f)),
      docValues=asAttr(docValues(f)))
 }
 
-dynamicFieldNodes <- function(x) {
-  fieldNodes(x, dynamic=TRUE)
+addDynamicFieldNodes <- function(xml, schema) {
+  addFieldNodes(xml, schema, dynamic=TRUE)
 }
 
-copyFieldNodes <- function(x) {
-  copyEdges <- edges(copyFields(x))
+addCopyFieldNodes <- function(xml, schema) {
+  copyEdges <- edges(copyFields(schema))
   if (length(copyEdges) > 0L) {
     copyEdges <- stack(copyEdges)
     apply(copyEdges, 1L, function(e) {
-      newXMLNode("copyField", attrs=list(source=e[[2L]], dest=e[[1L]]))
+      xml$addNode("copyField", attrs=list(source=e[[2L]], dest=e[[1L]]))
     })
   } else {
     list()
   }
 }
 
-typeNodes <- function(x) {
-  types <- fieldTypes(x)
+addTypeNodes <- function(xml, schema) {
+  types <- fieldTypes(schema)
   mapply(function(t, nm) {
-    newXMLNode("fieldType",
-               attrs=list(name=nm,
-                 class=asAttr(class(t)),
-                 indexed=asAttr(indexed(t)),
-                 stored=asAttr(stored(t)),
-                 multiValued=asAttr(multivalued(t))))
+    xml$addNode("fieldType",
+                attrs=list(name=nm,
+                    class=asAttr(class(t)),
+                    indexed=asAttr(indexed(t)),
+                    stored=asAttr(stored(t)),
+                    multiValued=asAttr(multivalued(t))))
   }, types, names(types))
 }
 
 setAs("SolrSchema", "XMLDocument", function(from) {
-  newXMLDoc(node=as(from, "XMLNode"))
-})
+          as(from, "XMLInternalDOM")$doc()
+      })
 
-setAs("SolrSchema", "XMLNode", function(from) {
-  newXMLNode("schema",
-             attrs=list(name=name(from),
-               version=as.character(version(from))),
-             if (!is.null(uniqueKey(from)))
-               newXMLNode("uniqueKey", uniqueKey(from)),
-             newXMLNode("fields", .children=c(fieldNodes(from),
-                                    dynamicFieldNodes(from))),
-             copyFieldNodes(from),
-             newXMLNode("types", .children=typeNodes(from)))
-})
+setAs("SolrSchema", "XMLInternalDOM", function(from) {
+          xml <- suppressWarnings(xmlTree("schema", attrs=list(name=name(from),
+                                       version=as.character(version(from)))))
+            if (!is.null(uniqueKey(from)))
+                xml$addNode("uniqueKey", uniqueKey(from))
+            xml$addNode("fields", close=FALSE)
+              addFieldNodes(xml, from)
+              addDynamicFieldNodes(xml, from)
+            xml$closeTag()
+            addCopyFieldNodes(xml, from)
+            xml$addNode("types", close=FALSE)
+              addTypeNodes(xml, from)
+            xml$closeTag()
+          xml$closeTag()
+          xml
+      })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Export

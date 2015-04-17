@@ -112,7 +112,7 @@
    Solr is just a search engine (on steroids), a significant amount of
    engineering was required to achieve that result.
    
-** Restriction
+** Restricting by row
    The simplest operation is filtering the data, i.e., restricting it
    to a subset of interest. Even a search engine should be good at
    that. Below, we use =subset= to restrict to the flights to those
@@ -151,4 +151,80 @@
    #+begin_src R
    sort(sr, by = ~ arr_delay, decreasing=TRUE)
    #+end_src
+
+** Restricting by field
+   Just as we can use =subset= to restrict by row, we can also use it
+   to restrict by column:
+   #+begin_src R
+   subset(sr, select=c(year, month, day))
+   #+end_src
+   The =select= argument is analogous to that of =subset.data.frame=:
+   it is evaluated to set of field names to which the dataset is
+   restricted. The above example is static, so it is equivalent to:
+   #+begin_src R
+   sr[c("year", "month", "day")]
+   #+end_src
    
+   But with =subset= we can also specify dynamic expressions,
+   including ranges:
+   #+begin_src R
+   subset(sr, select=year:day)
+   #+end_src
+   And exclusion:
+   #+begin_src R
+   subset(sr, select=-(year:day))
+   #+end_src
+   
+   Solr also has native support for globs:
+   #+begin_src R
+   sr[c("arr_*", "dep_*")]
+   #+end_src
+
+   While we are dealing with fields, we should mention that renaming
+   is also possible:
+   #+begin_src R
+### FIXME: broken in current Solr CSV writer
+   rename(sr, tail_num = "tailnum")
+   #+end_src
+   
+** Transformation
+   To compute new columns from existing ones, we can, as usual, call
+   the =transform= function:
+   #+begin_src R
+     transform(sr,
+               gain = arr_delay - dep_delay,
+               speed = distance / air_time * 60)
+   #+end_src
+   
+** Summarization
+   Data summarization is about reducing large, complex data to
+   smaller, simpler data that we can understand.
+
+   A common type of summarization is aggregation, which is typically
+   defined as a three step process:
+   1. Split the data into groups, usually by the the interaction of
+      some factor set,
+   2. Summarize each group to a single value,
+   3. Combine the summaries.
+
+   Solr supports the following types of data aggregation:
+   * Mean,
+   * Min/max,
+   * Variance and standard deviation,
+   * Sum,
+   * Count (tabulation).
+   Notably missing is the median, but we should expect that soon, as
+   Solr is evolving very quickly in this area. One obstacle is likely
+   that the median is notoriously difficult to distribute.
+
+   A prerequisite of aggregation is finding the distinct field
+   combinations that correspond to each correspond to a group. Those
+   combinations themselves constitute a useful summary, and we can
+   retrieve them with =unique=:
+   #+begin_src R
+   unique(sr["tailnum"])
+   unique(sr[c("origin", "tailnum")])
+   #+end_src
+   
+   Solr also supports extracting the top or bottom N documents, after
+   ranking by some field, optionally by group.

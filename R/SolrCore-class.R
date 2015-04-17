@@ -40,22 +40,32 @@ setGeneric("name", function(x) standardGeneric("name"))
 setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
+numFound <- function(x, query) {
+    emptyQuery <- head(query, 0L)
+    responseType(emptyQuery) <- "list"
+    as.integer(eval(emptyQuery, x)$response$numFound)
+}
+
 setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
-  emptyQuery <- head(query, 0L)
-  responseType(emptyQuery) <- "list"
-  numFound <- as.integer(eval(emptyQuery, x)$response$numFound)
+  numFound <- numFound(x, query)
   p <- prepareBoundsParams(params(query), numFound)
   min(numFound, p$rows)
 })
 
 schema <- function(x) x@schema
 
+readLuke <- function(x) {
+    read(x@uri$admin$luke, list(nTerms=0L, wt="json"))
+}
+
 globMatchMatrix <- function(x, patterns) {
     vapply(glob2rx(patterns), grepl, logical(length(x)), x)
 }
 
-subsetByPatterns <- function(x, patterns) {
-    x[rowSums(globMatchMatrix(x, patterns)) > 0L]
+extractByPatterns <- function(x, patterns) {
+    m <- globMatchMatrix(x, patterns)
+    ord <- order(max.col(m, ties.method="first"))
+    x[ord][rowSums(m)[ord] > 0L]
 }
 
 orderFieldsBySchema <- function(x, schema) {
@@ -88,7 +98,7 @@ setMethod("fieldNames", "SolrCore",
                                               "consider 'includeStatic=TRUE'")
                                       character()
                                   })
-                  internal <- grep("^_|____", ans)
+                  internal <- grepl("^_|____", ans)
                   ans <- ans[!internal]
                   if (includeStatic) {
                       f <- fields(schema(x))
@@ -100,10 +110,11 @@ setMethod("fieldNames", "SolrCore",
                               (if (onlyIndexed) indexed(f) else TRUE)
                       ans <- ans[keep]
                   }
+                  ans <- ans[orderFieldsBySchema(ans, schema(x))]
                   if (!is.null(patterns)) {
-                      ans <- filterByPatterns(ans, patterns)
+                      ans <- extractByPatterns(ans, patterns)
                   }
-                  ans[orderFieldsBySchema(ans, schema(x))]
+                  ans
               })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -362,11 +373,16 @@ prepareBoundsParams <- function(p, nrows) {
   p
 }
 
+ngroup <- function(x, query) {
+  params(query)$group.limit <- 0L
+  groupings <- eval(query, x)$grouped
+  vapply(groupings, function(g) length(g$groups), integer(1L))
+}
+
 resultLength <- function(x, query) {
-  solr <- .SolrList(x, query)
   ans <- if (identical(params(query)$group, "true"))
-    ngroup(solr)
-  else length(solr)
+    ngroup(x, query)
+  else numFound(x, query)
   if (length(ans) > 1L) {
     warning("ambiguous result length (multiple groupings)")
   }
