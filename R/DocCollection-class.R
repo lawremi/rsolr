@@ -316,11 +316,11 @@ setMethod("show", "DocCollection", function(object) {
   cat(class(object), " (", ndoc(object), "x", nfield(object), ")\n", sep="")
 })
 
+
 showDoc <- function(x, title) {
-  rep(":", length(x))
-  out <- matrix(as.character(x),
-                dimnames=setNames(list(names(x), ""), c(title, "")))
-  print(out, quote=FALSE, right=TRUE, max=length(out))
+    cat(title, "\n")
+    lines <- labeledLine(names(x), x, count = lengths(x) > 1L, vectorized=TRUE)
+    cat(lines, "\n", sep="")
 }
 
 setMethod("show", "DocList", function(object) {
