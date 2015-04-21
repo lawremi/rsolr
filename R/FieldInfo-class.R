@@ -167,7 +167,7 @@ setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
   dyn.ind <- if (length(hits) > 0L) {
       as.character(with(stack(hits), ind[match(dyn.x, values)]))
   } else {
-      character()
+      rep(NA_character_, length(dyn.x))
   }
   if (any(is.na(dyn.ind))) {
     stop("field(s) ",
