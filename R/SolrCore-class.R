@@ -17,7 +17,8 @@
 
 setClass("SolrCore",
          representation(uri="RestUri",
-                        schema="SolrSchema"))
+                        schema="SolrSchema",
+                        version="package_version"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
@@ -29,7 +30,8 @@ SolrCore <- function(uri, ...) {
   else if (length(list(...)) > 0L)
     warning("arguments in '...' are ignored when uri is a RestUri")
   schema <- readSchema(uri)
-  new("SolrCore", uri=uri, schema=schema)
+  version <- readVersion(uri)
+  new("SolrCore", uri=uri, schema=schema, version=version)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -55,7 +57,7 @@ setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
 schema <- function(x) x@schema
 
 readLuke <- function(x) {
-    read(x@uri$admin$luke, list(nTerms=0L, wt="json"))
+    processSolrResponse(read(x@uri$admin$luke, list(nTerms=0L, wt="json")))
 }
 
 globMatchMatrix <- function(x, patterns) {
@@ -106,8 +108,9 @@ setMethod("fieldNames", "SolrCore",
                   }
                   if (onlyStored || onlyIndexed) {
                       f <- fields(schema(x), ans)
-                      keep <- (if (onlyStored) stored(f) else TRUE) &
-                              (if (onlyIndexed) indexed(f) else TRUE)
+                      keep <-
+                          (if (onlyStored) stored(f) else TRUE) &
+                          (if (onlyIndexed) indexed(f) | docValues(f) else TRUE)
                       ans <- ans[keep]
                   }
                   ans <- ans[orderFieldsBySchema(ans, schema(x))]
@@ -116,6 +119,16 @@ setMethod("fieldNames", "SolrCore",
                   }
                   ans
               })
+
+setGeneric("version", function(x) standardGeneric("version"))
+
+setMethod("version", "SolrCore", function(x) {
+              x@version
+          })
+
+compatibleQuery <- function(x) {
+    SolrQuery(version = if (version(x) >= "5.1") "5.1" else "")
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -230,7 +243,7 @@ setMethod("read", "SolrCore",
           })
 
 readSchemaFromREST <- function(uri) {
-  parseSchemaFromREST(read(uri$schema)$schema)
+  parseSchemaFromREST(processSolrResponse(read(uri$schema))$schema)
 }
 
 readSchemaXMLFile <- function(uri) {
@@ -243,6 +256,19 @@ readSchema <- function(uri) {
             "Fields will be sorted lexicographically.")
     readSchemaFromREST(uri)
   })
+}
+
+readSystem <- function(uri) {
+  processSolrResponse(read(uri$admin$system, wt="json"))
+}
+
+readVersion <- function(uri) {
+  as.package_version(tryCatch({
+      readSystem(uri)$lucene$"solr-spec-version"
+  }, error = function(e) {
+      stop("Failed to retrieve version, assuming 4.x")
+      "4.x"
+  }))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -265,7 +291,7 @@ summary.SolrCore <- function(object,
 
 setMethod("summary", "SolrCore", summary.SolrCore)
 
-setMethod("facet", c("SolrCore", "SolrQuery"),
+setMethod("facets", "SolrCore",
           function(x, by) {
             facets(summary(x, query=by))
           })
@@ -289,7 +315,7 @@ setMethod("groups", c("SolrCore", "SolrQuery"), function(x, by=SolrQuery()) {
 ### Query Evaluation
 ###
 
-processSolrResponse <- function(response, type) {
+processSolrResponse <- function(response, type = "json") {
   ## some SOLR instances return text/plain for responses...
   ## this also happens for errors
   if (is.character(response)) {
@@ -417,7 +443,7 @@ commit_SolrCore <- function(x, waitSearcher=TRUE, softCommit=FALSE,
 {
   args <- tail(as.list(match.call()), -2)
   resp <- read(x@uri$update, do.call(commitQueryParams, args), wt="json")
-  invisible(as.integer(resp$responseHeader$status))
+  invisible(as.integer(processSolrResponse(resp$responseHeader$status)))
 }
 setMethod("commit", "SolrCore", commit_SolrCore)
 
