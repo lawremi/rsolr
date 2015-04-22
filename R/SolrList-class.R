@@ -12,7 +12,7 @@ setClass("SolrList", contains="Solr")
 ### Constructor
 ###
 
-.SolrList <- function(core, query=SolrQuery()) {
+.SolrList <- function(core, query=compatibleQuery(core)) {
   new("SolrList", core=core, query=query)
 }
 

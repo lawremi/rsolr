@@ -13,46 +13,6 @@
 ### complexity, but there is also opportunity for optimization by
 ### batching queries.
 
-### Ignoring the problems, it would be easy to represent a query
-### object, a Solr core, and submission of queries to the core. But
-### should we use as the API? It could be explicity Solr, which would
-### be easy, but it is a new API for users. An alternative would be to
-### map Solr syntax to R syntax.
-
-### Query component:
-## subset => &fq
-## transform => &fl aliasing
-## sort(x, by = "rating") => &sort
-## window/head/tail => &start/&rows
-
-### Facet component:
-## xtabs(~field, x) => facet.field=field, facet.limit=-1, &fq (via 'subset=')
-## xtabs(~score + price, x) => facet.pivot=score,price
-## head(xtabs(~field, x), n) => facet.limit=n
-## window(xtabs(~field, x), i, j) => facet.offset=i, facet.limit=j-i+1
-## xtabs(..., drop.unused.levels=TRUE) => facet.mincount=1
-## xtabs(..., exclude=NULL) => facet.missing=true
-## xtabs(~cut(d, seq(i,j,b)) => facet.range=d,
-##                              f.d.facet.range.start=i/end=j/gap=b,
-##                              f.d.facet.range.include=upper (lower if right=F)
-##                              f.d.facet.range.include=edge (if include.lowest)
-
-### Stats component(stats=true):
-## xtabs(price ~ cat, x) => stats.field=price, stats.facet=cat, get sum
-### Supported on SolrCore:
-## aggregate(price ~ cat, x, FUN) => stats.field=price, stats.facet=cat
-## : FUN %in% min,max,sum,length=>count,mean,sd=>stddev,var=>sd^2
-
-### Grouping component (group=true):
-### head() by group:
-## groups(x, "field", limit=1L) 
-
-### Future Analytics component (Solr 5.0):
-### https://issues.apache.org/jira/browse/SOLR-5302
-### Will probably make the stats and facet components obsolete for our
-### needs. The group component might only be useful for finding top
-### documents in each group.
-
 ### Support for Solr extensions
 ## Custom functions: functions returning literal/name/Expression in custom env
 ## Custom query parsers: via Expression framework
@@ -73,31 +33,44 @@
 ### Since 'sqrtScore' is defined by &fl, it is not subject to &fq
 ### filtering (it is never indexed). In other words, some parameters
 ### affect the query, while others manipulate the output of the query.
+### We can actually work around this by computing sqrtScore as part of
+### the query, i.e., we just substitute the expression. But there are
+### still problems:
+### * output restrictions, like head/tail, will not affect e.g. aggregation
+###   - not a typical use case, but it's inconsistent with R
+### * using the result of aggregation in queries and transforms,
+###   where we would need to evaluate the summaries first (where we
+###   have access to a core), and substitute the values...
+###   - we could even support predicates, like:
+###     subset(x, y > mean(z[j > 10]))
+###     because the j>10 is a simple filter on the aggregation request
 
 setClass("SolrQuery",
-         representation(params = "list"),
+         representation(params="list",
+                        queryTarget="SolrLuceneExpression",
+                        functionTarget="SolrFunctionExpression",
+                        aggregateTarget="SolrAggregateExpression"),
          prototype = list(
            params = list(
              q     = "*:*",
              start = 0L,
              rows  = .Machine$integer.max,
-             fl    = "*") # was list("*")
+             fl    = "*")
            ))
+
+setClass("SolrQuery5.1", contains="SolrQuery")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
 ###
 
-SolrQuery <- function(expr) {
-  ans <- new("SolrQuery")
-  if (!missing(expr)) {
-    ans <- eval(substitute(subset(ans, expr)), parent.frame())
-  }
-  ans
+SolrQuery <- function(version="5.1") {
+    version <- as.package_version(version)
+    new(paste0("SolrQuery", if (version >= "5.1") "5.1" else ""))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Low-level parameter access
+### Low-level accessors
 ###
 
 params <- function(x) {
@@ -115,18 +88,49 @@ configure <- function(x, ...) {
   x
 }
 
+json <- function(x) {
+    params(x)$json
+}
+
+`json<-` <- function(x, value) {
+    params(x)$json <- value
+    x
+}
+
+setMethod("version", "SolrQuery", function(x) {
+              as.package_version(sub("^SolrQuery", "", class(x)))
+          })
+
+### These enable the overriding of translation behavior
+
+queryTarget <- function(x) x@queryTarget
+functionTarget <- function(x) x@functionTarget
+aggregateTarget <- function(x) x@aggregateTarget
+
+`queryTarget<-` <- function(x, value) {
+    x@queryTarget <- value
+    x
+}
+`functionTarget<-` <- function(x, value) {
+    x@functionTarget <- value
+    x
+}
+`aggregateTarget<-` <- function(x, value) {
+    x@aggregateTarget <- value
+    x
+}
+
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr query component
 ###
 
 setMethod("subset", "SolrQuery",
-          function(x, subset, select, fields,
-                   translation.target = SolrQParserExpression(),
-                   select.from = character())
+          function(x, subset, select, fields, select.from = character())
 {
   if (!missing(subset)) {
     expr <- eval(call("bquote", substitute(subset), top_prenv(subset)))
-    query <- translate(expr, translation.target, top_prenv(subset))
+    query <- translate(expr, queryTarget(x), top_prenv(subset))
     params(x) <- c(params(x), fq = as.character(query))
   }
   if (!missing(select)) {
@@ -155,20 +159,19 @@ restrictToFields <- function(x, fields) {
   x
 }
 
-translateToSolrFunction <- function(expr, env) {
-  as.character(translate(expr, SolrFunctionExpression(), env=env))
+translateToSolrFunction <- function(x, expr, env) {
+  as.character(translate(expr, functionTarget(x), env=env))
 }
 
 transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
 
-### CHECKME: what happens when an alias already exists?
 setMethod("transform", "SolrQuery", function (`_data`, ...) {
   e <- as.list(substitute(list(...))[-1L])
   if (length(e) == 0L)
     return(`_data`)
   if (is.null(names(e)))
     names(e) <- ""
-  solr <- mapply(translateToSolrFunction, e, top_prenv_dots(...))
+  solr <- mapply(translateToSolrFunction, list(x), e, top_prenv_dots(...))
   ## If a simple symbol is passed, Solr will rename the field, rather
   ## than copy the column. That is different from transform()
   ## behavior.  Sure, aliasing is sort of pointless server-side, but
@@ -180,7 +183,7 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
   `_data`
 })
 
-### Also exists in S4Vectors!
+### Also exists in S4Vectors, but the mapping is opposite!
 setGeneric("rename", function(x, ...) standardGeneric("rename"))
 
 setMethod("rename", "SolrQuery", function(x, ...) {
@@ -211,7 +214,7 @@ setMethod("sort", "SolrQuery", function (x, decreasing = FALSE, by = ~ score) {
   } else {
     direction <- if (decreasing) "desc" else "asc"
     by <- vapply(parseSortFormula(by), translateToSolrFunction, character(1),
-                 env=attr(by, ".Environment"))
+                 x=x, env=attr(by, ".Environment"))
     sort <- paste(by, direction)
     params(x)$sort <- csv(c(sort, params(x)$sort))
   }
@@ -336,7 +339,8 @@ setMethod("groups", c("SolrQuery", "language"),
           function(x, by, limit = .Machine$integer.max, offset = 0L,
                    env = emptyenv())
 {
-  configureGroups(x, limit, offset, group.func=translateToSolrFunction(by, env))
+    configureGroups(x, limit, offset,
+                    group.func=translateToSolrFunction(x, by, env))
 })
 
 setMethod("groups", c("SolrQuery", "name"),
@@ -373,6 +377,43 @@ setMethod("groups", c("SolrQuery", "formula"), function(x, by, ...) {
 ###
 
 
+### Solr 5.1 introduced an awesome aggregation framework.
+
+### What we need to do:
+
+### - Rewrite faceting to use the JSON request format
+###   We can use http://wiki.apache.org/solr/SystemInformationRequestHandlers
+###   to determine the version; then pass some sort of format parameter
+###   to SolrQuery, i.e., "json" for the new stuff.
+### - facets() needs to support list of function calls for computing
+###   statistics.
+### - aggregate,Solr() needs to be improved, so that we support:
+###     - the LHS of the formula could support the "select" syntax,
+###     - a named list of functions, all of which are applied, and their name
+###       serves as the postfix,
+###     - named, quoted arguments adding stats as columns,
+### - support up-front split(x, y? ~ x), followed by aggregate calls
+###   that do not require a formula...
+###   - could that GroupedSolr object have a sort method? sure...
+###   - could it have a transform method that lazily computes summaries
+###     (for the known aggregation functions), but otherwise behaves like
+###     transform,Solr? Yes, but besides the fast aggregation,
+###     the actual transforation would need to happen on the client,
+###     where we have the aggregated values, so that would be slow and
+###     somewhat complicated...
+### - transform improvements:
+###   - could support each(select, funs), where each function in
+###     'funs' is applied to each column in 'select'.
+###   - could support a formula that splits (and selects columns)
+
+### Available statistics:
+### sum => sum
+### avg => mean
+### sumsq ~> var, sd
+### min/max => min/max
+### unique => countUnique? nunique?
+### percentile => quantile, median
+
 setMethod("xtabs", "SolrQuery",
           function(formula, data,
                    subset, sparse = FALSE, 
@@ -381,7 +422,8 @@ setMethod("xtabs", "SolrQuery",
           {
             if (!all(names(match.call())[-1L] %in%
                      c("formula", "data", "exclude"))) {
-              stop("all args except 'formula', 'data' and 'exclude' are ignored")
+              stop("all args except 'formula', 'data' and 'exclude' ",
+                   "are ignored")
             }
             if (!is.na(exclude) && !is.null(exclude)) {
               stop("'exclude' must be 'NA' or 'NULL'")
@@ -391,13 +433,6 @@ setMethod("xtabs", "SolrQuery",
             }
             facet(data, formula, useNA=is.null(exclude))
           })
-
-### CHECKME: how is sort affected when we set f.foo.facet.limit?
-setFacetParams <- function(x, params) {
-  x <- configure(x, rows=0L, facet="true", facet.limit=-1L, facet.sort="index")
-  params(x) <- c(params(x), params)
-  x
-}
 
 facetPivot <- function(x, exprs, useNA=FALSE) {
   strs <- as.character(exprs)
@@ -414,48 +449,46 @@ facetPivot <- function(x, exprs, useNA=FALSE) {
   setFacetParams(x, facet.params)
 }
 
-setGeneric("facet", function(x, by, ...) standardGeneric("facet"))
-
-setMethod("facet", c("SolrQuery", "formula"),
-          function(x, by, ...) {
-            exprs <- attr(terms(by), "variables")[-1L]
-            if (length(exprs) > 1L) {
-              facetPivot(x, exprs, ...)
-            } else {
-              facet(x, exprs[[1]], ..., where=attr(by, ".Environment"))
-            }
-          })
-
-setMethod("facet", c("SolrQuery", "name"),
-          function(x, by, where=parent.frame(2), ...) {
-            facet(x, as.character(by), ...)
-          })
-
-stripI <- function(x) {
-  if (is.call(x) && x[[1L]] == quote(I))
-    x[[2L]]
-  else x
+facet <- function(x, ...) {
+  facetParams(x) <- facetParams(x, ...)
+  x
 }
 
-callToFacetParams <- function(x, by, where) {
-  by <- eval(call("bquote", stripI(by), where=where))
-  p <- eval(by, prepareFacetEnv(where))
-  if (!is.list(p)) {
-    stop("'", by, "' must evaluate to list of Solr facet parameters")
-  }
-  p
-}
+setGeneric("facetParams", function(x, by, ...) standardGeneric("facetParams"))
 
-setMethod("facet", c("SolrQuery", "call"),
-          function(x, by, useNA=FALSE, where=parent.frame(2)) {
-            if (!identical(useNA, FALSE)) {
-              stop("'useNA' must be FALSE for a facet query")
-            }
-            facet.params <- callToFacetParams(x, by, where)
-            setFacetParams(x, facet.params)
+### TODO: handle SolrQuery5.1,missing case ==> overall stats
+
+setMethod("facetParams", c("SolrQuery", "name"), function(x, by, ...) {
+              facetParams(x, as.character(by), ...)
           })
 
-setMethod("facet", c("SolrQuery", "character"),
+setMethod("facetParams", c("SolrQuery", "formula"), function(x, by, ...) {
+              exprs <- attr(terms(by), "variables")[-1L]
+              if (length(exprs) > 1L) {
+                  facetPivot(x, exprs, ...)
+              } else {
+                  facet(x, exprs[[1]], ..., where=attr(by, ".Environment"))
+              }
+          })
+
+setMethod("facetParams", c("SolrQuery5.1", "formula"), function(x, by, ...) {
+              terms <- attr(terms(by), "variables")[-1L]
+              facetParams_json(x, json(x)$facet, terms,
+                               where=attr(by, ".Environment"),
+                               ...)
+          })
+
+setMethod("facetParams", c("SolrQuery", "call"), function(x, by, where) {
+              by <- eval(call("bquote", stripI(by), where=where))
+              p <- eval(by, prepareFacetEnv(x, where))
+              if (!is.list(p)) {
+                  stop("'", by,
+                       "' must evaluate to list of Solr facet parameters")
+              }
+              p
+          })
+
+setMethod("facetParams", c("SolrQuery", "character"),
           function(x, by, useNA=FALSE) {
             if (!isTRUEorFALSE(useNA)) {
               stop("'useNA' must be TRUE or FALSE")
@@ -467,8 +500,83 @@ setMethod("facet", c("SolrQuery", "character"),
             if (useNA) {
               facet.params[paste0("f.", by, ".facet.missing")] <- "true"
             }
-            setFacetParams(x, facet.params)
+            facet.params
           })
+
+statsParams <- function(x, ...) {
+  e <- as.list(substitute(list(...))[-1L])
+  if (is.null(names(e)) || any(names(e) == "")) {
+    stop("statistic arguments must be named")
+  }
+  mapply(translateToSolrAggregate, list(x), e, top_prenv_dots(...))
+}
+
+## stop being a search engine!
+### CHECKME: maybe we can set these as top-level parameters, and the JSON
+### would inherit them? Otherwise, head/tail on facets will be hard...
+.facetConstants <- list(limit=-1L, sort="index")
+
+setMethod("facetParams", c("SolrQuery5.1", "character"),
+          function(x, by, useNA=FALSE, ...) {
+              if (!isTRUEorFALSE(useNA)) {
+                  stop("'useNA' must be TRUE or FALSE")
+              }
+              if (any(is.na(by))) {
+                  stop("'by' must not contain NAs")
+              }
+              stats <- statsParams(x, ...)
+              json <- lapply(by, function(f) {
+                                 list(terms=c(list(field=f, missing=useNA),
+                                          stats, .facetConstants))
+                             })
+              names(json) <- by
+              json
+          })
+
+setMethod("facetParams", c("SolrQuery5.1", "name"),
+          function(x, by, ...) {
+              callNextMethod()[[1L]]
+          })
+
+setMethod("facetParams", c("SolrQuery5.1", "call"),
+          function(x, by, where, ...) {
+              constants <- facetConstants()
+              params <- callNextMethod(x, by, where)
+              range <- params$facet.range
+              if (!is.null(range)) {
+                  json <- list(field=range)
+                  subkeys <- c("start", "end", "gap", "include")
+                  keys <- paste0("f.", range, ".facet.range.", subkeys)
+                  json[subkeys] <- params[keys]
+                  type <- "range"
+              } else {
+                  json <- list(q=params$facet.query)
+                  json <- c(json, common)
+                  type <- "query"
+              }
+              ans <- list()
+              ans[[type]] <- c(json, statsParams(x, ...), .facetConstants)
+### 5.2? ans <- c(type=type, json, statsParams(...), .facetConstants)
+              ans
+          })
+
+setGeneric("facetParams<-",
+           function(x, ..., value) standardGeneric("facetParams<-"),
+           signature="x")
+
+setReplaceMethod("facetParams", "SolrQuery", function(x, value) {
+                     x <- configure(x, rows=0L, facet="true", facet.limit=-1L,
+                                    facet.sort="index")
+                     params(x) <- c(params(x), value)
+                     x
+                 })
+
+setReplaceMethod("facetParams", "SolrQuery5.1", function(x, value) {
+                     params(x)$rows <- 0L
+                     json(x)$facet <- value
+                     x                     
+                 })
+
 
 ### In a facet formula, the terms are translated into either a
 ### facet.field (if a name) or a list of facet parameters (a
@@ -485,12 +593,12 @@ setMethod("facet", c("SolrQuery", "character"),
 ### like an abuse? and we should just wait for the analytics
 ### component.
 
-prepareFacetEnv <- function(env) {
+prepareFacetEnv <- function(x, env) {
   ans <- list(cut=facet_cut)
   ans[c(">", ">=", "<", "<=", "==", "!=", "(", "&", "|", "!", "%in%")] <-
     list(function(e1, e2) {
       this.call <- sys.call()
-      facet.query <- translate(this.call, SolrQParserExpression(), env)
+      facet.query <- translate(this.call, queryTarget(x), env)
       list(facet.query=setNames(list(as.character(facet.query)),
              deparse(sys.call())))
     })
@@ -553,6 +661,24 @@ facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
   }
 }
 
+facetParams_json <- function(x, params, terms, ...) {
+    if (is.null(params)) {
+        params <- list()
+    }
+    term <- terms[[1L]]
+    pterm <- params[[deparse(term)]]
+    if (length(terms) > 1L) {
+        if (is.null(pterm)) {
+            pterm <- facetParams(x, term)
+        }
+        pterm$facet <- facetParams_json(x, params$facet, terms[-1L], ...)
+    } else {
+        pterm <- facetParams(x, term, ...)
+    }
+    params[[deparse(term)]] <- pterm
+    params
+}
+
 enablesFacet <- function(x) {
   identical(params(x)$facet, "true")
 }
@@ -611,34 +737,6 @@ parseStatsFormula <- function(x) {
   }
   list(fields=fields, facet=facet)
 }
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Analytics
-###
-
-### Solr 5.1 introduced an awesome aggregation framework.
-
-### What we need to do:
-
-### - Rewrite faceting to use the JSON request format
-###   We can use http://wiki.apache.org/solr/SystemInformationRequestHandlers
-###   to determine the version; then pass some sort of format parameter
-###   to SolrQuery, i.e., "json" for the new stuff.
-### - facets() needs to support list of function calls for computing
-###   statistics.
-### - aggregate,Solr() needs to support list of functions, or arbitrarily
-###   named, quoted expressions.
-### - support up-front split(x, y? ~ x), followed by aggregate calls
-###   that do not require a formula...
-###   - could that GroupedSolr object have a sort method? sure...
-
-### Available statistics:
-### sum => sum
-### avg => mean
-### sumsq ~> var, sd
-### min/max => min/max
-### unique => countUnique? nunique?
-### percentile => quantile, median
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Summary (combination of facets and stats)

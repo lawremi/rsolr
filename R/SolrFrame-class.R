@@ -11,7 +11,7 @@ setClass("SolrFrame", contains="Solr")
 ### Constructor
 ###
 
-.SolrFrame <- function(core, query=SolrQuery()) {
+.SolrFrame <- function(core, query=compatibleQuery(core)) {
   new("SolrFrame", core=core, query=query)
 }
 

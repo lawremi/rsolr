@@ -13,10 +13,10 @@ importFrom(tools, pskill)
 importFrom(utils, stack)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
-       copyFields, fieldTypes, name, version, schema, unmeta, facets,
+       copyFields, fieldTypes, name, version, schema, unmeta, facet,
        query, core, params, "params<-")
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
-              fieldNames, subset, xtabs, facet, stats, transform, summary,
+              fieldNames, subset, xtabs, facets, stats, transform, summary,
               head, tail, rev, aggregate, count, mean, sd, var, window,
               groups, deriveSolrSchema, ndoc, nfield, as.data.frame, rename)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)

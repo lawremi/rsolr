@@ -26,7 +26,13 @@ setClass("Solr",
 
 core <- function(x) x@core
 
-query <- function(x) x@query
+query <- function(x) {
+    query <- x@query
+    solr(queryTarget(query)) <- x
+    solr(functionTarget(query)) <- x
+    solr(aggregateTarget(query)) <- x
+    query
+}
 `query<-` <- function(x, value) {
   x@query <- value
   x
@@ -88,10 +94,13 @@ setMethod("$", "Solr", function(x, name) {
               x[[name]]
           })
 
-setMethod("subset", "Solr", function(x, ...) {
-  query(x) <- subset(query(x), ..., select.from=fieldNames(x, onlyStored=TRUE))
-  x
-})
+setMethod("subset", "Solr",
+          function(x, ..., translation.target = SolrQParserExpression(x)) {
+              query(x) <- subset(query(x), ...,
+                                 translation.target=translation.target,
+                                 select.from=fieldNames(x, onlyStored=TRUE))
+              x
+          })
 
 window.Solr <- function(x, ...) window(x, ...)
 

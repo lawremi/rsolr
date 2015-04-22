@@ -28,8 +28,10 @@ populateSolrHome <- function(customSchema=NULL) {
   file.copy(system.file("example-solr", "solr", package="rsolr"),
             dirname(solr.home), recursive=TRUE)
   if (!is.null(customSchema)) {
-    saveXML(customSchema,
-            file.path(solr.home, "collection1", "conf", "schema.xml"))
+      sampleCorePath <- file.path(solr.home, "cores", "techproducts")
+      corePath <- file.path(solr.home, "cores", name(customSchema))
+      file.rename(sampleCorePath, corePath)
+      saveXML(customSchema, file.path(corePath, "conf", "schema.xml"))
   }
   solr.home
 }
@@ -38,11 +40,17 @@ getStartJar <- function() {
   system.file("example-solr", "start.jar", package="rsolr")
 }
 
+getLogConfFile <- function() {
+    system.file("example-solr", "resources", "log4j.properties",
+                package="rsolr")
+}
+
 buildCommandLine <- function() {
   paste("cd", dirname(getStartJar()), "; java",
         paste0("-Dsolr.solr.home=", getSolrHome()),
         paste0("-DSTOP.PORT=", 8079L),
         paste0("-DSTOP.KEY=", "rsolr"),
+        paste0("-Dlog4j.configuration=file://", getLogConfFile()),
         "-jar", basename(getStartJar()))
 }
 
@@ -93,7 +101,8 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
 
 TestSolr <- function(schema = NULL, start = TRUE)
 {
-  uri <- "http://localhost:8983/solr"
+  uri <- file.path("http://localhost:8983/solr",
+                   if (is.null(schema)) "techproducts" else name(schema))
   solr <- .ExampleSolr$new(uri = uri, customSchema = schema)
   if (start) {
     solr$start()

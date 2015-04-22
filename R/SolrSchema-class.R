@@ -40,15 +40,14 @@ parseSchemaXML <- function(doc) {
     list(name=xmlAttrs(schema)["name"],
          version=as.numeric(xmlAttrs(schema)["version"]),
          uniqueKey=uniqueKey,
-         fields=attrsToList(getNodeSet(schema, "//schema/fields/field")),
-         dynamicFields=attrsToList(getNodeSet(schema,
-           "//fields/dynamicField")),
+         fields=attrsToList(getNodeSet(schema, "//field")),
+         dynamicFields=attrsToList(getNodeSet(schema, "//dynamicField")),
          copyFields=attrsToList(getNodeSet(schema, "//copyField")),
-         fieldTypes=attrsToList(getNodeSet(schema,
-           "//types/fieldType | //types/fieldtype")))
+         fieldTypes=attrsToList(getNodeSet(schema, "//fieldType")))
   ans <- parseSchemaFromREST(likeREST)
   ## do not force dynamic fields after static fields
-  fieldsInOrder <- unlist(getNodeSet(schema, "//fields//@name"),
+  fieldsInOrder <- unlist(getNodeSet(schema,
+                                     "//field/@name | //dynamicField/@name"),
                           use.names=FALSE)
   fields(ans) <- fields(ans)[fieldsInOrder]
   ans

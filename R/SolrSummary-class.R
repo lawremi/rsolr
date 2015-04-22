@@ -92,7 +92,9 @@ SolrStatsFacet <- function(x, field) {
 ### Accessors
 ###
 
-facets <- function(x) x@facets
+setGeneric("facets", function(x, ...) standardGeneric("facets"))
+setMethod("facets", "ANY", function(x) x@facets)
+
 field <- function(x) x@field
 
 setGeneric("stats", function(x, which) standardGeneric("stats"))

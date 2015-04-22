@@ -127,7 +127,7 @@ setMethod("version", "SolrCore", function(x) {
           })
 
 compatibleQuery <- function(x) {
-    SolrQuery(version = if (version(x) >= "5.1") "5.1" else "")
+    SolrQuery(version(x))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

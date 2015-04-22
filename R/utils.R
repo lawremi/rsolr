@@ -139,6 +139,33 @@ normColIndex <- function(x, f) {
 
 ROWNAMES <- function (x) if (length(dim(x)) != 0L) rownames(x) else names(x)
 
+stripI <- function(x) {
+    if (is.call(x) && x[[1L]] == quote(I))
+        x[[2L]]
+    else x
+}
+
+setMethods <- function (f, signatures = list(), definition,
+                        where = topenv(parent.frame()), ...) 
+{
+    for (signature in signatures)
+        setMethod(f, signature = signature, definition, where = where, ...)
+}
+
+wrapParens <- function(x) paste0("(", x, ")")
+
+VariadicToBinary <- function(variadic, binary)
+{
+    args <- formals(variadic)
+    args$... <- NULL
+    forwardArgs <- setNames(lapply(names(args), as.name), names(args))
+    reduceFun <- function(..x, ..y) NULL
+    body(reduceFun) <- as.call(c(list(binary, quote(..x), quote(..y)),
+                                 forwardArgs))
+    body(variadic) <- substitute(Reduce(FUN2, list(...)), list(FUN2=reduceFun))
+    variadic
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Pretty printing stolen from S4Vectors
 ###
@@ -219,3 +246,4 @@ makePrettyMatrixForCompactPrinting <-
   rownames(ans) <- format(ans_rownames, justify="right")
   ans
 }
+

@@ -22,6 +22,10 @@ setClass("SolrAggregation",
 formula.SolrAggregation <- function(x) x@formula
 
 solr <- function(x) x@solr
+`solr<-` <- function(x, value) {
+    x@solr <- value
+    x
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
