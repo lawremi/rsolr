@@ -2,7 +2,7 @@
 ### SolrQuery objects
 ### -------------------------------------------------------------------------
 
-### Represents a query to a Solr search engine.
+### A Promise of a SolrResult, from a SolrCore
 
 ### We want to take a lazy approach to query evaluation. The
 ### alternative would be specifying a Solr query (which can be quite
@@ -12,6 +12,10 @@
 ### main argument for deferred query evaluation is to manage
 ### complexity, but there is also opportunity for optimization by
 ### batching queries.
+
+### This means that the SolrQuery represents a promise, but for
+### flexibility we allow the promise to be unbound, i.e., it does not
+### need to be attached to a particular Solr core.
 
 ### Support for Solr extensions
 ## Custom functions: functions returning literal/name/Expression in custom env
@@ -44,19 +48,22 @@
 ###   - we could even support predicates, like:
 ###     subset(x, y > mean(z[j > 10]))
 ###     because the j>10 is a simple filter on the aggregation request
+###
+
+setClassUnion("SolrCoreORNULL", c("SolrCore", "NULL"))
 
 setClass("SolrQuery",
-         representation(params="list",
+         representation(expr="SolrParameterList",
+                        context="SolrCoreORNULL",
                         queryTarget="SolrLuceneExpression",
                         functionTarget="SolrFunctionExpression",
                         aggregateTarget="SolrAggregateExpression"),
-         prototype = list(
-           params = list(
-             q     = "*:*",
-             start = 0L,
-             rows  = .Machine$integer.max,
-             fl    = "*")
-           ))
+         contains = "SimplePromise",
+         validity = function(object) {
+             if (!is.null(core(object)) &&
+                 version(core(object)) < version(object))
+                 "core/query version mismatch"
+         })
 
 setClass("SolrQuery5.1", contains="SolrQuery")
 
@@ -64,27 +71,46 @@ setClass("SolrQuery5.1", contains="SolrQuery")
 ### Constructor
 ###
 
-SolrQuery <- function(version="5.1") {
+SolrQuery <- function(version = "5.1") {
     version <- as.package_version(version)
     new(paste0("SolrQuery", if (version >= "5.1") "5.1" else ""))
 }
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Accessors
+###
+
+setMethod("core", "SolrQuery", function(x) context(x))
+
+setReplaceMethod("core", "SolrQuery", function(x, value) {
+                     if (!is.null(context(x)) &&
+                         !identical(context(x), value)) {
+                         stop("query was already bound to a different core")
+                     }
+                     context(x) <- value
+                     x
+                 })
+
+setMethod("version", "SolrQuery", function(x) {
+              as.package_version(sub("^SolrQuery", "", class(x)))
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Low-level accessors
 ###
 
 params <- function(x) {
-  x@params
+  x@expr
 }
 
 `params<-` <- function(x, value) {
-  x@params <- value
+  x@expr <- value
   x
 }
 
 configure <- function(x, ...) {
   args <- c(...)
-  x@params[names(args)] <- args
+  params(x)[names(args)] <- args
   x
 }
 
@@ -97,9 +123,6 @@ json <- function(x) {
     x
 }
 
-setMethod("version", "SolrQuery", function(x) {
-              as.package_version(sub("^SolrQuery", "", class(x)))
-          })
 
 ### These enable the overriding of translation behavior
 
@@ -126,22 +149,28 @@ aggregateTarget <- function(x) x@aggregateTarget
 ###
 
 setMethod("subset", "SolrQuery",
-          function(x, subset, select, fields, select.from = character())
+          function(x, subset, select, fields, select.from)
 {
   if (!missing(subset)) {
     expr <- eval(call("bquote", substitute(subset), top_prenv(subset)))
-    query <- translate(expr, queryTarget(x), top_prenv(subset))
+    query <- translate(expr, queryTarget(x), RSolrContext(top_prenv(subset), x))
     params(x) <- c(params(x), fq = as.character(query))
   }
   if (!missing(select)) {
     if (!missing(fields)) {
       stop("only one of 'fields' and 'select' can be specified")
     }
+    if (missing(select.from)) {
+        if (fulfillable(x)) {
+            select.from <- fieldNames(core(x), onlyStored=TRUE)
+        } else {
+            stop("cannot 'select' when 'core(x)' is NULL")
+        }
+    }
     inds <- as.list(seq_along(select.from))
     names(inds) <- select.from
     fields <- select.from[eval(substitute(select), inds, top_prenv(select))]
-  }
-  if (!missing(fields)) {
+  } else if (!missing(fields)) {
     x <- restrictToFields(x, fields)
   }
   x
@@ -405,14 +434,10 @@ setMethod("groups", c("SolrQuery", "formula"), function(x, by, ...) {
 ###   - could support each(select, funs), where each function in
 ###     'funs' is applied to each column in 'select'.
 ###   - could support a formula that splits (and selects columns)
-
-### Available statistics:
-### sum => sum
-### avg => mean
-### sumsq ~> var, sd
-### min/max => min/max
-### unique => countUnique? nunique?
-### percentile => quantile, median
+### - think about having summary methods like mean() on SolrQuery...
+###   would result in a stat named "mean" in the result, could have
+###   formal accessor on result, following that convention.
+### - arbitrary stats on whole dataset by facets(), no formula.
 
 setMethod("xtabs", "SolrQuery",
           function(formula, data,
@@ -526,6 +551,7 @@ setMethod("facetParams", c("SolrQuery5.1", "character"),
               }
               stats <- statsParams(x, ...)
               json <- lapply(by, function(f) {
+### 5.2: c(list(type=terms, field=f, missing=useNA),
                                  list(terms=c(list(field=f, missing=useNA),
                                           stats, .facetConstants))
                              })
@@ -556,7 +582,7 @@ setMethod("facetParams", c("SolrQuery5.1", "call"),
               }
               ans <- list()
               ans[[type]] <- c(json, statsParams(x, ...), .facetConstants)
-### 5.2? ans <- c(type=type, json, statsParams(...), .facetConstants)
+### 5.2: ans <- c(type=type, json, statsParams(...), .facetConstants)
               ans
           })
 
@@ -762,38 +788,6 @@ setMethod("summary", "SolrQuery",
             facet(stats(object, of[num]), of[!num])
           })
 
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Response format
-###
-
-typeToFormat <- c(list = "json", data.frame = "csv", XMLDocument = "xml")
-
-responseType <- function(x) {
-  if (is.null(params(x)$wt)) {
-    NULL
-  } else {
-    names(typeToFormat)[match(params(x)$wt, typeToFormat)]
-  }
-}
-
-`responseType<-` <- function(x, value) {
-  if (!isSingleString(value)) {
-    stop("'value' must be a single, non-NA string")
-  }
-  format <- typeToFormat[value]
-  if (is.na(format)) {
-    stop("no format for response type: ", value)
-  }
-  params(x)$wt <- format
-  if (format == "json") {
-    params(x)$json.nl <- "map"
-    params(x)$csv.null <- NULL
-  } else if (format == "csv") {
-    params(x)$json.nl <- NULL
-    params(x)$csv.null <- "NA"
-  }
-  x
-}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
@@ -807,16 +801,9 @@ paramToCSV <- function(x) {
   else x
 }
 
-setMethod("as.character", "SolrQuery", function(x, ...) {
-  p <- params(x)
-  p$fl <- list(paramToCSV(p$fl))
-  p$start <- list(paramToCSV(p$start))
-  p$rows <- list(paramToCSV(p$rows))
-  param.names <- rep(names(p), elementLengths(unlist(p, recursive=FALSE)))
-  setNames(unlist(p, use.names=FALSE), param.names)
+setMethod("as.character", "SolrQuery", function(x) {
+  as.character(params(x))
 })
-
-setAs("SolrQuery", "character", function(from) as.character.SolrQuery(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

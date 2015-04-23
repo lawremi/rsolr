@@ -329,7 +329,7 @@ setMethod("as.data.frame", "SolrStatsList",
                                        as.data.frame, row.names=row.names,
                                        optional=optional))
                   data.frame(field=rep(as.character(names(x)),
-                                 elementLengths(x)),
+                                 lengths(x)),
                              df, stringsAsFactors=FALSE, ...)
               })
 
@@ -359,7 +359,7 @@ setMethod("show", "TableList", function(object) {
   if (length(object) == 0L) {
     cat("< empty list of tables >\n")
   } else {
-    nlevels <- min(nlevels, max(elementLengths(object)))
+    nlevels <- min(nlevels, max(lengths(object)))
     mat <- do.call(cbind, lapply(object, formatTable, nlevels=nlevels))
     tab <- as.table(mat)
     rownames(tab) <- rep("", nrow(tab))
@@ -369,7 +369,7 @@ setMethod("show", "TableList", function(object) {
 
 setMethod("show", "SolrSummary", function(object) {
   cat("facets (with at least one level):\n")
-  show(facets(object)[elementLengths(facets(object)) > 0L])
+  show(facets(object)[lengths(facets(object)) > 0L])
   cat("\nstats:\n")
   show(stats(object))
 })

@@ -5,14 +5,14 @@
 ### High-level object that represents a Solr core as a data frame
 ###
 
-setClass("SolrFrame", contains="Solr")
+setClass("SolrFrame", contains=c("Solr", "Context"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
 ###
 
-.SolrFrame <- function(core, query=compatibleQuery(core)) {
-  new("SolrFrame", core=core, query=query)
+SolrList <- function(x) {
+    newSolr("SolrFrame", x)
 }
 
 SolrFrame <- function(uri, ...) {
@@ -143,8 +143,12 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
 ###
 
 setAs("Solr", "SolrFrame", function(from) {
-  .SolrFrame(core(from), query(from))
-})
+          SolrFrame(query(from))
+      })
+
+setAs("SolrQuery", "SolrFrame", function(from) {
+          SolrFrame(from)
+      })
 
 as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
                                     fill = TRUE)
@@ -155,6 +159,16 @@ as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
 setMethod("as.data.frame", "SolrFrame",
           function(x, row.names = NULL, optional = FALSE, fill = TRUE) {
             callNextMethod(x, row.names=row.names, optional=optional, fill=fill)
+          })
+
+setMethod("eval", c("SolrExpression", "SolrFrame"),
+          function (expr, envir, enclos) {
+              transform(envir, x = .(expr))$x
+          })
+
+setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
+          function (expr, envir, enclos) {
+              aggregate(envir, x = .(expr))$x
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

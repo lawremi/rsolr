@@ -48,7 +48,7 @@ recycleVector <- function(x, length.out)
 ## uses c() to combine high-level classes like Date
 simplify2array2 <- function(x) {
   x[vapply(x, is.null, logical(1L))] <- NA # somewhat debatable
-  uniq.lengths <- unique(elementLengths(x))
+  uniq.lengths <- unique(lengths(x))
   if (length(uniq.lengths) != 1L) {
     x
   } else if (uniq.lengths == 1L) {
@@ -58,12 +58,8 @@ simplify2array2 <- function(x) {
   }
 }
 
-elementLengths <- function(x) {
-  vapply(x, length, integer(1L))
-}
-
 grouping <- function(x) {
-  rep(seq_along(x), elementLengths(x))
+  rep(seq_along(x), lengths(x))
 }
 
 truncateTable <- function(x, nlevels) {
@@ -84,7 +80,7 @@ formatTable <- function(x, nlevels) {
 dfToTable <- function(x) {
   factors <- x[-length(x)]
   levels <- lapply(factors, levels)
-  tab <- as.table(array(0L, unname(elementLengths(levels))))
+  tab <- as.table(array(0L, unname(lengths(levels))))
   dimnames(tab) <- levels
   tab[as.matrix(factors)] <- as.integer(x$count)
   tab

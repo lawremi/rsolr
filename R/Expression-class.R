@@ -26,18 +26,33 @@ setClass("SimpleExpression",
 ### of the names resolve to Symbol objects.
 ###
 
-setClass("Symbol", contains=c("name", "Expression"))
+setClass("Symbol", contains="Expression")
 
-### Factory function for Symbol objects (by target Expressions)
-setGeneric("Symbol", function(x, name) standardGeneric("Symbol"))
+setClass("SimpleSymbol",
+         representation(name="character"),
+         contains="Symbol")
 
-setMethod("Symbol", c("ANY", "character"), function(x, name) {
-              Symbol(x, as.name(name))
+setGeneric("Symbol", function(name, target) standardGeneric("Symbol"))
+
+setMethod("Symbol", c("character", "ANY"), function(name, target) {
+              Symbol(as.name(name), target)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Environment construction
+### Translation
 ###
+
+setGeneric("translate", function(x, target, ...) standardGeneric("translate"))
+
+setMethod("translate", c("language", "Expression"),
+          function(x, target, ...) {
+              as(eval(x, translationContext(x, target, ...)), class(target),
+                 strict=FALSE)
+          })
+
+setGeneric("translationContext",
+           function(x, target, ...) standardGeneric("translationContext"))
+
 ### We rely on dispatch (i.e., the strategy pattern), to construct an
 ### environment for each expression type. Evaluating the R expression
 ### in the environment should result in the desired expression object.
@@ -49,55 +64,28 @@ setMethod("Symbol", c("ANY", "character"), function(x, name) {
 ###   necessary arguments in their generic signature.
 ###
 ### Thus, we need a way for the target expression to augment the
-### environment to handle special cases.
+### environment to handle special cases. Obviously, if the objects are
+### used in a different scope, things will break, so we have to keep
+### the function overrides to a minimum.
 ###
 
-VarsEnv <- function(x, expr, parent) {
-    vars <- all.vars(expr)
-    syms <- setNames(lapply(vars, Symbol), vars)
+PromiseEnv <- function(x, target, context, parent) {
+    vars <- all.vars(x)
+    syms <- lapply(vars, Symbol, target)
+    syms <- setNames(lapply(vars, Promise, context), vars)
     list2env(syms, parent=parent)
 }
 
-setGeneric("fundamentalOverride",
-           function(x, fun) standardGeneric("fundamentalOverride"))
-
-setMethod("fundamentalOverride", c("Expression", "language"), function(x, fun) {
-              eval(fun[[1L]])
-          })
-
-setMethod("fundamentalOverride", c("SolrLuceneExpression", "("),
-          function(x, fun) {
-              function(x) {
-                  if (is(x, "SolrLuceneExpression")) {
-                      LuceneExpression(wrapParens(x))
-                  } else {
-                      x
-                  }
-              }
-          })
-
-FunsEnv <- function(x, expr, parent) {
-    lst <- list()
-    fundamentals <- c("{", "if", "<-", "for", "while", "repeat", "(")
-    lst[fundamentals] <- lapply(fundamentals,
-                                function(f) fundamentalOverride(x, new(f)))
-    l$"-" <- minus
-    overrides <- overrides(x)
-    lst[names(overrides)] <- overrides
-    list2env(lst, parent=parent)
+FunsEnv <- function(target, parent) {
+    list2env(overrides(target), parent=parent)
 }
 
-setMethod("translationContext", "Expression",
-          function(x, expr, parent = emptyenv()) {
-              VarsEnv(x, expr, FunsEnv(x, expr, parent))
+setMethod("translationContext", c("language", "Expression"),
+          function(x, target, parent = emptyenv()) {
+              PromiseEnv(x, target, parent, FunsEnv(target, parent))
           })
 
 setGeneric("overrides", function(x) standardGeneric("overrides"))
-
-setMethod("overrides", "SolrExpression", function(x) {
-              list(pmin=VariadicToBinary(pmin, pmin2),
-                   pmax=VariadicToBinary(pmax, pmax2))
-          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
@@ -106,34 +94,6 @@ setMethod("overrides", "SolrExpression", function(x) {
 setMethod("as.character", "SimpleExpression", function(x) {
   x@expr
 })
-
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Translation
-###
-
-setGeneric("translate", function(x, target, ...) standardGeneric("translate"))
-
-setMethod("translate", c("language", "Expression"),
-          function(x, target, ...) {
-            as(eval(x, translationContext(target, x, ...)), class(target),
-               strict=FALSE)
-          })
-
-setGeneric("translationContext",
-           function(x, ...) standardGeneric("translationContext"))
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### General Solr translation
-###
-
-setMethod("forceBefore", c("SolrAggregateExpression", "SolrExpression"),
-          function(x, y) TRUE)
-
-setMethod("forceBefore", c("SolrSymbol", "SolrExpression"),
-          function(x, y) TRUE)
-
-
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

@@ -3,7 +3,14 @@
 ### -------------------------------------------------------------------------
 ###
 ### Implements the Expression translation framework for Solr queries
-### and function calls.
+### and function calls. This happens through S4 dispatch on all
+### translatable functions. Note that if we did this for too many
+### functions, even our implementation would become lazy. Thus, we
+### reserve all low-level R object manipulation functions, including
+### things like class(), as(), slot access, etc. Not that it would be
+### possible to set methods on those anyway. But we are careful about
+### functions like paste() and length(), even though Solr currently
+### has no analog.
 ###
 ### An interesting test case for extensibility would be an external
 ### package that adds spatial query support for Ranges objects:
@@ -11,16 +18,27 @@
 ### pos %over% GRanges("1", IRanges(1,10)) => pos:[1,1 TO 10,1]
 ### pos %over% circle(cx,cy,d) => {!frange l=0 u=d}geodist(pos, cx, cy)
 ###
+### Other things to add:
+### Transform:
+###  cut() using solr::if(lucene::range, 1, if (lucene::range, 2, ...))
+### Filter/transform:
+###  grepl(), which would just be an alias for "=="
+### Aggregation:
+###  anyNA(), because faceting counts missing values
+### Output restriction:
+###  head()/tail()
+### On promises:
+###  unique(), from facets
+###  intersect(), unique(x[x %in% table])
+###  range(), from min+max
+###  length(), via nrow,SolrFrame()
+
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Expressions
 ###
 
-setClassUnion("SolrORNULL", c("Solr", "NULL"))
-
-setClass("SolrExpression",
-         representation(solr="SolrORNULL"),
-         contains=c("Expression", "VIRTUAL"))
+setClass("SolrExpression", contains=c("Expression", "VIRTUAL"))
 
 ## NOTE: subclasses of this might have to inherit directly from SolrExpression
 ##       in order to make dispatch unambiguous...
@@ -87,6 +105,12 @@ setClass("JoinQParserExpression",
              }
          })
 
+setClass("SolrAggregateExpression",
+         contains = c("SimpleExpression", "SolrExpression"))
+
+setClassUnion("SolrAggregateArgument",
+              c("SolrAggregateSymbol", "SolrFunctionExpression"))
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Symbols
 ###
@@ -99,18 +123,10 @@ setClass("SolrLuceneSymbol", contains="SolrSymbol")
 setClassUnion("SolrLuceneExpressionOrSymbol",
               c("SolrLuceneExpression", "SolrLuceneSymbol"))
 
-setMethod("Symbol", c("SolrLuceneExpression", "name"), function(x, name) {
-              SolrLuceneSymbol(name, solr(x))
-          })
-
 ## targeting plain Solr function expressions, as in sorting and statistics
 setClass("SolrFunctionSymbol", contains="SolrSymbol")
 setClassUnion("SolrFunctionExpressionOrSymbol",
               c("SolrFunctionExpression", "SolrFunctionSymbol"))
-
-setMethod("Symbol", c("SolrFunctionExpression", "name"), function(x, name) {
-              SolrFunctionSymbol(name, solr(x))
-          })
 
 ## Result of x[i]
 setClass("PredicatedSolrSymbol",
@@ -118,44 +134,67 @@ setClass("PredicatedSolrSymbol",
                         predicate="SolrLuceneExpression"),
          contains="Expression")
 
+setClass("SolrAggregateSymbol", contains = "SolrFunctionSymbol")
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
 ###
 
 LuceneExpression <- function(x = "") {
-    new("LuceneExpression", expr=x)
+    new("LuceneExpression", expr=as.character(x))
 }
 
-SolrFunctionExpression <- function(x = "", solr = NULL) {
-    new("SolrFunctionExpression", expr=x, solr=solr)
+SolrFunctionExpression <- function(x = "") {
+    new("SolrFunctionExpression", expr=as.character(x))
 }
 
-SolrQParserExpression <- function(solr = NULL) {
-    new("SolrQParserExpression", solr=solr)
+SolrQParserExpression <- function() {
+    new("SolrQParserExpression")
 }
 
 FRangeQParserExpression <- function(query, l = NULL, u = NULL,
                                     incl = TRUE, incu = TRUE)
 {
-    new("FRangeQParserExpression", query=query, l=l, u=u, incl=incl, incu=incu)
+    new("FRangeQParserExpression", query=as(query, "SolrFunctionExpression"),
+        l=l, u=u, incl=incl, incu=incu)
 }
 
 LuceneQParserExpression <- function(query, op = "OR", df = NULL) {
-    new("LuceneQParserExpression", query=query, op=op, df=df)
+    new("LuceneQParserExpression", query=as(query, "SolrLuceneExpression"),
+        op=op, df=df)
 }
 
 JoinQParserExpression <- function(query, from, to) {
-    new("JoinQParserExpression", query=query, from=from, to=to)
+    new("JoinQParserExpression", query=as(query, "SolrLuceneExpression"),
+        from=as.character(from), to=as.character(to))
 }
 
-SolrLuceneSymbol <- function(name, solr) {
-    new("SolrLuceneSymbol", name, solr=solr)    
+SolrLuceneSymbol <- function(name) {
+    new("SolrLuceneSymbol", name=name)
 }
 
-SolrFunctionSymbol <- function(name, solr) {
-    new("SolrFunctionSymbol", name, solr=solr)    
+setMethod("Symbol", c("name", "SolrLuceneExpression"),
+          function(name, target) {
+              SolrLuceneSymbol(name)
+          })
+
+SolrFunctionSymbol <- function(name) {
+    new("SolrFunctionSymbol", name=name)    
 }
 
+setMethod("Symbol", c("name", "SolrFunctionExpression"),
+          function(name, target) {
+              SolrFunctionSymbol(name)
+          })
+
+SolrAggregateSymbol <- function(name) {
+    new("SolrAggregateSymbol", name=name)    
+}
+
+setMethod("Symbol", c("name", "SolrAggregateExpression"),
+          function(name, target) {
+              SolrAggregateSymbol(name)
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Serialization
@@ -184,10 +223,15 @@ setMethod("as.character", "JoinQParserExpression", function(x) {
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Materialization
+### Function overrides
+###
+### Need to dispatch on variadic pmax/pmin in binary fashion
 ###
 
-
+setMethod("overrides", "SolrExpression", function(x) {
+              list(pmin=VariadicToBinary(pmin, pmin2),
+                   pmax=VariadicToBinary(pmax, pmax2))
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lucene translation
@@ -229,7 +273,7 @@ setMethods("Logic",
 
 setMethod("!", "SolrLuceneExpressionOrSymbol", function(x) {
               if (substring(x, 1L, 1L) == "-") {
-                  expr <- substring(x, 2L) # two nots cancel each other
+                  expr <- substring(as.character(x), 2L)
               } else {
                   expr <- paste0("-", wrapParens(x))
               }
@@ -237,7 +281,7 @@ setMethod("!", "SolrLuceneExpressionOrSymbol", function(x) {
           })
 
 setMethod("is.na", "SolrLuceneSymbol", function(x) {
-              LuceneExpression(paste0("-", x, ":*.*"))
+              LuceneExpression(paste0("-", as.character(x), ":*.*"))
           })
 
 setMethods("Comparison",
@@ -312,6 +356,7 @@ luceneRelational <- function(fun, x, y) {
     if (fun != "==" && fun != "!=" && !is.numeric(call$y)) {
         stop("non-numeric argument to numeric relational operator")
     }
+    call$x <- as.character(call$x)
     call$y <- normLuceneLiteral(call$y)
     expr <- with(call,
                  switch(fun,
@@ -342,7 +387,7 @@ setAs("SolrFunctionExpression", "SolrLuceneExpression", function(from) {
       })
 
 setAs("name", "SolrLuceneExpression", function(from) {
-          LuceneExpression(paste0(from, ":true"))
+          LuceneExpression(paste0(as.character(from), ":true"))
       })
 
 setAs("name", "SolrQParserExpression", function(from) {
@@ -469,6 +514,8 @@ setMethod("rescale", "SolrExpression", function(x, min, max) {
               solrCall("scale", x, min, max)
           })
 
+setPromiseMethods("rescale")
+
 ## generic in S4Vectors
 setMethod("ifelse",
           c("SolrExpression", "SolrFunctionArgument", "SolrFunctionArgument"),
@@ -554,9 +601,11 @@ solrNotEqual <- function(x, y) {
 }
 
 solrCheckArgs <- function(fun, ...) {
-    lens <- lengths(list(...))
+    args <- list(...)
+    exprs <- vapply(args, is, "Expression", FUN.VALUE=logical(1L))
+    lens <- lengths(args[exprs])
     if (any(lens != 1L)) {
-        argnames <- substitute(list(...))[-1L]
+        argnames <- substitute(list(...))[-1L][exprs]
         stop("some arguments to '", fun, "' have length() != 1: ",
              paste0("'", argnames[lens != 1L], "'", collapse=", "))
     }
@@ -573,7 +622,7 @@ solrArg <- function(x) {
     } else {
         x <- normLuceneLiteral(x)
     }
-    x
+    as.character(x)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -589,6 +638,31 @@ setAs("Expression", "SolrFunctionExpression", function(from) {
 
 setAs("name", "SolrFunctionExpression", function(from) {
           SolrFunctionExpression(as.character(from))
+      })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Solr Aggregation
+###
+### We can translate the following functions:
+###
+### sum => sum [Summary]
+### avg => mean
+### sumsq ~> var, sd
+### min/max => min/max [Summary]
+### unique => countUnique? nunique?
+### percentile => quantile, median
+### min+max => range [Summary] (on Promise and Solr, not SolrExpression)
+###
+
+setMethod("Summary", "Expression",
+          function (x, ..., na.rm = FALSE) {
+              fun <- switch(.Generic,
+                            )
+              solrCall(fun, as(x, "SolrFunctionExpression"))
+          })
+
+setAs("SolrAggregationExpression", "SolrFunctionExpression", function(from) {
+          SolrFunctionExpression(fulfill(from))
       })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

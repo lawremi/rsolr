@@ -178,7 +178,7 @@ setMethod("ndoc", "DocDataFrame", function(x) nrow(x))
 
 setGeneric("nfield", function(x, ...) standardGeneric("nfield"))
 setMethod("nfield", "ANY", function(x) length(fieldNames(x)))
-setMethod("nfield", "DocList", function(x) sum(elementLengths(x)))
+setMethod("nfield", "DocList", function(x) sum(lengths(x)))
 
 setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
   if (!isTRUEorFALSE(drop)) {

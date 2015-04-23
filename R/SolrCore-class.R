@@ -18,7 +18,8 @@
 setClass("SolrCore",
          representation(uri="RestUri",
                         schema="SolrSchema",
-                        version="package_version"))
+                        version="package_version"),
+         contains="Context")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
@@ -42,10 +43,10 @@ setGeneric("name", function(x) standardGeneric("name"))
 setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
-numFound <- function(x, query) {
-    emptyQuery <- head(query, 0L)
-    responseType(emptyQuery) <- "list"
-    as.integer(eval(emptyQuery, x)$response$numFound)
+numFound <- function(x, params) {
+    emptyParams$rows <- 0L
+    responseType(emptyParams) <- "list"
+    as.integer(eval(emptyParams, x)$response$numFound)
 }
 
 setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
@@ -126,9 +127,11 @@ setMethod("version", "SolrCore", function(x) {
               x@version
           })
 
-compatibleQuery <- function(x) {
-    SolrQuery(version(x))
-}
+setMethod("query", "SolrCore", function(x) {
+              query <- SolrQuery(version(x))
+              core(query) <- x
+              query
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -359,14 +362,25 @@ origin <- function(x) attr(x, "origin")
 setMethod("eval", c("SolrQuery", "SolrCore"),
           function (expr, envir, enclos)
           {
-            params <- prepareQueryParams(envir, expr)
-            expected.type <- params["wt"]
-            response <- tryCatch(read(envir@uri$select, params),
-                                 error = SolrErrorHandler(envir, expr))
-            response <- processSolrResponse(response, expected.type)
-            origin(response) <- .SolrList(envir, expr)
+            if (!is.null(core(expr)) && !identical(core(expr), envir)) {
+                stop("cannot evaluate a query attached to a different core")
+            }
+            response <- eval(params(expr), envir)
+            origin(response) <- expr
             response
           })
+
+setMethod("eval", c("SolrParamList", "SolrCore"),
+          function (expr, envir, enclos)
+          {
+              params <- prepareQueryParams(envir, expr)
+              expected.type <- params["wt"]
+              response <- tryCatch(read(envir@uri$select, params),
+                                   error = SolrErrorHandler(envir, expr))
+              response <- processSolrResponse(response, expected.type)
+              origin(response) <- SolrQuery(envir, expr)
+              response
+          }
 
 prepareBoundsParams <- function(p, nrows) {
   ans_start <- 0L
@@ -399,27 +413,27 @@ prepareBoundsParams <- function(p, nrows) {
   p
 }
 
-ngroup <- function(x, query) {
-  params(query)$group.limit <- 0L
-  groupings <- eval(query, x)$grouped
+ngroup <- function(x, params) {
+  params$group.limit <- 0L
+  groupings <- eval(params, x)$grouped
   vapply(groupings, function(g) length(g$groups), integer(1L))
 }
 
-resultLength <- function(x, query) {
-  ans <- if (identical(params(query)$group, "true"))
-    ngroup(x, query)
-  else numFound(x, query)
+resultLength <- function(x, params) {
+  ans <- if (identical(params$group, "true"))
+    ngroup(x, params)
+  else numFound(x, params)
   if (length(ans) > 1L) {
     warning("ambiguous result length (multiple groupings)")
   }
   ans
 }
 
-prepareQueryParams <- function(x, query) {
-  params(query) <- prepareBoundsParams(params(query), resultLength(x, query))
-  if (is.null(responseType(query)))
-    responseType(query) <- "list"
-  as.character(query)
+prepareQueryParams <- function(x, params) {
+    params <- prepareBoundsParams(params, resultLength(x, params))
+    if (is.null(responseType(params)))
+        responseType(params) <- "list"
+    as.character(params)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

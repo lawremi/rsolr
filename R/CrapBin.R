@@ -92,6 +92,31 @@ RestrainedForceGeneric <- function(name, env) {
     },  list(FUN=as.name(name))))
 }
 
+setGeneric("fundamentalOverride",
+           function(x, fun) standardGeneric("fundamentalOverride"))
+
+setMethod("fundamentalOverride", c("Expression", "language"), function(x, fun) {
+              eval(fun[[1L]])
+          })
+
+setMethod("fundamentalOverride", c("SolrLuceneExpression", "("),
+          function(x, fun) {
+              function(x) {
+                  if (is(x, "SolrLuceneExpression")) {
+                      LuceneExpression(wrapParens(x))
+                  } else {
+                      x
+                  }
+              }
+          })
+
+setMethod("forceBefore", c("SolrAggregateExpression", "SolrExpression"),
+          function(x, y) TRUE)
+
+setMethod("forceBefore", c("SolrSymbol", "SolrExpression"),
+          function(x, y) TRUE)
+
+
 ### An alternative to this approach is to expect the user to
 ### explicitly materialize when necessary. The API for that is not
 ### clear. We could convert force() into a generic. It is unfortunate

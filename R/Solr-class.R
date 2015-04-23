@@ -14,24 +14,43 @@
 ### - subset, [,drop=FALSE]
 ### - transform
 ### - sort
+###
+### 
+### TODO: add with(), within(), eval(), as(,"environment"), via active [[
+###
 
 setClass("Solr",
-         representation(core="SolrCore",
-                        query="SolrQuery"),
+         representation(query="SolrQuery"),
          contains="VIRTUAL")
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Constructor
+###
+
+newSolr <- function(class, x) {
+    if (is.character(x)) {
+        x <- SolrCore(x)
+    }
+    if (is(x, "SolrCore")) {
+        x <- query(x)
+    }
+    if (!is(x, "SolrQuery")) {
+        stop("'x' must be a URL, SolrCore or SolrQuery object")
+    }
+    if (is.null(core(x))) {
+        stop("query lacks a core, please set one with core(query) <- core")
+    }
+    new(class, query=x)
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
 ###
 
-core <- function(x) x@core
+setMethod("core", "Solr", function(x) core(query(x)))
 
 query <- function(x) {
-    query <- x@query
-    solr(queryTarget(query)) <- x
-    solr(functionTarget(query)) <- x
-    solr(aggregateTarget(query)) <- x
-    query
+    x@query
 }
 `query<-` <- function(x, value) {
   x@query <- value
@@ -95,10 +114,8 @@ setMethod("$", "Solr", function(x, name) {
           })
 
 setMethod("subset", "Solr",
-          function(x, ..., translation.target = SolrQParserExpression(x)) {
-              query(x) <- subset(query(x), ...,
-                                 translation.target=translation.target,
-                                 select.from=fieldNames(x, onlyStored=TRUE))
+          function(x, ...) {
+              query(x) <- subset(query(x), ...)
               x
           })
 
@@ -181,6 +198,10 @@ setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
 setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
   FUN(SolrAggregation(formula, data), ...)
 })
+
+setMethod("aggregate", "Solr", function(x, ...) {
+              stats(facets(fulfill(facet(query(x), ...))))
+          })
 
 uniqueBy <- function(x, by) {
     ans <- subset(as.data.frame(xtabs(by, x)), Freq > 0L, select=-Freq)

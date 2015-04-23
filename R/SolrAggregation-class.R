@@ -79,7 +79,7 @@ setMethod("window", "SolrAggregation",
                             offset=start-1L, limit=end-start+1L)
             g <- groups(core(solr(x)), query)[[1L]]
             gu <- unlist(g, recursive=FALSE, use.names=FALSE)
-            df <- cbind(ind = rep(names(g), elementLengths(g)),
+            df <- cbind(ind = rep(names(g), lengths(g)),
                         restfulr:::raggedListToDF(gu, stringsAsFactors=FALSE))
             byname <- as.character(tail(formula(x), 1L)[[1L]])
             df[[byname]] <- NULL
