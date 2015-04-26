@@ -2,7 +2,24 @@
 ### SolrQuery objects
 ### -------------------------------------------------------------------------
 
-### A Promise of a SolrResult, from a SolrCore
+### A SolrQuery is evaluated by a SolrCore to yield a SolrResult.  All
+### operations are deferred until evaluation, i.e., when eval() is
+### called. Since the lazy behavior is explicit, it is paramount that
+### we do not evaluate any query expressions until the query is
+### evaluated. An easy way to achieve that is to simply store the R
+### language objects, along with their enclosing context, which
+### includes the calling R environment, as well as the expressions
+### defining virtual columns via transform(). Those column expressions
+### are evaluated to promises, one by one, and inserted into an
+### environment immediately (so that subsequent expressions have
+### access to the precedent ones). Then, the expression of interest is
+### evaluated. Finally, we extract the expression from each promise,
+### coerce it to character, and collapse the results to the URL query
+### string.
+
+### What happens if an expression evaluates to something other than a
+### SolrPromise that points to our core? Probably should throw an
+### error for now.
 
 ### We want to take a lazy approach to query evaluation. The
 ### alternative would be specifying a Solr query (which can be quite
