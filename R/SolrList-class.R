@@ -12,8 +12,12 @@ setClass("SolrList", contains="Solr")
 ### Constructor
 ###
 
-SolrList <- function(x) {
-    newSolr("SolrList", x)
+.SolrList <- function(core, query=compatibleQuery(core)) {
+  new("SolrList", core=core, query=query)
+}
+
+SolrList <- function(uri, ...) {
+  .SolrList(SolrCore(uri, ...))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -159,12 +163,8 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
 ###
 
 setAs("Solr", "SolrList", function(from) {
-          SolrList(query(from))
-      })
-
-setAs("SolrQuery", "SolrList", function(from) {
-          SolrList(from)
-      })
+  .SolrList(core(from), query(from))
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

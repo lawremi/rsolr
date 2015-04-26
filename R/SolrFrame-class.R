@@ -11,8 +11,8 @@ setClass("SolrFrame", contains=c("Solr", "Context"))
 ### Constructor
 ###
 
-SolrList <- function(x) {
-    newSolr("SolrFrame", x)
+.SolrFrame <- function(core, query=compatibleQuery(core)) {
+  new("SolrFrame", core=core, query=query)
 }
 
 SolrFrame <- function(uri, ...) {
@@ -138,17 +138,23 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
   ans
 })
 
+setMethod("eval", c("SolrExpression", "SolrFrame"),
+          function (expr, envir, enclos) {
+              transform(envir, x = .(expr))$x
+          })
+
+setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
+          function (expr, envir, enclos) {
+              aggregate(envir, x = .(expr))$x
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###
 
 setAs("Solr", "SolrFrame", function(from) {
-          SolrFrame(query(from))
-      })
-
-setAs("SolrQuery", "SolrFrame", function(from) {
-          SolrFrame(from)
-      })
+  .SolrFrame(core(from), query(from))
+})
 
 as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
                                     fill = TRUE)
@@ -159,16 +165,6 @@ as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
 setMethod("as.data.frame", "SolrFrame",
           function(x, row.names = NULL, optional = FALSE, fill = TRUE) {
             callNextMethod(x, row.names=row.names, optional=optional, fill=fill)
-          })
-
-setMethod("eval", c("SolrExpression", "SolrFrame"),
-          function (expr, envir, enclos) {
-              transform(envir, x = .(expr))$x
-          })
-
-setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
-          function (expr, envir, enclos) {
-              aggregate(envir, x = .(expr))$x
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

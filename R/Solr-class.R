@@ -14,44 +14,23 @@
 ### - subset, [,drop=FALSE]
 ### - transform
 ### - sort
-###
+
 ### 
 ### TODO: add with(), within(), eval(), as(,"environment"), via active [[
 ###
 
 setClass("Solr",
-         representation(query="SolrQuery"),
+         representation(core="SolrCore",
+                        query="SolrQuery"),
          contains="VIRTUAL")
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Constructor
-###
-
-newSolr <- function(class, x) {
-    if (is.character(x)) {
-        x <- SolrCore(x)
-    }
-    if (is(x, "SolrCore")) {
-        x <- query(x)
-    }
-    if (!is(x, "SolrQuery")) {
-        stop("'x' must be a URL, SolrCore or SolrQuery object")
-    }
-    if (is.null(core(x))) {
-        stop("query lacks a core, please set one with core(query) <- core")
-    }
-    new(class, query=x)
-}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
 ###
 
-setMethod("core", "Solr", function(x) core(query(x)))
+core <- function(x) x@core
 
-query <- function(x) {
-    x@query
-}
+query <- function(x) x@query
 `query<-` <- function(x, value) {
   x@query <- value
   x
@@ -113,11 +92,10 @@ setMethod("$", "Solr", function(x, name) {
               x[[name]]
           })
 
-setMethod("subset", "Solr",
-          function(x, ...) {
-              query(x) <- subset(query(x), ...)
-              x
-          })
+setMethod("subset", "Solr", function(x, ...) {
+  query(x) <- subset(query(x), ..., select.from=fieldNames(x, onlyStored=TRUE))
+  x
+})
 
 window.Solr <- function(x, ...) window(x, ...)
 

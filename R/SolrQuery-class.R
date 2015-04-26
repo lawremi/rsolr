@@ -2,24 +2,7 @@
 ### SolrQuery objects
 ### -------------------------------------------------------------------------
 
-### A SolrQuery is evaluated by a SolrCore to yield a SolrResult.  All
-### operations are deferred until evaluation, i.e., when eval() is
-### called. Since the lazy behavior is explicit, it is paramount that
-### we do not evaluate any query expressions until the query is
-### evaluated. An easy way to achieve that is to simply store the R
-### language objects, along with their enclosing context, which
-### includes the calling R environment, as well as the expressions
-### defining virtual columns via transform(). Those column expressions
-### are evaluated to promises, one by one, and inserted into an
-### environment immediately (so that subsequent expressions have
-### access to the precedent ones). Then, the expression of interest is
-### evaluated. Finally, we extract the expression from each promise,
-### coerce it to character, and collapse the results to the URL query
-### string.
-
-### What happens if an expression evaluates to something other than a
-### SolrPromise that points to our core? Probably should throw an
-### error for now.
+### Represents a query to a Solr search engine.
 
 ### We want to take a lazy approach to query evaluation. The
 ### alternative would be specifying a Solr query (which can be quite
@@ -30,9 +13,24 @@
 ### complexity, but there is also opportunity for optimization by
 ### batching queries.
 
-### This means that the SolrQuery represents a promise, but for
-### flexibility we allow the promise to be unbound, i.e., it does not
-### need to be attached to a particular Solr core.
+### A SolrQuery is evaluated by a SolrCore to yield a SolrResult.  All
+### operations are deferred until evaluation, i.e., when eval() is
+### called. Since the lazy behavior is explicit, it is paramount that
+### we do not evaluate any query expressions until the query is
+### evaluated. An easy way to achieve that is to simply store the R
+### language objects, along with their enclosing context, which
+### includes the calling R environment, as well as the expressions
+### defining virtual columns via transform(). Those column expressions
+### are actively bound to the environment, and the active binding
+### evaluates the expression inside the environment (and saves the
+### result, making the binding static).  The expression of interest is
+### evaluated in the environment. Finally, we extract the expression
+### from each promise, coerce it to character, and collapse the
+### results to the URL query string.
+
+### What happens if an expression evaluates to something other than a
+### SolrPromise that points to our core? Probably should throw an
+### error for now.
 
 ### Support for Solr extensions
 ## Custom functions: functions returning literal/name/Expression in custom env
@@ -55,32 +53,37 @@
 ### filtering (it is never indexed). In other words, some parameters
 ### affect the query, while others manipulate the output of the query.
 ### We can actually work around this by computing sqrtScore as part of
-### the query, i.e., we just substitute the expression. But there are
+### the query, i.e., we just substitute the expression. Also, any
+### aggregation used in queries or transforms are simply fulfilled and
+### substituted in the expression, as they are scalar. But there are
 ### still problems:
-### * output restrictions, like head/tail, will not affect e.g. aggregation
-###   - not a typical use case, but it's inconsistent with R
-### * using the result of aggregation in queries and transforms,
-###   where we would need to evaluate the summaries first (where we
-###   have access to a core), and substitute the values...
-###   - we could even support predicates, like:
-###     subset(x, y > mean(z[j > 10]))
-###     because the j>10 is a simple filter on the aggregation request
-###
 
-setClassUnion("SolrCoreORNULL", c("SolrCore", "NULL"))
+### * output restrictions, like head/tail, will not affect e.g. aggregation
+###   - not a typical use case, but it's inconsistent with R; we could
+###     remove head/tail from the SolrQuery API, and instead have Solr
+###     provide head/tail, which would materialize the native R object;
+###     this would let us drop the complicated head/tail code... just
+###     claim that head/tail is a summary...
+
+### * Solr always applies filters before any aggregation. Aggregation
+###   inside transform() calls are fine, since we need to fulfill
+###   those before the main query anyway, but we should probably
+###   disallow filtering after adding facets, or at least issue a
+###   warning. Maybe in version 2.0 we could be smart enough to issue
+###   multiple queries and merge the results..
 
 setClass("SolrQuery",
-         representation(expr="SolrParameterList",
-                        context="SolrCoreORNULL",
+         representation(params="list",
                         queryTarget="SolrLuceneExpression",
                         functionTarget="SolrFunctionExpression",
                         aggregateTarget="SolrAggregateExpression"),
-         contains = "SimplePromise",
-         validity = function(object) {
-             if (!is.null(core(object)) &&
-                 version(core(object)) < version(object))
-                 "core/query version mismatch"
-         })
+         prototype = list(
+           params = list(
+             q     = "*:*",
+             start = 0L,
+             rows  = .Machine$integer.max,
+             fl    = "*")
+           ))
 
 setClass("SolrQuery5.1", contains="SolrQuery")
 
@@ -88,46 +91,27 @@ setClass("SolrQuery5.1", contains="SolrQuery")
 ### Constructor
 ###
 
-SolrQuery <- function(version = "5.1") {
+SolrQuery <- function(version="5.1") {
     version <- as.package_version(version)
     new(paste0("SolrQuery", if (version >= "5.1") "5.1" else ""))
 }
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Accessors
-###
-
-setMethod("core", "SolrQuery", function(x) context(x))
-
-setReplaceMethod("core", "SolrQuery", function(x, value) {
-                     if (!is.null(context(x)) &&
-                         !identical(context(x), value)) {
-                         stop("query was already bound to a different core")
-                     }
-                     context(x) <- value
-                     x
-                 })
-
-setMethod("version", "SolrQuery", function(x) {
-              as.package_version(sub("^SolrQuery", "", class(x)))
-          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Low-level accessors
 ###
 
 params <- function(x) {
-  x@expr
+  x@params
 }
 
 `params<-` <- function(x, value) {
-  x@expr <- value
+  x@params <- value
   x
 }
 
 configure <- function(x, ...) {
   args <- c(...)
-  params(x)[names(args)] <- args
+  x@params[names(args)] <- args
   x
 }
 
@@ -140,6 +124,9 @@ json <- function(x) {
     x
 }
 
+setMethod("version", "SolrQuery", function(x) {
+              as.package_version(sub("^SolrQuery", "", class(x)))
+          })
 
 ### These enable the overriding of translation behavior
 
@@ -166,28 +153,22 @@ aggregateTarget <- function(x) x@aggregateTarget
 ###
 
 setMethod("subset", "SolrQuery",
-          function(x, subset, select, fields, select.from)
+          function(x, subset, select, fields, select.from = character())
 {
   if (!missing(subset)) {
     expr <- eval(call("bquote", substitute(subset), top_prenv(subset)))
-    query <- translate(expr, queryTarget(x), RSolrContext(top_prenv(subset), x))
+    query <- translate(expr, queryTarget(x), top_prenv(subset))
     params(x) <- c(params(x), fq = as.character(query))
   }
   if (!missing(select)) {
     if (!missing(fields)) {
       stop("only one of 'fields' and 'select' can be specified")
     }
-    if (missing(select.from)) {
-        if (fulfillable(x)) {
-            select.from <- fieldNames(core(x), onlyStored=TRUE)
-        } else {
-            stop("cannot 'select' when 'core(x)' is NULL")
-        }
-    }
     inds <- as.list(seq_along(select.from))
     names(inds) <- select.from
     fields <- select.from[eval(substitute(select), inds, top_prenv(select))]
-  } else if (!missing(fields)) {
+  }
+  if (!missing(fields)) {
     x <- restrictToFields(x, fields)
   }
   x
@@ -451,10 +432,14 @@ setMethod("groups", c("SolrQuery", "formula"), function(x, by, ...) {
 ###   - could support each(select, funs), where each function in
 ###     'funs' is applied to each column in 'select'.
 ###   - could support a formula that splits (and selects columns)
-### - think about having summary methods like mean() on SolrQuery...
-###   would result in a stat named "mean" in the result, could have
-###   formal accessor on result, following that convention.
-### - arbitrary stats on whole dataset by facets(), no formula.
+
+### Available statistics:
+### sum => sum
+### avg => mean
+### sumsq ~> var, sd
+### min/max => min/max
+### unique => countUnique? nunique?
+### percentile => quantile, median
 
 setMethod("xtabs", "SolrQuery",
           function(formula, data,
@@ -568,7 +553,6 @@ setMethod("facetParams", c("SolrQuery5.1", "character"),
               }
               stats <- statsParams(x, ...)
               json <- lapply(by, function(f) {
-### 5.2: c(list(type=terms, field=f, missing=useNA),
                                  list(terms=c(list(field=f, missing=useNA),
                                           stats, .facetConstants))
                              })
@@ -599,7 +583,7 @@ setMethod("facetParams", c("SolrQuery5.1", "call"),
               }
               ans <- list()
               ans[[type]] <- c(json, statsParams(x, ...), .facetConstants)
-### 5.2: ans <- c(type=type, json, statsParams(...), .facetConstants)
+### 5.2? ans <- c(type=type, json, statsParams(...), .facetConstants)
               ans
           })
 
@@ -805,6 +789,38 @@ setMethod("summary", "SolrQuery",
             facet(stats(object, of[num]), of[!num])
           })
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Response format
+###
+
+typeToFormat <- c(list = "json", data.frame = "csv", XMLDocument = "xml")
+
+responseType <- function(x) {
+  if (is.null(params(x)$wt)) {
+    NULL
+  } else {
+    names(typeToFormat)[match(params(x)$wt, typeToFormat)]
+  }
+}
+
+`responseType<-` <- function(x, value) {
+  if (!isSingleString(value)) {
+    stop("'value' must be a single, non-NA string")
+  }
+  format <- typeToFormat[value]
+  if (is.na(format)) {
+    stop("no format for response type: ", value)
+  }
+  params(x)$wt <- format
+  if (format == "json") {
+    params(x)$json.nl <- "map"
+    params(x)$csv.null <- NULL
+  } else if (format == "csv") {
+    params(x)$json.nl <- NULL
+    params(x)$csv.null <- "NA"
+  }
+  x
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
@@ -818,9 +834,16 @@ paramToCSV <- function(x) {
   else x
 }
 
-setMethod("as.character", "SolrQuery", function(x) {
-  as.character(params(x))
+setMethod("as.character", "SolrQuery", function(x, ...) {
+  p <- params(x)
+  p$fl <- list(paramToCSV(p$fl))
+  p$start <- list(paramToCSV(p$start))
+  p$rows <- list(paramToCSV(p$rows))
+  param.names <- rep(names(p), elementLengths(unlist(p, recursive=FALSE)))
+  setNames(unlist(p, use.names=FALSE), param.names)
 })
+
+setAs("SolrQuery", "character", function(from) as.character.SolrQuery(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show
