@@ -2,8 +2,10 @@
 ### SolrPromise objects
 ### -------------------------------------------------------------------------
 ###
-### Reference to data stored in a Solr core (modified by some query)
-###
+### Reference to data stored in a Solr core (modified by some
+### query). SolrPromises map R operations down to low-level operations
+### on Solr Expressions. Thus, there is a separate type of Promise for
+### each Solr language.
 ###
 ### An interesting test case for extensibility would be an external
 ### package that adds spatial query support for Ranges objects:
@@ -106,23 +108,43 @@ setClass("PredicatedSolrSymbolPromise",
 ### Constructors
 ###
 
-newSolrPromise <- function(class, expr, context) {
-    new(class, expr=SolrSymbol(expr), context=solr(context))
+### Translation proceeds by creating Promises in a special translation
+### context. It evaluates the expression in that context to a Promise,
+### and then extracts the Expression from the Promise.
+
+computedFieldPromise <- function(solr, name) {
+    fl <- params(query(solr))$fl[[name]]
+    if (!is.null(fl)) {
+        expr <- translate(fl, SolrFunctionExpression(), core(solr))
+        SolrFunctionPromise(expr, solr)
+    }
 }
 
-setMethod("Promise", c("name", "SolrLuceneExpression", "RSolrContext"),
+newSolrSymbolPromise <- function(class, name, context) {
+    solr <- solr(context)
+    prom <- computedFieldPromise(solr, name)
+    if (is.null(prom)) {
+        prom <- new(class, expr=SolrSymbol(name), context=solr)
+    }
+    prom
+}
+
+setMethod("TranslationPromise",
+          c("name", "SolrLuceneExpression"),
           function(expr, target, context) {
-              newSolrPromise("SolrLuceneSymbolPromise", expr, context)
+              newSolrSymbolPromise("SolrLuceneSymbolPromise", expr, context)
           })
 
-setMethod("Promise", c("name", "SolrFunctionExpression", "RSolrContext"),
+setMethod("TranslationPromise",
+          c("name", "SolrFunctionExpression"),
           function(expr, target, context) {
-              newSolrPromise("SolrSymbolPromise", expr, context)
+              newSolrSymbolPromise("SolrSymbolPromise", expr, context)
           })
 
-setMethod("Promise", c("name", "SolrAggregateExpression", "RSolrContext"),
+setMethod("TranslationPromise",
+          c("name", "SolrAggregateExpression"),
           function(expr, target, context) {
-              newSolrPromise("SolrSymbolPromise", expr, context)
+              newSolrSymbolPromise("SolrSymbolPromise", expr, context)
           })
 
 SolrLucenePromise <- function(expr, context) {

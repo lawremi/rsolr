@@ -5,34 +5,17 @@
 ### A Promise has an expression, and a context in which to evaluate it.
 ###
 
-### Question: How far can we defer during translation? The most
-###           immediate would be to build the expression as it is
-###           evaluated, forcing anything that can not be incorporated
-###           directly. Deferring further, we could build a tree of
-###           Promise objects during evaluation. But we would need to
-###           capture R code that otherwise would have forced, i.e.,
-###           we have RPromises as well as
-###           SolrPromises. Unfortunately, there are too many things
-###           we would not be able to catch. In particular, it would
-###           be odd for us to override base coercions like
-###           as.integer() and friends. Those should coerce
-###           immediately.
-###
-###           However, we could *partially* defer the evaluation. When
-###           the user explicitly coerces, we must force. But
-###           otherwise, we can defer until very late, late enough so
-###           that many operations, including aggregations in queries,
-###           are deferred until fulfillment of the SolrQuery. That
-###           opens the door to meta programming. Although, we should
-###           probably leave optimization to Solr.
-
-
 setClass("Promise")
 
 setClass("SimplePromise",
          representation(expr="Expression",
-                        context="ContextORNULL"),
+                        context="Context"),
          contains="Promise")
+
+setClass("RPromise",
+         representation(expr="language",
+                        context="environment"),
+         contains="SimplePromise")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
@@ -45,7 +28,9 @@ context <- function(x) x@context
 ### Construction
 ###
 
-setGeneric("Promise", function(expr, context) standardGeneric("Promise"))
+RPromise <- function(expr, context) {
+    new("RPromise", expr=expr, context=context)
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Fulfillment
@@ -53,15 +38,8 @@ setGeneric("Promise", function(expr, context) standardGeneric("Promise"))
 
 setGeneric("fulfill", function(x, ...) standardGeneric("fulfill"))
 setMethod("fulfill", "Promise", function(x) {
-              if (!fulfillable(x)) {
-                  stop("promise '", expr(x), "' cannot be fulfilled")
-              }
               eval(expr(x), context(x))
           })
-
-setGeneric("fulfillable", function(x, ...) standardGeneric("fulfillable"))
-setMethod("fulfillable", "ANY", function(x) TRUE)
-setMethod("fulfillable", "Promise", function(x) !is.null(context(x)))
 
 setMethod("as.logical", "Promise", function(x) as.logical(fulfill(x)))
 setMethod("as.integer", "Promise", function(x) as.integer(fulfill(x)))
@@ -95,6 +73,18 @@ setMethod("show", "Promise", function(object) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Utilities
 ###
+
+## Generalized/simplified form of base::delayedAssign()
+fulfillOnGet <- function(x, value, env) {
+    makeActiveBinding(nm, function(v) {
+                          if (missing(v)) {
+                              v <- fulfill(value)
+                          }
+                          rm(list=nm, envir=env)
+                          assign(nm, v, env)
+                          v
+                      }, env)
+}
 
 replaceError <- function(from, value) {
     stop("promise is read only")

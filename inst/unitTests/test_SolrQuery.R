@@ -96,7 +96,7 @@ test_SolrQuery <- function() {
   checkResponseEquals(read(sc, tform.query),
                       tform.docs[,c("id", "inStock", "inStock2")])
 
-  testFacets(sc, )
+  testFacets(sc)
   testFacets(sc, "5.1")
   
   ## CHECK: df upload and statistics

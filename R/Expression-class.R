@@ -5,7 +5,7 @@
 ### Represents a target of the translate() generic.
 ###
 
-setClass("Expression")
+setClassUnion("Expression", "language")
 
 setClass("SimpleExpression",
          representation(expr="character"),
@@ -44,14 +44,18 @@ setMethod("Symbol", c("character", "ANY"), function(name, target) {
 
 setGeneric("translate", function(x, target, ...) standardGeneric("translate"))
 
-setMethod("translate", c("language", "Expression"),
+setMethod("translate", c("Expression", "Expression"),
           function(x, target, ...) {
-              as(eval(x, translationContext(x, target, ...)), class(target),
-                 strict=FALSE)
+              if (is(x, class(target))) {
+                  x
+              } else {
+                  as(eval(x, TranslationContext(x, target, ...)), class(target),
+                     strict=FALSE)
+              }
           })
 
-setGeneric("translationContext",
-           function(x, target, ...) standardGeneric("translationContext"))
+setGeneric("TranslationContext",
+           function(x, target, ...) standardGeneric("TranslationContext"))
 
 ### We rely on dispatch (i.e., the strategy pattern), to construct an
 ### environment for each expression type. Evaluating the R expression
@@ -70,22 +74,30 @@ setGeneric("translationContext",
 ###
 
 PromiseEnv <- function(x, target, context, parent) {
-    vars <- all.vars(x)
-    syms <- lapply(vars, Symbol, target)
-    syms <- setNames(lapply(vars, Promise, context), vars)
-    list2env(syms, parent=parent)
+    syms <- lapply(all.vars(x), as.name)
+    promises <- setNames(lapply(vars, TranslationPromise, context), vars)
+    list2env(promises, parent=parent)
 }
 
 FunsEnv <- function(target, parent) {
     list2env(overrides(target), parent=parent)
 }
 
-setMethod("translationContext", c("language", "Expression"),
+setMethod("TranslationContext", c("language", "Expression"),
           function(x, target, parent = emptyenv()) {
               PromiseEnv(x, target, parent, FunsEnv(target, parent))
           })
 
+setGeneric("TranslationPromise",
+           function(expr, target, context)
+               standardGeneric("TranslationPromise"),
+           signature=c("expr", "target"))
+
 setGeneric("overrides", function(x) standardGeneric("overrides"))
+
+setClass("TranslationRequest",
+         representation(src="Expression",
+                        target="Expression"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion

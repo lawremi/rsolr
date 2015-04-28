@@ -418,7 +418,8 @@ resultLength <- function(x, query) {
 prepareQueryParams <- function(x, query) {
   params(query) <- prepareBoundsParams(params(query), resultLength(x, query))
   if (is.null(responseType(query)))
-    responseType(query) <- "list"
+      responseType(query) <- "list"
+  query <- translateParams(query, x)
   as.character(query)
 }
 
