@@ -11,7 +11,7 @@ setClass("SolrFrame", contains=c("Solr", "Context"))
 ### Constructor
 ###
 
-.SolrFrame <- function(core, query=compatibleQuery(core)) {
+.SolrFrame <- function(core, query=SolrQuery()) {
   new("SolrFrame", core=core, query=query)
 }
 
@@ -113,7 +113,7 @@ setMethod("[[", "SolrFrame", function(x, i, j, ...) {
     stop("'i' must be a single, non-NA string")
   if (!missing(j))
     warning("argument 'j' is ignored")
-  x[,i]
+  x[,i,...]
 })
 
 setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
@@ -140,7 +140,7 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
 
 setMethod("eval", c("SolrExpression", "SolrFrame"),
           function (expr, envir, enclos) {
-              transform(envir, x = .(expr))$x
+              undefer(transform(envir, x = .(expr)))$x
           })
 
 setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
@@ -166,6 +166,43 @@ setMethod("as.data.frame", "SolrFrame",
           function(x, row.names = NULL, optional = FALSE, fill = TRUE) {
             callNextMethod(x, row.names=row.names, optional=optional, fill=fill)
           })
+
+as.list.SolrFrame <- function(x, ...) {
+    as.list(x, ...)
+}
+
+setMethod("as.list", "SolrFrame", function(x, lazy=FALSE, ...) {
+              lapply(fieldNames(x), `[[`, x=x, lazy=lazy, ...)
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Summarizing
+###
+
+summary.SolrFrame <- function(object, ...) {
+    summary(object, ...)
+}
+
+setMethod("summary", "SolrFrame", function(object) {
+              types <- fieldTypes(schema(core(object)), fieldNames(object))
+              num <- vapply(types, is, logical(1L), "NumericField")
+              p <- c(0.25, 0.5, 0.75)
+              query <- query(object)
+              for (f in fieldNames(object)[num])
+                  query <- facet(query, NULL, min(.field(f)),
+                                 mean(.field(f)), quantile(.field(f), p),
+                                 max(.field(f)))
+              ## stats <- lapply(as.list(x[num], lazy=TRUE), function(xi) {
+              ##                     list(min=min(xi), mean=mean(xi),
+              ##                          quantile=quantile(xi, p), max=max(xi))
+              ##                 })
+              ## stats <- lapply(unlist(stats), expr)
+              ## query <- facet(facet(query(object), .stats=stats), of[!num])
+              query <- facet(query, of[!num])
+              f <- facets(solr(x), query)
+### TODO: construct a summary object here that prints nicely, see SolrSummary
+          })
+
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

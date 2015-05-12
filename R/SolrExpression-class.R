@@ -117,7 +117,6 @@ setClassUnion("functionORNULL", c("function", "NULL"))
 setClass("SolrAggregateExpression",
          representation(name="character",
                         subject="SolrFunctionExpression",
-                        na.rm="logical",
                         params="list",
                         augment="list",
                         postprocess="functionORNULL"),
@@ -128,12 +127,20 @@ setClass("SolrAggregateExpression",
                validHomogeneousList(object@args, "SolrAggregateExpression"))
          })
 
+setClass("SolrSortExpression",
+         representation(by="SolrFunctionExpression",
+                        decreasing="logical"),
+         contains="SolrExpression")
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Symbols
 ###
 
 ## a symbol that refers to a Solr field
-setClass("SolrSymbol", contains=c("Symbol", "SolrFunctionExpression"))
+setClass("SolrSymbol", contains=c("SimpleSymbol", "SolrFunctionExpression"))
+
+## for targeting Lucene expressions
+setClass("SolrLuceneSymbol", contains="SolrSymbol")
 
 ## Result of x[i]
 setClass("PredicatedSolrSymbol",
@@ -208,9 +215,57 @@ SolrAggregateExpression <- function(name, subject, na.rm, params=list(),
         na.rm=na.rm, params=params, aux=aux, postprocess=postprocess)
 }
 
-SolrSymbol <- function(name) {
-    new("SolrSymbol", name=name)
+SolrSortExpression <- function(decreasing) {
+    new("SolrSortExpression", decreasing=decreasing)
 }
+
+setMethod("symbolFactory", "SolrExpression", function(x) SolrSymbol)
+setMethod("symbolFactory", "SolrLuceneExpression", function(x) SolrLuceneSymbol)
+
+### How translation *could* work.
+###
+
+### TranslationContext(target, envir) creates an object that
+### represents the envir, with a SymbolFactory that generates Symbol
+### objects that, after being embedded in a Promise (via SolrFrame),
+### will translate to the target expression type via eval().
+
+### Maybe TranslationContext becomes a class that is composed of a
+### delegate Context and a SymbolFactory? Somehow that requires having
+### RSolrContext being able to yield an environment, given a symbol
+### factory. Maybe that is what we want?
+
+### The bottom line is that the RSolrContext needs to turn itself into
+### an environment for translation through evaluation. This means that
+### the SolrFrame must do so. That conversion could be abstracted if
+### we rely on the SymbolFactory to make Symbols and [[ to get
+### Promises from *any* Context capable of laziness. The other way is
+### to coerce the context to a "lazy" one that is given a symbol
+### factory corresponding to the target. That could happen via
+### symbolFactory<-(). Solr has a symbolFactory slot, but it is NULL
+### by default. Then, there is no need for a LazySolrFrame. One could
+### even imagine a default implementation, i.e., a wrapper context
+### that just constructs promises from a symbol and the delegate
+### context. That would require less work from implementors. The
+### question is whether we expect frames/contexts to support laziness
+### via direct extraction, and we probably should. Therefore, the
+### solution where the Solr object has the inherent ability to
+### generate symbols and thus promises seems like a good one.
+
+### But ultimately we need to build an environment with a set of
+### symbols. A tricky part is knowing the set of symbols. If we assume
+### that SolrFrame knows all of the fields, it could just turn all of
+### its fields into promises. But since fields can be dynamic, the
+### expression might reference a field that does not actually exist in
+### the index.
+
+SolrSymbol <- new("SymbolFactory", function(name) {
+    new("SolrSymbol", name=as.character(name))
+})
+
+SolrLuceneSymbol <- new("SymbolFactory", function(name) {
+    new("SolrLuceneSymbol", name=as.character(name))
+})
 
 PredicatedSolrSymbol <- function(name, predicate) {
     new("PredicatedSolrSymbol", name=name,
@@ -324,17 +379,23 @@ setMethod("as.character", "AbstractSolrFunctionCall", function(x) {
               paste0(name(x), "(", paste(args, collapse=","), ")")
           })
 
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Function overrides
-###
-### Need to dispatch on variadic pmax/pmin in binary fashion
-###
-
-setMethod("overrides", "SolrExpression", function(x) {
-              list(pmin=VariadicToBinary(pmin, pmin2),
-                   pmax=VariadicToBinary(pmax, pmax2))
+setMethod("as.character", "SolrSortExpression", function(x) {
+              paste(x@by, if (x@decreasing) "desc" else "asc")
           })
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Translation overrides
+###
+
+### Because we store the 'decreasing' arg on the 'target'.  We could
+### support decreasing() in the expression itself, which would convert
+### a SolrFunctionExpression to a SolrSortExpression, but we want to
+### support the separate 'decreasing' arg, for consistency with R.
+setMethod("translate", c("ANY", "SolrSortExpression"),
+          function(x, target, ...) {
+              expr <- translate(x, SolrFunctionExpression(), ...)
+              initialize(target, by=expr)
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lucene coercion
@@ -380,6 +441,12 @@ setAs("Expression", "SolrFunctionExpression", function(from) {
 setAs("ANY", "SolrFunctionExpression", function(from) {
           SolrFunctionExpression(from)
       })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### SolrSymbol coercion
+###
+
+setAs("ANY", "SolrSymbol", function(from) SolrSymbol(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Query parser utilities

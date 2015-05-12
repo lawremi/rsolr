@@ -15,18 +15,7 @@
 ###
 ### Other things to add:
 ### Transform:
-###  cut() using solr::if(lucene::range, 1, if (lucene::range, 2, ...))
-### Filter/transform:
-###  grepl(), which would just be an alias for "=="
-### Aggregation:
-###  anyNA(), because faceting counts missing values
-### Output restriction:
-###  head()/tail()
-### On promises:
-###  unique(), from facets
-###  intersect(), unique(x[x %in% table])
-###  range(), from min+max
-###  length(), via nrow,SolrFrame()
+###  cut() using nested map() calls, or defer and wait for table()=>facets
 ###
 
 ### All translations follow this basic strategy:
@@ -87,11 +76,17 @@ setClass("SolrFunctionPromise",
 ### symbols, we would need one subclass for each type.
 ##setIs("SolrFunctionPromise", "numeric")
 
+setClass("SolrReducePromise", contains="SolrPromise")
+
 setClass("SolrAggregatePromise",
          representation(expr="SolrAggregateExpression"),
-         contains="SolrPromise")
+         contains="SolrReducePromise")
 
 setIs("SolrAggregatePromise", "numeric")
+
+setClass("SolrUniquePromise",
+         representation(expr="SolrUniqueExpression"),
+         contains="SolrReducePromise")
 
 setClass("SolrSymbolPromise",
          representation(expr="SolrSymbol"),
@@ -120,31 +115,27 @@ computedFieldPromise <- function(solr, name) {
     }
 }
 
-newSolrSymbolPromise <- function(class, name, context) {
-    solr <- solr(context)
-    prom <- computedFieldPromise(solr, name)
-    if (is.null(prom)) {
-        prom <- new(class, expr=SolrSymbol(name), context=solr)
-    }
-    prom
+SolrSymbolPromise <- function(expr, context) {
+    new("SolrSymbolPromise", expr=expr, context=context)
 }
 
-setMethod("TranslationPromise",
-          c("name", "SolrLuceneExpression"),
-          function(expr, target, context) {
-              newSolrSymbolPromise("SolrLuceneSymbolPromise", expr, context)
+setMethod("Promise",
+          c("SolrLuceneSymbol", "SolrFrame"),
+          function(expr, context) {
+              promise <- callNextMethod()
+              if (is(promise, "SolrSymbolPromise"))
+                  as(promise, "SolrLuceneSymbolPromise")
+              else promise
           })
 
-setMethod("TranslationPromise",
-          c("name", "SolrFunctionExpression"),
-          function(expr, target, context) {
-              newSolrSymbolPromise("SolrSymbolPromise", expr, context)
-          })
-
-setMethod("TranslationPromise",
-          c("name", "SolrAggregateExpression"),
-          function(expr, target, context) {
-              newSolrSymbolPromise("SolrSymbolPromise", expr, context)
+setMethod("Promise",
+          c("SolrSymbol", "SolrFrame"),
+          function(expr, context) {
+              prom <- computedFieldPromise(context, expr)
+              if (is.null(prom)) {
+                  prom <- SolrSymbolPromise(SolrSymbol(expr), context)
+              }
+              prom
           })
 
 SolrLucenePromise <- function(expr, context) {
@@ -163,10 +154,10 @@ SolrAggregatePromise <- function(expr, context) {
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Fulfillment
+### Basic accessors
 ###
 
-### TODO
+setMethod("length", "SolrPromise", function(x) nrow(context(x)))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lucene translation
@@ -468,13 +459,6 @@ setMethod("ifelse",
               solrCall("if", test, yes, no)
           })
 
-setGeneric("pmax2", function(x, y, na.rm=FALSE) standardGeneric("pmax2"),
-           signature=c("x", "y"))
-
-setMethod("pmax2", "ANY", function(x, y, na.rm=FALSE) {
-              pmax(x, y, na.rm=na.rm)
-          })
-
 setMethods("pmax2",
            list(c("numeric", "SolrPromise"),
                 c("SolrPromise", "numeric"),
@@ -485,13 +469,6 @@ setMethods("pmax2",
                }
                solrCall("max", x, y)
            })
-
-setGeneric("pmin2", function(x, y, na.rm=FALSE) standardGeneric("pmin2"),
-           signature=c("x", "y"))
-
-setMethod("pmin2", "ANY", function(x, y, na.rm=FALSE) {
-              pmin(x, y, na.rm=na.rm)
-          })
 
 setMethods("pmin2",
            list(c("numeric", "SolrPromise"),
@@ -541,26 +518,10 @@ solrCall <- function(fun, ...) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Aggregation
 ###
-### Most of the implementation happens in SolrQuery and the result parsing,
-### so this is more or less quoting the calls.
-###
 
-### We can translate the following functions:
-###
-### sum => sum [Summary], and any/all with some math
-### avg => mean
-### sumsq ~> var, sd
-### min/max => min/max [Summary]
-### unique => countUnique? nunique?
-### percentile => quantile, median
-### min+max => range [Summary, just add both stats]
-### IQR, mad, etc
 ###
 ### FIXME: Unhandled: prod(), which is uncommon anyway
 ###
-
-### The na.rm slot on SolrAggregateExpression is handled appropriately
-### by the underlying classes (SolrQuery and the result parsing).
 
 ### The SolrAggregateExpression has two special abilities. First, it
 ### can pass along additional, supporting statistics to calculate. The
@@ -570,7 +531,12 @@ solrCall <- function(fun, ...) {
 
 ### By convention, the auxillary stats should be prefixed with
 ### ".". All stats with "." are removed from the result after
-### processing.
+### processing. Adding the aux stats is tricky, since we defer
+### translation. After translation, we need to recurse through the
+### list, extracting the aux promises and setting them in the
+### containing list element. Could be made easier by classing the list
+### element that contains stats (the actual "facet" element), so we
+### can recurse with rapply() to turn merge the aux.
 
 ### Simple example: any() sends sum() but then does > 0 on its value
 ### Complex example: weighted.mean sends sum(product(x, w)),
@@ -690,14 +656,25 @@ setMethod("mad", c("SolrPromise", "SolrAggregatePromise"),
               med
           })
 
+setMethod("anyNA", "SolrPromise", function(x) {
+              any(is.na(x), na.rm=TRUE)
+          })
+
 solrAggregate <- function(fun, x, na.rm, params = list(), aux = list(),
                           postprocess = NULL)
 {
     if (!isTRUEorFALSE(na.rm)) {
         stop("'na.rm' must be TRUE or FALSE")
     }
+    if (!na.rm) {
+        aux <- c(aux, .anyNA=anyNA(x))
+        postprocess2 <- postprocess
+        postprocess <- function(val, aux) {
+            postprocess2(ifelse(aux$.anyNA, NA, val), aux)
+        }
+    }
     x <- as(x, "SolrFunctionPromise")
-    expr <- SolrAggregateExpression(fun, expr(x), na.rm, params)
+    expr <- SolrAggregateExpression(fun, expr(x), params, aux, postprocess)
     SolrAggregatePromise(expr)
 }
 
@@ -714,13 +691,79 @@ setAs("SolrAggregatePromise", "SolrLucenePromise", function(from) {
       })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Forcing reductions
+###
+
+window.SolrPromise <- function(x, start = 1L, end = NA_integer_, ...)
+    window(x, start, end)
+setMethod("window", "SolrPromise",
+          function (x, start = 1L, end = NA_integer_, ...) {
+              query(context(x)) <- window(query(context(x)), start, end, ...)
+              fulfill(x)
+          })
+
+head.SolrPromise <- function(x, n = 6L, ...) head(x, n)
+setMethod("head", "SolrPromise", function (x, n = 6L, ...) {
+              ## backdoor hack to avoid immediate forcing of entire context
+              query(context(x)) <- head(query(context(x)), n, ...)
+              fulfill(x)
+          })
+
+tail.SolrPromise <- function(x, n = 6L, ...) tail(x, n)
+setMethod("tail", "SolrPromise", function (x, n = 6L, ...) {
+              query(context(x)) <- tail(query(context(x)), n, ...)
+              fulfill(x)
+          })
+
+setMethod("unique", "SolrSymbolPromise", function (x, incomparables = FALSE) {
+              unique(context(x)[expr(x)@name],
+                     incomparables=incomparables)[[1L]]
+          })
+
+setMethod("intersect", c("SolrSymbolPromise", "SolrSymbolPromise"),
+          function(x, y) {
+              unique(x[x %in% y])
+          })
+
+setMethod("setdiff", c("SolrSymbolPromise", "SolrSymbolPromise"),
+          function(x, y) {
+              unique(x[!(x %in% y)])
+          })
+
+setMethod("union", c("SolrSymbolPromise", "SolrSymbolPromise"),
+          function(x, y) {
+### FIXME: two requests, could be one with some work
+              unique(c(unique(x), unique(y)))
+          })
+
+setMethod("unique", "PredicatedSolrSymbolPromise",
+          function (x, incomparables = FALSE) {
+              ctx <- subset(context(x), .(expr(x)@predicate))
+              unique(SolrSymbolPromise(expr(x)@subject, ctx),
+                     incomparables=incomparables)
+          })
+
+setMethod("table", "SolrSymbolPromise",
+          function (..., exclude = c(NA, NaN)) {
+              ctx <- resolveContext(...)
+              syms <- lapply(list(...), function(p) expr(p)@name)
+              f <- as.formula(paste("~", paste(syms, collapse="+")))
+              tab <- xtabs(by, ctx, exclude=exclude)
+              if (!is.null(names(syms))) {
+                  aliased <- names(syms) != ""
+                  names(dimnames(tab))[aliased] <- names(syms)[aliased]
+              }
+              tab
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### General utilities
 ###
 
 resolveContext <- function(args) {
     isProm <- vapply(args, is, "Promise", FUN.VALUE=logical(1L))
     ctx <- Filter(Negate(is.null), lapply(args[isProm], context))
-    if (any(!vapply(ctx[-1], identical, ctx[[1L]], FUN.VALUE=logical(1L)))) {
+    if (any(!vapply(ctx[-1], compatible, ctx[[1L]], FUN.VALUE=logical(1L)))) {
         stop("cannot combine promises from different contexts")
     }
     ctx

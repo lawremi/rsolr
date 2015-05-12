@@ -13,30 +13,29 @@ setClass("SimpleExpression",
          contains="Expression",
          validity=function(object) {
            if (!isSingleString(object@expr)) {
-             stop("'expr' must be a single, non-NA string")
+             "'expr' must be a single, non-NA string"
            }
          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Symbols
 ###
-### A Symbol is an R name/symbol that drives translation of an R
-### expression through dispatch on the Symbol (sub)class. Translation
-### occurs by evaluating the R expression in an environment where all
-### of the names resolve to Symbol objects.
+### We define a Symbol as an atom in a language that refers to a field
+### or variable. A specific type of Symbol is mapped to a specific
+### type of Promise, which in turn generates a specific type of
+### Expression.
 ###
 
-setClass("Symbol", contains="Expression")
+setClassUnion("Symbol", "name")
+setIs("Symbol", "Expression")
 
 setClass("SimpleSymbol",
          representation(name="character"),
-         contains="Symbol")
-
-setGeneric("Symbol", function(name, target) standardGeneric("Symbol"))
-
-setMethod("Symbol", c("character", "ANY"), function(name, target) {
-              Symbol(as.name(name), target)
-          })
+         contains="Symbol",
+         validity=function(object) {
+             if (!isSingleString(object@name))
+                 "'name' must be a single, non-NA string"
+         })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Translation
@@ -44,60 +43,40 @@ setMethod("Symbol", c("character", "ANY"), function(name, target) {
 
 setGeneric("translate", function(x, target, ...) standardGeneric("translate"))
 
-setMethod("translate", c("Expression", "Expression"),
-          function(x, target, ...) {
+setMethod("translate", c("ANY", "Expression"),
+          function(x, target, context, ...) {
               if (is(x, class(target))) {
-                  x
-              } else {
-                  as(eval(x, TranslationContext(x, target, ...)), class(target),
-                     strict=FALSE)
+                  return(x)
               }
+              symbolFactory(context) <- symbolFactory(target, ...)
+              translation <- eval(expr, context) 
+              if (is(translation, "Promise")) {
+                  if (!compatible(context(translation), frame(context))) {
+                      stop("target context incompatible with source context")
+                  }
+                  translation <- expr(translation)
+              }
+              as(translation, class(target), strict=FALSE)
           })
 
-setGeneric("TranslationContext",
-           function(x, target, ...) standardGeneric("TranslationContext"))
+setClass("SymbolFactory", contains = "function")
 
-### We rely on dispatch (i.e., the strategy pattern), to construct an
-### environment for each expression type. Evaluating the R expression
-### in the environment should result in the desired expression object.
-###
-### Drawbacks:
-### - No way to dispatch to zero-arg function calls,
-###   or calls with only literal arguments,
-### - Some functions do not have generics, or they do not have the
-###   necessary arguments in their generic signature.
-###
-### Thus, we need a way for the target expression to augment the
-### environment to handle special cases. Obviously, if the objects are
-### used in a different scope, things will break, so we have to keep
-### the function overrides to a minimum.
-###
-
-PromiseEnv <- function(x, target, context, parent) {
-    syms <- lapply(all.vars(x), as.name)
-    promises <- setNames(lapply(vars, TranslationPromise, context), vars)
-    list2env(promises, parent=parent)
-}
-
-FunsEnv <- function(target, parent) {
-    list2env(overrides(target), parent=parent)
-}
-
-setMethod("TranslationContext", c("language", "Expression"),
-          function(x, target, parent = emptyenv()) {
-              PromiseEnv(x, target, parent, FunsEnv(target, parent))
-          })
-
-setGeneric("TranslationPromise",
-           function(expr, target, context)
-               standardGeneric("TranslationPromise"),
-           signature=c("expr", "target"))
-
-setGeneric("overrides", function(x) standardGeneric("overrides"))
+setGeneric("symbolFactory", function(x, ...) standardGeneric("symbolFactory"))
+setGeneric("symbolFactory<-", function(x, ..., value)
+    standardGeneric("symbolFactory<-"))
 
 setClass("TranslationRequest",
          representation(src="Expression",
                         target="Expression"))
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Utilities
+###
+
+preprocessExpression <- function(expr, env) {
+    expr <- eval(call("bquote", expr, env))
+    callsToNames(expr, quote(.field), env)
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion

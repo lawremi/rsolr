@@ -6,13 +6,26 @@
 ### define the data structures for representing Solr summaries.
 ###
 
+### NEW structure:
+
+### One data.frame of stats for each facet, where the nested facet
+### structure is represented by a list. When the user accesses a
+### facet, e.g., with a formula or character vector, we can easily
+### traverse the list using the base R [[.
+
+### When generating this structure, we need to recurse in parallel
+### down in the result and the facet part of the query. We need the
+### query for a number of things:
+### 1) Distinguishing terms facet from range facet (labels)
+### 2) Calling the postprocess function on the aggregate expressions
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Classes
 ###
 
 ### Can represent stats on a single field, or conditional every level
 ### of a field.  A query should generate an array of these objects,
-### variable X factor. Could be a 3D array, except there is a variable
+### variable by factor. Could be a 3D array, except there is a variable
 ### number of levels per column.
 setClass("SolrStats",
          representation(min="numeric",
@@ -41,24 +54,6 @@ setClass("TableList", contains="list",
          validity=function(object) {
            validHomogeneousList(object, "table")
          })
-
-### FIXME: There is an issue here with heterogeneity. Keeping the
-### stats and tables in separate components benefits clarity, but
-### there is still complexity. Question: should there be separate
-### methods on SolrCore, or do we want to compute complex summaries in
-### a single call?  SolrQuery supports it, and there is at least one
-### use case (a global summary).
-
-### Compare:
-### stats(summary(sc, q))$field
-### stats(sc, q)$field
-### where stats() returns a SolrStatsArray.
-
-### In theory, both could be supported. Or summary could just return a
-### result for display, like summary,data.frame. We should probably
-### keep summary returning actual values, because it is probably
-### common for the user to want to request both tables and stats
-### simultaneously.
 
 setClass("SolrSummary",
          representation(stats="SolrStatsList",

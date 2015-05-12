@@ -9,12 +9,6 @@
 ### during initialization. In theory though, we could retrieve it from
 ### the URI dynamically.
 
-### TODO: consider getting the actual schema XML via the admin file
-### handler, then we cast it to a media type, and parse it via
-### dispatch. This will give us the fields in the original schema
-### order. This at least lets the user/admin order the fields, instead
-### of always forcing lexicographic order.
-
 setClass("SolrCore",
          representation(uri="RestUri",
                         schema="SolrSchema",
@@ -45,7 +39,7 @@ setMethod("name", "SolrCore", function(x) name(x@schema))
 numFound <- function(x, query) {
     emptyQuery <- head(query, 0L)
     responseType(emptyQuery) <- "list"
-    as.integer(eval(emptyQuery, x)$response$numFound)
+    ndoc(eval(emptyQuery, x))
 }
 
 setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
@@ -125,10 +119,6 @@ setGeneric("version", function(x) standardGeneric("version"))
 setMethod("version", "SolrCore", function(x) {
               x@version
           })
-
-compatibleQuery <- function(x) {
-    SolrQuery(version(x))
-}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -239,7 +229,7 @@ setMethod("read", "SolrCore",
               stop("'query' must be a SolrQuery")
             }
             responseType(query) <- match.arg(as)
-            fromSolr(eval(query, x))
+            docs(eval(query, x))
           })
 
 readSchemaFromREST <- function(uri) {
@@ -275,41 +265,17 @@ readVersion <- function(uri) {
 ### Summarizing
 ###
 
-summary.SolrCore <- function(object,
-                             of=setdiff(fieldNames(object),
-                               uniqueKey(schema(object))),
-                             query=summary(SolrQuery(), object, of), ...)
-{
-  if (!is(query, "SolrQuery")) {
-    stop("'query' must be a SolrQuery")
-  }
-  if (!missing(of) && !missing(query)) {
-    query <- summary(query, object, of, ...)
-  }
-  SolrSummary(eval(query, object))
-}
-
-setMethod("summary", "SolrCore", summary.SolrCore)
-
-setMethod("facets", "SolrCore",
-          function(x, by) {
-            facets(summary(x, query=by))
+setMethod("facets", "SolrCore", function(x, by) {
+              facets(eval(by, x))
           })
 
-setMethod("stats", c("SolrCore", "SolrQuery"),
-          function(x, which) {
-            if (!enablesStats(which)) {
-              stop("'which' does not enable stats")
-            }
-            stats(summary(x, query=which))
+setMethod("stats", c("SolrCore", "SolrQuery"), function(x, which) {
+              stats(eval(which, x))
           })
 
-setMethod("groups", c("SolrCore", "SolrQuery"), function(x, by=SolrQuery()) {
-  if (!is(by, "SolrQuery")) {
-    stop("'by' must be a SolrQuery")
-  }
-  fromSolr_grouped(eval(by, x), schema(x))
-})
+setMethod("groups", c("SolrCore", "SolrQuery"), function(x, by) {
+              groups(eval(by, x))
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Query Evaluation
@@ -349,13 +315,6 @@ SolrErrorHandler <- function(core, query) {
   }
 }
 
-origin <- function(x) attr(x, "origin")
-
-`origin<-` <- function(x, value) {
-  attr(x, "origin") <- value
-  x
-}
-
 setMethod("eval", c("SolrQuery", "SolrCore"),
           function (expr, envir, enclos)
           {
@@ -364,8 +323,7 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
             response <- tryCatch(read(envir@uri$select, params),
                                  error = SolrErrorHandler(envir, expr))
             response <- processSolrResponse(response, expected.type)
-            origin(response) <- .SolrList(envir, expr)
-            response
+            convertSolrQueryResponse(response, envir, expr)
           })
 
 prepareBoundsParams <- function(p, nrows) {
@@ -399,11 +357,13 @@ prepareBoundsParams <- function(p, nrows) {
   p
 }
 
-ngroup <- function(x, query) {
-  params(query)$group.limit <- 0L
-  groupings <- eval(query, x)$grouped
-  vapply(groupings, function(g) length(g$groups), integer(1L))
-}
+setGeneric("ngroup", function(x, ...) standardGeneric("ngroup"))
+
+setMethod("ngroup", "SolrCore", function(x, query) {
+              params(query)$group.limit <- 0L
+              responseType(query) <- "list"
+              ngroup(eval(query, x))
+          })
 
 resultLength <- function(x, query) {
   ans <- if (identical(params(query)$group, "true"))
@@ -420,8 +380,29 @@ prepareQueryParams <- function(x, query) {
   if (is.null(responseType(query)))
       responseType(query) <- "list"
   query <- translateParams(query, x)
+  query <- prepareExcludeTags(query)
   as.character(query)
 }
+
+setGeneric("convertSolrQueryResponse",
+           function(x, core, query) standardGeneric("convertSolrQueryResponse"),
+           signature=c("x"))
+
+setMethod("convertSolrQueryResponse", "ANY", function(x, core, query) {
+              x
+          })
+
+setMethod("convertSolrQueryResponse", "list", function(x, core, query) {
+              SolrQueryResult(x, core, query)
+          })
+
+setMethod("eval", c("TranslationRequest", "SolrCore"),
+          function (expr, envir, enclos) {
+              if (!missing(enclos)) {
+                  warning("'enclos' is ignored")
+              }
+              translate(expr@src, expr@target, envir)
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Other commands

@@ -8,20 +8,54 @@
 ### having to juggle two separate objects.
 ###
 ### Evaluation is forced by:
-### - summary operations (summary, aggregate, xtabs) and
+### - summary operations (summary, aggregate, xtabs, head/tail) and
 ### - coercion (as.list, as.data.frame, [,drop=TRUE]).
 ### Only endomorphic operations are lazy:
 ### - subset, [,drop=FALSE]
 ### - transform
 ### - sort
 
-### 
-### TODO: add with(), within(), eval(), as(,"environment"), via active [[
+### Thoughts on generalizing the Solr* data structures:
 ###
+### We could introduce abstract classes that implement much of the
+### functionality of the Solr* classes. These can then be reused to
+### implement other database backends.
+###
+### Solr      =>DbSet
+### SolrList  =>DbList
+### SolrFrame =>DbFrame
+### SolrQuery =>DbQuery
+### SolrCore  =>Database
+###
+### Call the package "rdb".
+
+
+### TODO: Would it make sense for Solr to have an optional grouping
+###       slot?  That would enable aggregate(x, ...), i.e., no
+###       formula. When there is no grouping (NULL) stats are computed
+###       over the entire dataset. This is consistent with SolrQuery.
+###
+
+### Some implications:
+
+### The grouping affects the behavior of all aggregations.  Any
+### summary will return a vector result, so ndoc() returns a
+### non-scalar, and head/tail return lists.
+
+### The shape is still that of a table. Extraction still behaves the
+### same, except the grouping should be carried over somehow to the
+### extracted objects. If we have a grouping, the promises will be
+### implicity grouped via their context. This will work more or less
+### automatically. When extraction is eager, we could keep the
+### grouping on the objects, and then implement aggregation methods in
+### R. For now though, grouping will imply deferral.
+
+setClassUnion("SymbolFactoryORNULL", c("SymbolFactory", "NULL"))
 
 setClass("Solr",
          representation(core="SolrCore",
-                        query="SolrQuery"),
+                        query="SolrQuery",
+                        symbolFactory="SymbolFactoryORNULL"),
          contains="VIRTUAL")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -75,6 +109,31 @@ setMethod("staticFieldNames", "Solr", function(x) {
   staticFieldNames(schema(core(x)))
 })
 
+setMethod("symbolFactory", "Solr", function(x) x@symbolFactory)
+
+setReplaceMethod("symbolFactory", "Solr", function(x, value) {
+                     x@symbolFactory <- value
+                     x
+                 })
+
+setGeneric("defer", function(x, ...) standardGeneric("defer"))
+
+setMethod("defer", "Solr", function(x) {
+              symbolFactory(x) <- symbolFactory(SolrFunctionExpression())
+              x
+          })
+
+undefer <- function(x) {
+    symbolFactory(x) <- NULL
+    x
+}
+
+setGeneric("compatible", function(x, y, ...) standardGeneric("compatible"))
+
+setMethod("compatible", c("Solr", "Solr"), function(x, y) {
+              identical(query(x), query(y)) && identical(core(x), core(y))
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
@@ -93,32 +152,41 @@ setMethod("$", "Solr", function(x, name) {
           })
 
 setMethod("subset", "Solr", function(x, ...) {
-  query(x) <- subset(query(x), ..., select.from=fieldNames(x, onlyStored=TRUE))
+  query(x) <- subset(query(x), ..., select.from=fieldNames(x))
   x
 })
 
-window.Solr <- function(x, ...) window(x, ...)
+## It would be more consistent with R if we carried over fields in the
+## frame to the new environment. For example, get("foo") would work
+## for a field 'foo', even when 'foo' is not in the
+## expression. However, there are contexts that are unable to
+## enumerate their fields, as the set is practically infinite. This is
+## generally true of NoSQL databases. Thus, we instead extract the
+## variables from the expression.
 
-setMethod("window", "Solr", function (x, ...) {
-              query(x) <- window(query(x), ...)
-              x
+setMethod("eval", c("language", "Solr"), function (expr, envir, enclos) {
+              expr <- preprocessExpression(expr, enclos)
+              eval(expr, varsEnv(expr, envir, enclos))
           })
 
-head.Solr <- function (x, n = 6L, ...) {
-  query(x) <- head(query(x), n, ...)
-  x
-}
-setMethod("head", "Solr", head.Solr)
+setMethod("with", "Solr", function (data, expr, ...) {
+              eval(substitute(expr), data, parent.frame(), ...)
+          })
 
-tail.Solr <- function (x, n = 6L, ...) {
-  query(x) <- tail(query(x), n, ...)
-  x
-}
-setMethod("tail", "Solr", tail.Solr)
+setMethod("within", "Solr", function (data, expr, ...) {
+              dataEnv <- list2LazyEnv(data, top_prenv(expr))
+              e <- new.env(parent=dataEnv)
+              eval(substitute(expr), e, top_prenv(expr))
+              data[names(e)] <- as.list(e, all.names=TRUE)
+              data
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Transforming
 ###
+
+### TODO: there should be a `_list` argument that is taken unquoted, to allow:
+###  transform(x, lapply(subset(x, select=foo:bar), abs))
 
 transform.Solr <- function(`_data`, ...) transform(`_data`, ...)
 
@@ -141,14 +209,6 @@ setMethod("sort", "Solr", function (x, decreasing = FALSE, ...) {
 ###
 ##
 
-summary.Solr <- function(object, ...)
-{
-  summary(core(object),
-          query = summary(query(object), schema(core(object)), ...))
-}
-
-setMethod("summary", "Solr", summary.Solr)
-
 setMethod("xtabs", "Solr",
           function(formula, data,
                    subset, sparse = FALSE, 
@@ -162,6 +222,23 @@ setMethod("xtabs", "Solr",
             q <- facet(query(data), formula, useNA=is.null(exclude))
             facet(core(data), q)[[1L]]
           })
+
+### TODO
+###     - the LHS could support "." to indicate all terms not on RHS,
+###     - a named list of functions, all of which are applied, and their name
+###       serves as the postfix,
+###     - named, quoted arguments adding stats as columns,
+
+### Could it also support arbitrary functions? Lets say the function
+### is passed an object that acts like 'x' but has an implicit
+### grouping, such that evaluating a SolrAggregatePromise results in a
+### vector result. Since we are outside of a translation context,
+### there is no expectation of a scalar result, and everything should
+### work. The tricky part would be preserving the grouping
+### information, so that aggregate() could build the data.frame. If
+### that information were lost, we would need to re-query to get
+### it. That could just be a data.frame in an attribute, but
+### attributes are easily lost. Seems feasible though.
 
 setMethod("aggregate", "formula", function(x, ...) {
   aggregateByFormula(x, ...)
@@ -182,7 +259,8 @@ setMethod("aggregate", "Solr", function(x, ...) {
           })
 
 uniqueBy <- function(x, by) {
-    ans <- subset(as.data.frame(xtabs(by, x)), Freq > 0L, select=-Freq)
+    ans <- subset(as.data.frame(xtabs(by, x, exclude=NULL)),
+                  Freq > 0L, select=-Freq)
     ans <- ans[order(ans[[1L]]),,drop=FALSE]
     rownames(ans) <- NULL
     as(ans, "DocCollection")
@@ -196,6 +274,24 @@ setMethod("unique", "Solr", function (x, incomparables = FALSE) {
                                     paste(fieldNames(x, onlyIndexed=TRUE),
                                           collapse="+")))
               uniqueBy(x, f)
+          })
+
+window.Solr <- function(x, ...) window(x, ...)
+
+setMethod("window", "Solr", function (x, ...) {
+              eval(window(query(x), ...), core(x))
+          })
+
+head.Solr <- function(x, n = 6L, ...) head(x, n=n, ...)
+
+setMethod("head", "Solr", function (x, n = 6L, ...) {
+              eval(head(query(x), n, ...), core(x))
+          })
+
+tail.Solr <- function(x, n = 6L, ...) tail(x, n=n, ...)
+
+setMethod("tail", "Solr", function (x, n = 6L, ...) {
+              eval(tail(query(x), n, ...), core(x))
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -257,6 +353,8 @@ as.list.Solr <- function(x) {
 }
 
 setMethod("as.list", "Solr", as.list.Solr)
+
+setAs("Solr", "environment", function(from) list2LazyEnv(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

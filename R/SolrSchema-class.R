@@ -225,26 +225,7 @@ fromSolr_default <- function(x, type) {
   ans
 }
 
-fromSolr_grouped <- function(x, type) {
-  lapply(x$grouped, function(xi) {
-    setNames(lapply(pluck(xi$groups, "doclist"),
-                    function(d) fromSolr_default(d$docs, type)),
-             as.character(pluck(xi$groups, "groupValue")))
-  })
-}
-
 setMethod("fromSolr", c("ANY", "SolrSchema"), fromSolr_default)
-
-setMethod("fromSolr", c("list", "SolrSchema"),
-          function(x, type) {
-            callNextMethod(x$response$docs, type)
-          })
-
-setMethod("fromSolr", c("data.frame", "SolrSchema"), fromSolr_default)
-
-setMethod("fromSolr", c("ANY", "missing"), function(x, type) {
-  fromSolr(x, augment(schema(core(origin(x))), query(origin(x))))
-})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Augmentation: if we request new fields with 'fl', we have

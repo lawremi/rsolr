@@ -69,23 +69,3 @@ setReplaceMethod("[<-", "Promise", function (x, i, j, ..., value) {
 setMethod("show", "Promise", function(object) {
               show(fulfill(object))
           })
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Utilities
-###
-
-## Generalized/simplified form of base::delayedAssign()
-fulfillOnGet <- function(x, value, env) {
-    makeActiveBinding(nm, function(v) {
-                          if (missing(v)) {
-                              v <- fulfill(value)
-                          }
-                          rm(list=nm, envir=env)
-                          assign(nm, v, env)
-                          v
-                      }, env)
-}
-
-replaceError <- function(from, value) {
-    stop("promise is read only")
-}

@@ -162,8 +162,39 @@ VariadicToBinary <- function(variadic, binary)
     variadic
 }
 
+callsToNames <- function(expr, fun, where = parent.frame()) {
+    unquote <- function(e) if (is.pairlist(e)) 
+                               as.pairlist(lapply(e, unquote))
+                           else if (length(e) <= 1L) 
+                               e
+                           else if (e[[1L]] == fun)
+                               as.name(eval(e[[2L]], where))
+                           else as.call(lapply(e, unquote))
+    unquote(expr)
+}
+
+list2LazyEnv <- function(x, enclos) {
+    env <- new.env(parent=enclos)
+    for (nm in names(x)) {
+        makeActiveBinding(nm, function(v) {
+                              if (missing(v)) {
+                                  v <- x[[nm]]
+                                  rm(names=nm, env)
+                              }
+                              assign(nm, v, env)
+                              v
+                          })
+    }
+}
+
+varsEnv <- function(expr, frame, parent) {
+    vars <- all.vars(expr)
+    objs <- lapply(vars, `[[`, x=frame) # could support mget()...
+    list2env(objs, parent=parent)
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Pretty printing stolen from S4Vectors
+### Pretty printing stolen^B^B adapted from S4Vectors
 ###
 
 ### showHeadLines and showTailLines robust to NA, Inf and non-integer 

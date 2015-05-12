@@ -12,7 +12,7 @@ setClass("SolrList", contains="Solr")
 ### Constructor
 ###
 
-.SolrList <- function(core, query=compatibleQuery(core)) {
+.SolrList <- function(core, query=SolrQuery()) {
   new("SolrList", core=core, query=query)
 }
 
@@ -129,7 +129,7 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
     if (is.null(uniqueKey(schema(core(x))))) {
       stop("retrieving a document by ID requires a 'uniqueKey' in the schema")
     }
-    query <- subset(query, as.name(.(uniqueKey(schema(core(x))))) %in% .(i))
+    query <- subset(query, .field(uniqueKey(schema(core(x)))) %in% .(i))
   }
   if (!missing(j)) {
     query <- subset(query,
@@ -140,12 +140,18 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
   query(x) <- query
   readColumn <- drop && !missing(j) && length(j) == 1L
   if (readColumn) {
-    ans <- as.data.frame(x, row.names=!missing(i))
-    ## ensure things are in the correct order
-    if (!missing(i)) {
-      ans <- ans[i,j]
-    } else {
-      ans <- ans[,j]
+    if (missing(i) && (is(j, "Symbol") || !is.null(symbolFactory(x)))) {
+      if (!is(j, "Symbol"))
+        j <- symbolFactory(x)(j)
+      ans <- Promise(j, x)   
+    }  else {
+      ans <- as.data.frame(x, row.names=!missing(i))
+      ## ensure things are in the correct order
+      if (!missing(i)) {
+        ans <- ans[i,j]
+      } else {
+        ans <- ans[,j]
+      }
     }
     ans
   } else {
