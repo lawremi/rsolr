@@ -32,7 +32,6 @@ SolrCore <- function(uri, ...) {
 ### Accessors
 ###
 
-setGeneric("name", function(x) standardGeneric("name"))
 setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
@@ -228,8 +227,9 @@ setMethod("read", "SolrCore",
             if (!is(query, "SolrQuery")) {
               stop("'query' must be a SolrQuery")
             }
-            responseType(query) <- match.arg(as)
-            docs(eval(query, x))
+            as <- match.arg(as)
+            responseType(query) <- if (grouped(query)) "list" else as
+            as(eval(query, x), as)            
           })
 
 readSchemaFromREST <- function(uri) {
@@ -265,16 +265,16 @@ readVersion <- function(uri) {
 ### Summarizing
 ###
 
-setMethod("facets", "SolrCore", function(x, by) {
-              facets(eval(by, x))
+setGeneric("facets", function(x, ...) standardGeneric("facets"))
+
+setMethod("facets", "SolrCore", function(x, by, ...) {
+              facets(eval(by, x), ...)
           })
 
-setMethod("stats", c("SolrCore", "SolrQuery"), function(x, which) {
-              stats(eval(which, x))
-          })
+setGeneric("groupings", function(x, by, ...) standardGeneric("groupings"))
 
-setMethod("groups", c("SolrCore", "SolrQuery"), function(x, by) {
-              groups(eval(by, x))
+setMethod("groupings", c("SolrCore", "SolrQuery"), function(x, by, ...) {
+              groupings(eval(by, x), ...)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -361,12 +361,11 @@ setGeneric("ngroup", function(x, ...) standardGeneric("ngroup"))
 
 setMethod("ngroup", "SolrCore", function(x, query) {
               params(query)$group.limit <- 0L
-              responseType(query) <- "list"
               ngroup(eval(query, x))
           })
 
 resultLength <- function(x, query) {
-  ans <- if (identical(params(query)$group, "true"))
+  ans <- if (grouped(query))
     ngroup(x, query)
   else numFound(x, query)
   if (length(ans) > 1L) {
@@ -381,6 +380,7 @@ prepareQueryParams <- function(x, query) {
       responseType(query) <- "list"
   query <- translateParams(query, x)
   query <- prepareExcludeTags(query)
+  query <- addAuxStats(query)
   as.character(query)
 }
 

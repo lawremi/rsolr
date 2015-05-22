@@ -87,8 +87,17 @@ dfToTable <- function(x) {
 }
 
 validHomogeneousList <- function(x, type) {
-  if (!all(as.logical(lapply(x, is, type))))
+  if (!all(vapply(x, is, type, FUN.VALUE=logical(1L))))
     paste("all elements of", class(x), "must be", type, "objects")
+}
+
+validHomogeneousTree <- function(x, type) {
+    if (!all(vapply(x, function(xi) {
+                        if (is.list(xi))
+                            unlist(validHomogeneousTree(xi, type))
+                        else is(xi, type)
+                    }, FUN.VALUE=logical(1L))))
+        paste("all leaf elements of", class(x), "must be", type, "objects")
 }
 
 top_prenv <- function(x) {
@@ -191,6 +200,17 @@ varsEnv <- function(expr, frame, parent) {
     vars <- all.vars(expr)
     objs <- lapply(vars, `[[`, x=frame) # could support mget()...
     list2env(objs, parent=parent)
+}
+
+startsWith <- function(x, prefix) {
+    substring(x, 1L, nchar(prefix)) == prefix
+}
+
+parseFormulaRHS <- function(x) {
+    if (length(x) != 2L) {
+        stop("formula must not have an LHS")
+    }
+    lapply(attr(terms(x), "variables")[-1L], stripI)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

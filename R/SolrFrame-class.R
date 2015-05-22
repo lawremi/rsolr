@@ -11,8 +11,8 @@ setClass("SolrFrame", contains=c("Solr", "Context"))
 ### Constructor
 ###
 
-.SolrFrame <- function(core, query=SolrQuery()) {
-  new("SolrFrame", core=core, query=query)
+.SolrFrame <- function(core, query=SolrQuery(), symbolFactory=NULL) {
+  new("SolrFrame", core=core, query=query, symbolFactory=symbolFactory)
 }
 
 SolrFrame <- function(uri, ...) {
@@ -28,8 +28,12 @@ setMethod("colnames", "SolrFrame", function(x) {
 })
 
 setMethod("rownames", "SolrFrame", function(x) {
-  ids(x)
-})
+              ans <- ids(x)
+              if (is.null(ans)) {
+                  ans <- as.character(seq_len(nrow(x)))
+              }
+              ans
+          })
 
 setMethod("dim", "SolrFrame", function(x) {
   c(nrow(x), ncol(x))
@@ -127,15 +131,9 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
     }
     return(x[,i,drop=FALSE,...])
   }
-  x <- as(x, "SolrList")
-  ans <- callGeneric()
-  if (is(ans, "Solr")) {
-    ans <- as(ans, "SolrFrame")
-  } else if (is.list(ans)) {
-    fieldNames <- fieldNames(x, onlyStored=TRUE, includeStatic=TRUE)
-    ans <- fillMissingFields(ans, fieldNames, schema(core(x)))[fieldNames]
-  }
-  ans
+  mc <- match.call()
+  mc[[1L]] <- quote(.Solr_2DBracket)
+  eval(mc)
 })
 
 setMethod("eval", c("SolrExpression", "SolrFrame"),
@@ -143,9 +141,11 @@ setMethod("eval", c("SolrExpression", "SolrFrame"),
               undefer(transform(envir, x = .(expr)))$x
           })
 
-setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
+setMethod("eval", c("SolrAggregateCall", "SolrFrame"),
           function (expr, envir, enclos) {
-              aggregate(envir, x = .(expr))$x
+              df <- aggregate(envir, x = .(expr))
+              grouped <- length(df) > 1L
+              if (grouped) split(df$x, df[-length(df)]) else df$x
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -153,7 +153,7 @@ setMethod("eval", c("SolrAggregateExpression", "SolrFrame"),
 ###
 
 setAs("Solr", "SolrFrame", function(from) {
-  .SolrFrame(core(from), query(from))
+  .SolrFrame(core(from), query(from), symbolFactory(from))
 })
 
 as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
@@ -175,33 +175,45 @@ setMethod("as.list", "SolrFrame", function(x, lazy=FALSE, ...) {
               lapply(fieldNames(x), `[[`, x=x, lazy=lazy, ...)
           })
 
+setAs("SolrFrame", "DocCollection",
+      function(from) as.data.frame(from, optional=TRUE))
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Summarizing
 ###
+
+setGeneric("group", function(x, ...) standardGeneric("group"))
+
+setMethod("group", "SolrFrame", function(x, by) {
+              if (is.null(by)) {
+                  return(x)
+              }
+              if (!is.formula(by)) {
+                  stop("'by' must be NULL or a formula")
+              }
+              GroupedSolrFrame(x, by)
+          })
 
 summary.SolrFrame <- function(object, ...) {
     summary(object, ...)
 }
 
-setMethod("summary", "SolrFrame", function(object) {
-              types <- fieldTypes(schema(core(object)), fieldNames(object))
-              num <- vapply(types, is, logical(1L), "NumericField")
-              p <- c(0.25, 0.5, 0.75)
-              query <- query(object)
-              for (f in fieldNames(object)[num])
-                  query <- facet(query, NULL, min(.field(f)),
-                                 mean(.field(f)), quantile(.field(f), p),
-                                 max(.field(f)))
-              ## stats <- lapply(as.list(x[num], lazy=TRUE), function(xi) {
-              ##                     list(min=min(xi), mean=mean(xi),
-              ##                          quantile=quantile(xi, p), max=max(xi))
-              ##                 })
-              ## stats <- lapply(unlist(stats), expr)
-              ## query <- facet(facet(query(object), .stats=stats), of[!num])
-              query <- facet(query, of[!num])
-              f <- facets(solr(x), query)
-### TODO: construct a summary object here that prints nicely, see SolrSummary
-          })
+setMethod("summary", "SolrFrame",
+          function(object, maxsum = 7L,
+                   digits = max(3L, getOption("digits") - 3L))
+    {
+        types <- fieldTypes(schema(core(object)), fieldNames(object))
+        num <- vapply(types, is, logical(1L), "NumericField")
+        p <- c(0.25, 0.5, 0.75)
+        query <- query(object)
+        fn <- fieldNames(object)
+        for (f in fn[num])
+            query <- facet(query, NULL, min(.field(f)),
+                           mean(.field(f)), quantile(.field(f), p),
+                           max(.field(f)))
+        query <- facet(query, fn[!num], limit=maxsum)
+        SolrSummary(facets(solr(x), query), fn, digits)
+    })
 
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

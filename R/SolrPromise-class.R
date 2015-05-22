@@ -52,40 +52,30 @@
 ###        limitation. We already capture pretty much all base R
 ###        aggregation functions, so this is a low priority.
 
+setClass("SolrContext", contains="Context")
+
 setClass("SolrPromise",
          representation(expr="SolrExpression",
-                        context="SolrFrameORNULL"),
+                        context="SolrContext"),
          contains="SimplePromise")
 
 setClassUnion("SolrLuceneExpressionOrSymbol",
               c("SolrLuceneExpression", "SolrSymbol"))
+setIs("SolrLuceneExpressionOrSymbol", "SolrExpression")
 
 setClass("SolrLucenePromise",
          representation(expr="SolrLuceneExpressionOrSymbol"),
          contains="SolrPromise")
 
-### NOTE: if we do this, we should probably have SolrLucenePromise
-### inherit directly from Promise.
-setIs("SolrLucenePromise", "logical")
 
 setClass("SolrFunctionPromise",
          representation(expr="SolrFunctionExpression"),
          contains="SolrPromise")
 
-### Not quite true, only function CALLS return numeric. For arbitrary
-### symbols, we would need one subclass for each type.
-##setIs("SolrFunctionPromise", "numeric")
-
 setClass("SolrReducePromise", contains="SolrPromise")
 
 setClass("SolrAggregatePromise",
-         representation(expr="SolrAggregateExpression"),
-         contains="SolrReducePromise")
-
-setIs("SolrAggregatePromise", "numeric")
-
-setClass("SolrUniquePromise",
-         representation(expr="SolrUniqueExpression"),
+         representation(expr="SolrAggregateCall"),
          contains="SolrReducePromise")
 
 setClass("SolrSymbolPromise",
@@ -93,11 +83,23 @@ setClass("SolrSymbolPromise",
          contains="SolrFunctionPromise")
 
 setClass("SolrLuceneSymbolPromise",
-         contains=c("SolrLucenePromise", "SolrSymbolPromise"))
+         contains=c("SolrSymbolPromise", "SolrLucenePromise"))
 
 setClass("PredicatedSolrSymbolPromise",
          representation(expr="PredicatedSolrSymbol"),
          contains="SolrPromise")
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Relations to basic classes
+###
+
+### NOTE: if we do this, we should probably have SolrLucenePromise
+### inherit directly from Promise.
+setIs("SolrLucenePromise", "logical")
+### Not quite true, only function CALLS return numeric. For arbitrary
+### symbols, we would need one subclass for each type.
+##setIs("SolrFunctionPromise", "numeric")
+setIs("SolrAggregatePromise", "numeric")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
@@ -120,7 +122,7 @@ SolrSymbolPromise <- function(expr, context) {
 }
 
 setMethod("Promise",
-          c("SolrLuceneSymbol", "SolrFrame"),
+          c("SolrLuceneSymbol", "Solr"),
           function(expr, context) {
               promise <- callNextMethod()
               if (is(promise, "SolrSymbolPromise"))
@@ -129,8 +131,9 @@ setMethod("Promise",
           })
 
 setMethod("Promise",
-          c("SolrSymbol", "SolrFrame"),
+          c("SolrSymbol", "Solr"),
           function(expr, context) {
+              context <- as(context, "SolrFrame")
               prom <- computedFieldPromise(context, expr)
               if (is.null(prom)) {
                   prom <- SolrSymbolPromise(SolrSymbol(expr), context)
@@ -179,8 +182,7 @@ setMethod("%in%", c("SolrSymbolPromise", "SolrSymbolPromise"),
 
 setMethod("%in%", c("SolrSymbolPromise", "ANY"),
           function(x, table) {
-              term <- SolrLuceneTerm(NULL, table)
-              expr <- LuceneQParserExpression(term, df=expr(x))
+              expr <- SolrLuceneTerm(expr(x), table)
               SolrLucenePromise(expr, context(x))
           })
 
@@ -210,14 +212,14 @@ setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
               x != I("*:*")
           })
 
-setMethods("Comparison",
+setMethods("Compare",
            list(c("SolrSymbolPromise", "ANY"),
                 c("ANY", "SolrSymbolPromise")),
            function(e1, e2) {
                luceneRelational(.Generic, e1, e2)
            })
 
-setMethods("Comparison",
+setMethods("Compare",
            list(c("SolrPromise", "numeric"),
                 c("numeric", "SolrPromise")),
            function(e1, e2) {
@@ -343,7 +345,7 @@ luceneRelational <- function(fun, x, y) {
 ###
 
 setMethods("Logic",
-           list(c("SolrFunctionPromise", "SolrFunctionPromise")
+           list(c("SolrFunctionPromise", "SolrFunctionPromise"),
                 c("ANY", "SolrPromise"),
                 c("SolrPromise", "ANY")),
            function(e1, e2) {
@@ -354,7 +356,7 @@ setMethod("!", "SolrFunctionPromise", function(x) {
               solrCall("not", x)
           })
 
-setMethod("Comparison", c("SolrPromise", "SolrPromise"),
+setMethod("Compare", c("SolrPromise", "SolrPromise"),
           function(e1, e2) {
               switch(.Generic,
 ### crazy construct enables field comparisons using Solr functions
@@ -450,8 +452,6 @@ setMethod("rescale", "SolrPromise", function(x, min, max) {
               solrCall("scale", x, min, max)
           })
 
-setPromiseMethods("rescale")
-
 ## generic in S4Vectors
 setMethod("ifelse",
           c("SolrPromise", "ANY", "ANY"),
@@ -481,7 +481,7 @@ setMethods("pmin2",
                solrCall("min", x, y)
            })
 
-setMethod("is.na", "SolrFunctionSymbol", function(x) {
+setMethod("is.na", "SolrFunctionPromise", function(x) {
               !solrCall("exists", x)
           })
 
@@ -604,9 +604,8 @@ setMethod("quantile", "SolrPromise",
               probs <- probs * 100
               solrAggregate("percentile", x, na.rm, as.list(probs),
                             postprocess = function(percentile, aux) {
-                                m <- as.matrix(percentile)
                                 if (isTRUE(names))
-                                    colnames(m) <- paste0(probs, "%")
+                                    colnames(percentile) <- paste0(probs, "%")
                                 m
                             })
           })
@@ -754,6 +753,16 @@ setMethod("table", "SolrSymbolPromise",
                   names(dimnames(tab))[aliased] <- names(syms)[aliased]
               }
               tab
+          })
+
+setGeneric("ftable", function (..., exclude = c(NA, NaN), row.vars = NULL,
+                               col.vars = NULL) standardGeneric("ftable"))
+
+setMethod("ftable", "SolrSymbolPromise",
+          function (..., exclude = c(NA, NaN), row.vars = NULL,
+                    col.vars = NULL) {
+              ftable(table(..., exclude=exclude), row.vars=row.vars,
+                     col.vars=col.vars)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -13,31 +13,45 @@ importFrom(tools, pskill)
 importFrom(utils, stack)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
-       copyFields, fieldTypes, name, version, schema, unmeta, facet,
-       query, core, params, "params<-")
+       copyFields, fieldTypes, name, version, schema, unmeta,
+       query, core, params, "params<-", stats, defer, docs)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
-              fieldNames, subset, xtabs, facets, stats, transform, summary,
-              head, tail, rev, aggregate, count, mean, sd, var, window,
-              groups, deriveSolrSchema, ndoc, nfield, as.data.frame, rename)
+              fieldNames, subset, xtabs, facets, transform, summary,
+              head, tail, window, rev, aggregate, mean, sd, var, window, group,
+              groupings, deriveSolrSchema, ndoc, nfield, as.data.frame, rename,
+              eval, nrow, rownames, ncol, colnames, heads, tails, windows,
+              with, within, sort, unique, as.list, "%in%", Logic, "!", Compare,
+              grepl, grep, Arith, "-", Math, round, rescale, ifelse, pmin2,
+              pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
+              IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
+              facet, ngroup)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
 S3method(`names<-`, FieldTypeList)
 S3method(as.data.frame, Solr)
-S3method(as.data.frame, DocCollection)
-S3method(as.data.frame, SolrStats)
-S3method(as.data.frame, SolrStatsList)
+S3method(as.data.frame, DocList)
 S3method(as.data.frame, FieldInfo)
 S3method(as.data.frame, DocList)
 S3method(as.data.frame, Solr)
 S3method(as.data.frame, SolrFrame)
+S3method(as.data.frame, Promise)
+S3method(as.list, FieldInfo)
+S3method(as.list, Promise)
+S3method(as.Date, Promise)
+S3method(as.POSIXct, Promise)
+S3method(as.POSIXlt, Promise)
 S3method(c, DocCollection)
-S3method(summary, SolrCore)
-S3method(summary, SolrQuery)
+S3method(summary, SolrFrame)
 S3method(window, SolrQuery)
+S3method(window, Solr)
+S3method(window, SolrPromise)
+S3method(head, Solr)
+S3method(tail, Solr)
 S3method(head, SolrQuery)
 S3method(tail, SolrQuery)
+S3method(head, SolrPromise)
+S3method(tail, SolrPromise)
 S3method(rev, SolrQuery)
-S3method(summary, Solr)
 S3method(window, Solr)
 S3method(head, Solr)
 S3method(tail, Solr)

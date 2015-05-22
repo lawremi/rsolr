@@ -32,6 +32,8 @@ RPromise <- function(expr, context) {
     new("RPromise", expr=expr, context=context)
 }
 
+setGeneric("Promise", function(expr, context, ...) standardGeneric("Promise"))
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Fulfillment
 ###
@@ -54,7 +56,7 @@ as.POSIXlt.Promise <- function(x) as.POSIXlt(fulfill(x))
 as.data.frame.Promise <- function(x) as.data.frame(fulfill(x))
 as.list.Promise <- function(x) as.list(fulfill(x))
 
-setReplaceMethod("[<-", "Promise", function (x, i, j, ..., value) {
+setReplaceMethod("[", "Promise", function (x, i, j, ..., value) {
                      if (!missing(i) && is(i, "Promise"))
                          i <- fulfill(i)
                      if (!missing(j) && is(j, "Promise"))

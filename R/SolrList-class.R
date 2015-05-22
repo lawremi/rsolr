@@ -12,8 +12,8 @@ setClass("SolrList", contains="Solr")
 ### Constructor
 ###
 
-.SolrList <- function(core, query=SolrQuery()) {
-  new("SolrList", core=core, query=query)
+.SolrList <- function(core, query=SolrQuery(), symbolFactory=NULL) {
+  new("SolrList", core=core, query=query, symbolFactory=symbolFactory)
 }
 
 SolrList <- function(uri, ...) {
@@ -68,7 +68,7 @@ setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
         value <- list(setNames(rep(list(NULL), length(j)), j))
       }
       if (missing(i) && !(uniqueKey(schema(core(x))) %in% j)) {
-        i <- ids(x)
+        i <- unlist(ids(x), use.names=FALSE)
       }
     }
     if (is.null(value)) {
@@ -81,6 +81,15 @@ setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
     if (!missing(i)) {
       if (length(i) == 0L) {
         return(x)
+      }
+      if (is.null(uniqueKey(schema(core(x))))) {
+        stop("'i' must be missing if there is no unique key in the schema")
+      }
+      if (!is.character(i)) {
+        i <- ids(x)[i]
+      }
+      if (any(is.na(i))) {
+        stop("'i' resolves to one or more NAs")
       }
       if (ndoc(value) < length(i))
         value <- value[recycleVector(seq_len(NROW(value)), length(i)),]
@@ -117,19 +126,34 @@ setMethod("[[", "SolrList", function(x, i, j, ...) {
   }
 })
 
-setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
+MAX_LUCENE_QUERY_LENGTH <- 1024
+
+.Solr_2DBracket <- function(x, i, j, ..., drop = TRUE) {
   if (!isTRUEorFALSE(drop)) {
     stop("'drop' must be TRUE or FALSE")
   }
   query <- query(x)
+  readColumn <- drop && !missing(j) && length(j) == 1L
   if (!missing(i)) {
-    if (!is.character(i) || any(is.na(i))) {
-      stop("'i' must be character, without any NAs")
+    lazyI <- is(i, "Promise") || is(i, "Expression")
+    if (!readColumn && !lazyI) {
+        if (is.null(uniqueKey(schema(core(x))))) {
+            stop("retrieving a doc by ID requires a 'uniqueKey' in the schema")
+        }
+        if (!is.character(i)) {
+            i <- ids(x)[i]
+        }
+        if (any(is.na(i))) {
+            stop("'i' resolved to one or more NAs")
+        }
+        if (length(i) > MAX_LUCENE_QUERY_LENGTH) {
+            warning("more than ", MAX_LUCENE_QUERY_LENGTH, " ids requested, ",
+                    "expect Lucene to break (try using a promise).")
+        }
+        query <- subset(query, .field(uniqueKey(schema(core(x)))) %in% .(i))
+    } else if (lazyI) {
+      query <- subset(query, .(i))
     }
-    if (is.null(uniqueKey(schema(core(x))))) {
-      stop("retrieving a document by ID requires a 'uniqueKey' in the schema")
-    }
-    query <- subset(query, .field(uniqueKey(schema(core(x)))) %in% .(i))
   }
   if (!missing(j)) {
     query <- subset(query,
@@ -138,7 +162,6 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
                              else j)
   }
   query(x) <- query
-  readColumn <- drop && !missing(j) && length(j) == 1L
   if (readColumn) {
     if (missing(i) && (is(j, "Symbol") || !is.null(symbolFactory(x)))) {
       if (!is(j, "Symbol"))
@@ -155,22 +178,29 @@ setMethod("[", "SolrList", function(x, i, j, ..., drop = TRUE) {
     }
     ans
   } else {
-    readDoc <- drop && !missing(drop) && ndoc(x) == 1L
+    readDoc <- drop && !missing(drop) && identical(ndoc(x), 1L)
     if (readDoc) {
-      as.list(x)[[1L]]
+      ans <- as.list(x)
+      if (is(ans, "DocList"))
+        ans <- ans[[1L]]
+      ans
     } else {
       x
     }
   }
-})
+}
+
+setMethod("[", "SolrList", .Solr_2DBracket)
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###
 
 setAs("Solr", "SolrList", function(from) {
-  .SolrList(core(from), query(from))
+  .SolrList(core(from), query(from), symbolFactory(from))
 })
+
+setAs("SolrList", "DocCollection", function(from) as.list(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

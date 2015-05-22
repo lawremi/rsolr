@@ -80,8 +80,12 @@ setClass("SolrQuery",
 ### Constructor
 ###
 
-SolrQuery <- function() {
-    new("SolrQuery")
+SolrQuery <- function(expr) {
+    ans <- new("SolrQuery")
+    if (!missing(expr)) {
+        ans <- eval(substitute(subset(ans, expr)), parent.frame())
+    }
+    ans
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -118,21 +122,26 @@ json <- function(x) {
 ### The intent is to preserve the state when the translation was requested
 ###
 
+setClassUnion("formulaORNULL", c("formula", "NULL"))
+
 setClass("SolrQueryTranslationSource",
-         representation(expr="language",
+         representation(expr="ANY",
                         query="SolrQuery",
-                        env="environment"),
+                        env="environment",
+                        grouping="formulaORNULL"),
          contains="Expression")
 
 setMethod("translate", c("SolrQueryTranslationSource", "ANY"),
           function(x, target, core, ...) {
-              context <- DelegateContext(.SolrFrame(x@query, core), x@env)
+              frame <- group(.SolrFrame(x@query, core), x@grouping)
+              context <- DelegateContext(frame, x@env)
               translate(x@expr, target, context, ...)
           })
 
-deferTranslation <- function(x, expr, target, env) {
+deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
-    src <- new("SolrQueryTranslationSource", expr=expr, query=x, env=env)
+    src <- new("SolrQueryTranslationSource", expr=expr, query=x, env=env,
+               grouping=grouping)
     new("TranslationRequest", src=src, target=target)
 }
 
@@ -143,7 +152,7 @@ translateParams <- function(x, context) {
     x
 }
 
-setExcludeTags <- function(x, context) {
+prepareExcludeTags <- function(x) {
 ### SECOND TIME EVER USING rapply()!!!!
     fq <- names(params(x)$fl)
     params(x) <- rapply(params(x), function(xi) {
@@ -151,6 +160,21 @@ setExcludeTags <- function(x, context) {
                             xi$nfq <- NULL
                             xi
                         }, "facet", how="replace")
+    x
+}
+
+getAuxExpr <- function(x) {
+    if (is(x, "SolrAggregateExpression"))
+        lapply(x@aux, expr)
+}
+
+addAuxStats <- function(x, context) {
+### THIRD TIME EVER USING rapply()!!!!
+    params(x) <- rapply(params(x), function(xi) {
+                            aux <- unlist(unname(lapply(xi, getAuxExpr)))
+                            xi[names(aux)] <- aux
+                            xi
+                        }, "facetlist", how="replace")
     x
 }
 
@@ -208,7 +232,7 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
   ## behavior.  Sure, aliasing is sort of pointless server-side, but
   ## we do not want to surprise the user.
   aliased <- vapply(e, is.name, logical(1L))
-  identity.aliases <- unique(lapply(e[aliased], as, "SolrFunctionExpression"))
+  identity.aliases <- unique(as.character(e[aliased]))
   params(`_data`)$fl <- c(params(`_data`)$fl, setNames(fl, names(e)),
                           setNames(identity.aliases, identity.aliases))
   `_data`
@@ -227,15 +251,8 @@ setMethod("rename", "SolrQuery", function(x, ...) {
               x
           })
 
-parseSortFormula <- function(x) {
-  if (length(x) != 2L) {
-    stop("formula must not have an LHS")
-  }
-  lapply(attr(terms(x), "variables")[-1L], stripI)
-}
-
 sortParams <- function(x, by, decreasing) {
-    lapply(parseSortFormula(by), deferTranslation, x=x,
+    lapply(parseFormulaRHS(by), deferTranslation, x=x,
            target=SolrSortExpression(decreasing), env=attr(by, ".Environment"))
 }
 
@@ -332,21 +349,21 @@ configureGroups <- function(x, limit, offset, ...) {
             group.sort=params(x)$sort, ...)
 }
 
-setGeneric("groups", function(x, by, ...) standardGeneric("groups"))
+setGeneric("group", function(x, by, ...) standardGeneric("group"))
 
-setMethod("groups", c("SolrQuery", "language"),
+setMethod("group", c("SolrQuery", "language"),
           function(x, by, limit = .Machine$integer.max, offset = 0L,
                    env = emptyenv()) {
     func <- deferTranslation(x, by, SolrFunctionExpression(), env)
     configureGroups(x, limit, offset, group.func=func)
 })
 
-setMethod("groups", c("SolrQuery", "name"),
+setMethod("group", c("SolrQuery", "name"),
           function(x, by, limit = .Machine$integer.max, offset = 0L, env) {
-  groups(x, by=as.character(by), limit=limit, offset=offset)
+  group(x, by=as.character(by), limit=limit, offset=offset)
 })
 
-setMethod("groups", c("SolrQuery", "character"),
+setMethod("group", c("SolrQuery", "character"),
           function(x, by, limit = .Machine$integer.max, offset = 0L) {
   if (!isSingleString(by)) {
     stop("'by' must be a single, non-NA string")
@@ -355,18 +372,20 @@ setMethod("groups", c("SolrQuery", "character"),
   configureGroups(x, limit, offset, group.field)
 })
 
-setMethod("groups", c("SolrQuery", "formula"), function(x, by, ...) {
+setMethod("group", c("SolrQuery", "formula"), function(x, by, ...) {
   hasLHS <- length(by) == 3L
   if (hasLHS) {
     x <- subset(x, fields=as.character(by[[2L]]))
     by[[2L]] <- NULL
   }
-  exprs <- parseSortFormula(by)
+  exprs <- parseFormulaRHS(by)
   if (length(exprs) > 1L) {
     stop("'by' must be a formula with a single term")
   }
-  groups(x, exprs[[1L]], env=attr(by, ".Environment"), ...)
+  group(x, exprs[[1L]], env=attr(by, ".Environment"), ...)
 })
+
+grouped <- function(x) identical(params(x)$group, "true")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Facet component
@@ -392,45 +411,33 @@ setMethod("xtabs", "SolrQuery",
             facet(data, formula, useNA=is.null(exclude))
           })
 
-facet <- function(x, ...) {
-  if (outputRestricted(x)) {
-    warning("facets will ignore head/tail restriction")
-  }
-  facetParams(x) <- facetParams(x, ...)
-  x
-}
+setGeneric("facet", function(x, by = NULL, ...) standardGeneric("facet"))
+
+setMethod("facet", c("SolrQuery", "NULL"), function(x, by, ...) {
+              stats <- statParams(x, by, ...)
+              facetParams(x)[names(stats)] <- stats
+              x
+          })
+
+setMethod("facet", c("SolrQuery", "formula"), function(x, by, ...) {
+              factors <- attr(terms(by), "variables")[-1L]
+              facetParams(x) <- mergeFacetParams(x, json(x)$facet, factors,
+                                                 grouping=by,
+                                                 where=attr(by, ".Environment"),
+                                                 ...)
+              x
+          })
+
+setMethod("facet", c("SolrQuery", "character"), function(x, by, ...) {
+              facetParams(x)[by] <- facetParams(x, by, ...)
+              x
+          })
 
 setGeneric("facetParams", function(x, by=list(), ...)
     standardGeneric("facetParams"))
 
-setMethod("facetParams", c("SolrQuery", "list"), function(x, by, ...) {
-              facetParams_json(x, json(x)$facet, by, ...)
-          })
-
-setMethod("facetParams", c("SolrQuery", "name"), function(x, by, ...) {
-              facetParams(x, as.character(by), ...)
-          })
-
-setMethod("facetParams", c("SolrQuery", "formula"), function(x, by, ...) {
-              factors <- attr(terms(by), "variables")[-1L]
-              facetParams(factors, where=attr(by, ".Environment"))
-          })
-
-setMethod("facetParams", c("SolrQuery", "call"),
-          function(x, by, where, sort=NULL, decreasing=FALSE,
-                   limit=NA_integer_, ...) {
-              by <- stripI(by)
-              if (by[[1L]] == quote(cut)) {
-                  by[[1L]] <- quote(facet_cut)
-                  json <- eval(by, where)
-              } else {
-                  query <- deferTranslation(x, by, SolrLuceneExpression(),
-                                            where)
-                  json <- list(type="query", q=query)
-              }
-              c(json, list(facet=statsParams(...),
-                           sort=facetSort(x, sort, decreasing),
-                           limit=facetLimit(limit)))
+setMethod("facetParams", c("SolrQuery", "missing"), function(x, by, ...) {
+              json(x)$facet              
           })
 
 setMethod("facetParams", c("SolrQuery", "character"),
@@ -442,18 +449,50 @@ setMethod("facetParams", c("SolrQuery", "character"),
               if (any(is.na(by))) {
                   stop("'by' must not contain NAs")
               }
-              stats <- statsParams(x, ...)
               sort <- facetSort(x, sort, decreasing)
               limit <- facetLimit(limit)
-              json <- lapply(by, function(f) {
-                                 list(type="terms", field=f, missing=useNA,
-                                      facet=stats, sort=sort, limit=limit)
-                             })
-              names(json) <- by
-              json
+              aliased <- by %in% names(params(x)$fl)
+              params <- lapply(params(x)$fl[by[aliased]], facetParams)
+              params[by[!aliased]] <-
+                  lapply(by[!aliased], function(f) {
+                             grouping <- as.formula(paste("~", f))
+                             stats <- statsParams(x, grouping, ...)
+                             list(type="terms", field=f,
+                                  missing=useNA,
+                                  facet=stats, sort=sort,
+                                  limit=limit, mincount=0L)
+                         })
+              params
+          })
+
+setMethod("facetParams", c("SolrQuery", "name"),
+          function(x, by, ...) {
+              facetParams(x, as.character(by))[[1L]]
+          })
+
+setMethod("facetParams", c("SolrQuery", "call"),
+          function(x, by, where, ...) {
+              by <- stripI(by)
+              if (by[[1L]] == quote(cut)) {
+                  by[[1L]] <- quote(facet_cut)
+                  params <- eval(by, where)
+              } else {
+                  query <- deferTranslation(x, by, SolrLuceneExpression(),
+                                            where)
+                  params <- list(type="query", q=query)
+              }
+              c(params, list(facet=statsParams(...)))
+          })
+
+setMethod("facetParams", c("SolrQuery", "TranslationRequest"),
+          function(x, by, ...) {
+              facetParams(x, by@src@expr, ...)
           })
 
 `facetParams<-` <- function(x, value) {
+    if (outputRestricted(x)) {
+        warning("facets will ignore head/tail restriction")
+    }
     json(x)$facet <- value
     x
 }
@@ -474,12 +513,12 @@ facetSort <- function(x, sort, decreasing) {
     }
     dir <- if (decreasing) "desc" else "asc"
     if (is.formula(sort)) {
-        f <- parseSortFormula(sort)
+        f <- parseFormulaRHS(sort)
         paste(vapply(f, function(t) {
                          if (is.name(t)) {
                              paste(t, dir)
                          } else {
-                             stop("facet sort term must be a simple name")
+                             stop("facet sort term must name a statistic")
                          }
                      }, character(1L)),
               collapse=",")
@@ -490,22 +529,50 @@ facetSort <- function(x, sort, decreasing) {
     }
 }
 
+setGeneric("makeName", function(x) standardGeneric("makeName"))
+
+setMethod("makeName", "TranslationRequest", function(x) {
+              makeName(x@src@expr)
+          })
+
+setMethod("makeName", "call", function(x) {
+              paste0(makeName(x[[2L]]), ".", x[[1L]])
+          })
+
+setMethod("makeName", "Promise", function(x) {
+              makeName(expr(x))
+          })
+
+setMethod("makeName", "SolrAggregateCall", function(x) {
+              paste0(makeName(x@subject), ".", x@name)
+          })
+
+setMethod("makeName", "SolrFunctionExpression", function(x) {
+              if (length(x@args) > 1L) {
+                  x@args <- x@args[-1L]
+                  suffix <- x
+              } else {
+                  suffix <- x@name
+              }
+              paste0(makeName(x@args[[1L]]), ".", suffix)
+          })
+
 imputeStatNames <- function(x) {
     needsName <- if (is.null(names(x))) {
         TRUE
     } else {
         names(x) == ""
     }
-    nameRequest <- function(r) paste0(r@src[[2L]], ".", r@src[[1L]])
-    names(x)[needsName] <- lapply(x[needsName], nameRequest)
+    names(x)[needsName] <- lapply(x[needsName], makeName)
     x
 }
 
-statsParams <- function(x, ..., .stats=list()) {
+statsParams <- function(x, grouping, ..., .stats=list()) {
     stats <- as.list(substitute(list(...))[-1L])
     requests <- mapply(deferTranslation, list(x), stats,
                        list(SolrAggregateExpression()),
-                       top_prenv_dots(...))
+                       top_prenv_dots(...),
+                       grouping=grouping)
     requests <- imputeStatNames(requests)
     c(requests, .stats)
 }
@@ -570,7 +637,7 @@ facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
   }
 }
 
-facetParams_json <- function(x, params, terms, ...) {
+mergeFacetParams <- function(x, params, terms, ...) {
     if (is.null(params)) {
         params <- list()
     }
@@ -590,78 +657,16 @@ facetParams_json <- function(x, params, terms, ...) {
         pterm <- structure(newfacet, class="facet")
     }
     params[[deparse(term)]] <- pterm
+    if (pterm$type == "query") {
+        not_pterm <- pterm
+        not_pterm$query@src <- call("!", pterm$query@src)
+        params[[paste0("_not_", deparse(term))]] <- not_pterm
+    }
     params
 }
 
 enablesFacet <- function(x) {
     !is.null(params(x)$json.facet)
-}
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Stats component
-###
-### This is somewhat redundant with facets() now that it supports
-### stats. But this conveys the high-level notion of computing stats
-### on *fields* rather that computing arbitrarily named stats on
-### arbitrary expressions.
-###
-### Of course, we could use standardized names like .[var].mean and
-### attempt to parse those. Then we could remove this.
-
-enablesStats <- function(x) {
-  identical(params(x)$stats, "true")
-}
-
-setMethod("stats", c("SolrQuery", "character"), function(x, which) {
-  if (any(is.na(which))) {
-    stop("'which' must be character without NAs")
-  }
-  params(x) <- c(params(x), stats="true",
-                 setNames(which, rep("stats.field", length(which))))
-  x
-})
-
-### FIXME: not clear if we should still support this. It relies on the
-### now deprecated "stats.facet" parameter. Current recommendation is
-### to introduce a facet.pivot and link to it via a "tag". This is
-### undesirable, since it introduces a facet.pivot into the results,
-### and we have already moved to using the JSON facet API, instead of
-### the limited facet.pivot stuff.
-setMethod("stats", c("SolrQuery", "formula"), function(x, which) {
-  f <- parseStatsFormula(which)
-  x <- stats(x, f$fields)
-  if (!is.null(f$facet)) {
-    params(x) <- c(params(x),
-                   setNames(rep(f$facet, length(f$fields)),
-                            paste0("f.", f$fields, ".stats.facet")))
-  }
-  x
-})
-
-parseStatsFormula <- function(x) {
-  vars <- attr(terms(x, allowDotAsName=TRUE), "variables")
-  if (length(x) != 3L || length(vars) != 3L) {
-    stop("'formula' must contain exactly one term on each side")
-  }
-  lhs <- vars[[2L]]
-  rhs <- vars[[3L]]
-  if (is.call(lhs)) {
-    if (lhs[[1L]] == quote(c)) {
-      lhs <- lhs[-1L]
-    } else {
-      stop("formula LHS must be a single name or names combined with c()")
-    }
-  }
-  fields <- as.character(lhs)
-  if (!is.name(rhs)) {
-    stop("formula RHS must be a single symbol")
-  }
-  if (rhs == quote(.)) {
-    facet <- NULL
-  } else {
-    facet <- as.character(rhs)
-  }
-  list(fields=fields, facet=facet)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

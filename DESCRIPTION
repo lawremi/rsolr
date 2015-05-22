@@ -21,19 +21,26 @@ Depends:
     BiocGenerics (>= 0.13.3),
     methods
 Collate:
+    utils.R
+    pminmax.R
+    Context-class.R
     DocCollection-class.R
     Expression-class.R
+    Facets-class.R
     FieldInfo-class.R
     FieldType-class.R
-    SolrSummary-class.R
-    SolrSchema-class.R
+    Promise-class.R
+    SolrExpression-class.R
     SolrQuery-class.R
+    SolrSchema-class.R
     SolrCore-class.R
+    SolrResult-class.R
+    SolrSummary-class.R
     Solr-class.R
     SolrList-class.R
     SolrFrame-class.R
-    SolrAggregation-class.R
+    SolrPromise-class.R
+    GroupedSolrFrame-class.R
     test.R
-    utils.R
     zzz.R
     

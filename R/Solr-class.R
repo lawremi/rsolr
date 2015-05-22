@@ -29,27 +29,6 @@
 ###
 ### Call the package "rdb".
 
-
-### TODO: Would it make sense for Solr to have an optional grouping
-###       slot?  That would enable aggregate(x, ...), i.e., no
-###       formula. When there is no grouping (NULL) stats are computed
-###       over the entire dataset. This is consistent with SolrQuery.
-###
-
-### Some implications:
-
-### The grouping affects the behavior of all aggregations.  Any
-### summary will return a vector result, so ndoc() returns a
-### non-scalar, and head/tail return lists.
-
-### The shape is still that of a table. Extraction still behaves the
-### same, except the grouping should be carried over somehow to the
-### extracted objects. If we have a grouping, the promises will be
-### implicity grouped via their context. This will work more or less
-### automatically. When extraction is eager, we could keep the
-### grouping on the objects, and then implement aggregation methods in
-### R. For now though, grouping will imply deferral.
-
 setClassUnion("SymbolFactoryORNULL", c("SymbolFactory", "NULL"))
 
 setClass("Solr",
@@ -229,16 +208,22 @@ setMethod("xtabs", "Solr",
 ###       serves as the postfix,
 ###     - named, quoted arguments adding stats as columns,
 
-### Could it also support arbitrary functions? Lets say the function
-### is passed an object that acts like 'x' but has an implicit
-### grouping, such that evaluating a SolrAggregatePromise results in a
-### vector result. Since we are outside of a translation context,
-### there is no expectation of a scalar result, and everything should
-### work. The tricky part would be preserving the grouping
-### information, so that aggregate() could build the data.frame. If
-### that information were lost, we would need to re-query to get
-### it. That could just be a data.frame in an attribute, but
-### attributes are easily lost. Seems feasible though.
+### How does aggregation work?
+###
+### It could split() itself by the formula, which yields a SplitSolr,
+### or a SplitSolrPromise if there is an LHS. When given a function,
+### we always have a Promise, and that Promise is passed to the
+### function. If we have expressions, those are passed directly (via
+### ...) to facet,SolrQuery. The query is evaluated, and the facet
+### result corresponding to the formula is extracted.
+
+### A serious issue is that the computation is taking place on the
+### entire dataset, even though it is conceptually happening
+### group-wise.  For example, length() on a SplitSolrPromise returns
+### the number of groups. This makes sense, but causes problems when
+### we try to fake looping in aggregate(). ndoc() will return the
+### equivalent of lengths(), which will work, but the strange behavior
+### of length() will confuse the user. We'll see how bad it is.
 
 setMethod("aggregate", "formula", function(x, ...) {
   aggregateByFormula(x, ...)
@@ -251,11 +236,16 @@ setGeneric("aggregateByFormula",
 setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
 
 setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
-  FUN(SolrAggregation(formula, data), ...)
+              if (!missing(FUN)) {
+                  query <- facet(query(x), FUN(group(data, formula), ...))
+              } else {
+                  query <- facet(query(x), ...)
+              }
+              stats(facets(core(x), query)[[formula]])
 })
 
 setMethod("aggregate", "Solr", function(x, ...) {
-              stats(facets(fulfill(facet(query(x), ...))))
+              aggregateByFormula(NULL, x, ...)
           })
 
 uniqueBy <- function(x, by) {
@@ -279,19 +269,22 @@ setMethod("unique", "Solr", function (x, incomparables = FALSE) {
 window.Solr <- function(x, ...) window(x, ...)
 
 setMethod("window", "Solr", function (x, ...) {
-              eval(window(query(x), ...), core(x))
+              query(x) <- window(query(x), ...)
+              as(x, "DocCollection")
           })
 
 head.Solr <- function(x, n = 6L, ...) head(x, n=n, ...)
 
 setMethod("head", "Solr", function (x, n = 6L, ...) {
-              eval(head(query(x), n, ...), core(x))
+              query(x) <- head(query(x), n, ...)
+              as(x, "DocCollection")
           })
 
 tail.Solr <- function(x, n = 6L, ...) tail(x, n=n, ...)
 
 setMethod("tail", "Solr", function (x, n = 6L, ...) {
-              eval(tail(query(x), n, ...), core(x))
+              query(x) <- tail(query(x), n, ...)
+              as(x, "DocCollection")
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -299,7 +292,7 @@ setMethod("tail", "Solr", function (x, n = 6L, ...) {
 ###
 
 as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE, ...)
-    as.data.frame(x, row.names=row.names, optional=optional, ...)
+    as.data.frame(x, row.names=row.names, optional=optional)
 
 fillMissingFields <- function(x, fieldNames, schema) {
   fields <- fields(schema, setdiff(fieldNames, names(x)))
@@ -324,8 +317,8 @@ setMethod("as.data.frame", "Solr",
   if (!optional) {
     colnames(df) <- make.names(colnames(df), unique = TRUE)
   }
-  uk <- uniqueKey(schema(core(x)))
   if (isTRUE(row.names)) {
+    uk <- uniqueKey(schema(core(x)))      
     if (is.null(uk)) {
       stop("automatic rownames requested, but schema lacks a 'uniqueKey'")
     }
@@ -338,21 +331,17 @@ setMethod("as.data.frame", "Solr",
   df
 })
 
-as.data.frame.Solr <- function(x, row.names = NULL, optional = FALSE,
-                               fill = FALSE)
-{
-  as.data.frame(x, row.names=row.names, optional=optional, fill=fill)
-}
-
 setAs("Solr", "data.frame", function(from) {
           as.data.frame(from, optional=TRUE)
       })
 
-as.list.Solr <- function(x) {
-  read(core(x), query(x))
+as.list.Solr <- function(x, ...) {
+    as.list(x, ...)
 }
 
-setMethod("as.list", "Solr", as.list.Solr)
+setMethod("as.list", "Solr", function(x) {
+              read(core(x), query(x))
+          })
 
 setAs("Solr", "environment", function(from) list2LazyEnv(from))
 

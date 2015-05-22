@@ -1,5 +1,5 @@
 ### =========================================================================
-### SolrQueryResult objects
+### SolrResult objects
 ### -------------------------------------------------------------------------
 ###
 ### Represents the results returned by evaluating a SolrQuery, with
@@ -19,20 +19,20 @@
 ### specific components.
 ###
 
-setClass("SolrQueryResult",
+setClass("SolrResult",
          representation(core="SolrCore",
                         query="SolrQuery"),
          contains="VIRTUAL")
 
-setClass("ListSolrQueryResult",
-         contains=c("list", "SolrQueryResult"))
+setClass("ListSolrResult",
+         contains=c("list", "SolrResult"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
 ###
 
-ListSolrQueryResult <- function(x, core, query) {
-    new("ListSolrQueryResult", x, core=core, query=query)
+ListSolrResult <- function(x, core, query) {
+    new("ListSolrResult", x, core=core, query=query)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -44,37 +44,52 @@ docs <- function(x) {
     fromSolr(x$response$docs, schema)
 }
 
-setMethod("ndoc", "ListSolrQueryResult",
+setMethod("ndoc", "ListSolrResult",
           function(x) as.integer(x$response$numFound))
 
-summary.SolrQueryResult <- function(object) {
-    summary(object)
-}
-
-setMethod("summary", "SolrQueryResult", function(object) {
-              SolrSummary(object)
+setMethod("facets", "ListSolrResult", function(x) {
+              Facets(x$facets, params(query(x))$json.facet)
           })
 
-setMethod("facets", "SolrQueryResult", function(x) {
-              facets(summary(x))
-          })
-
-setMethod("ngroup", "ListSolrQueryResult", function(x) {
+setMethod("ngroup", "ListSolrResult", function(x) {
               vapply(x$grouped, function(g) length(g$groups), integer(1L))
           })
 
-setMethod("groups", c("ListSolrQueryResult", "missing"),
-          function(x, by) {
+groupsAsList <- function(x, schema) {
+    lapply(x, fromSolr, schema)
+}
+
+groupsAsDataFrame <- function(x, schema, ...) {
+    docs <- as(unlist(x, recursive=FALSE), "DocList")
+    df <- fromSolr(as.data.frame(docs, ...), schema)
+    as.data.frame(lapply(df, relist, x))
+}
+
+setMethod("groupings", c("ListSolrResult", "missing"),
+          function(x, by, as=c("list", "data.frame"), ...) {
               schema <- schema(core(x))
+              as <- match.arg(as)
               lapply(x$grouped, function(grouping) {
                          groups <- grouping$groups
-                         docLists <- pluck(groups, "doclist")
-                         fromSolrDocList <- function(dl) {
-                             fromSolr(dl$docs, schema)
-                         }
-                         groups <- lapply(docLists, fromSolrDocList)
                          names(groups) <- pluck(groups, "groupValue")
-                         groups
+                         docs <- pluck(pluck(groups, "doclist"), "docs")
+                         if (as == "list") {
+                             groupsAsList(docs, schema, ...)
+                         } else {
+                             groupsAsDataFrame(docs, schema, ...)
+                         }
                      })
           })
 
+AsDocs <- function(type) {
+    function(from) {
+        if (grouped(query(from))) {
+            groupings(from, as=type)[[1L]]
+        } else {
+            as(docs(from), type)
+        }
+    }
+}
+
+setAs("SolrResult", "list", AsDocs("list"))
+setAs("SolrResult", "data.frame", AsDocs("data.frame"))

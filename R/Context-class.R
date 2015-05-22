@@ -9,8 +9,9 @@ setClassUnion("Context", "environment")
 
 setClass("DelegateContext",
          representation(frame="Context",
-                        parent="Context"),
-         contains="Context")
+                        parent="Context"))
+
+setIs("DelegateContext", "Context")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors

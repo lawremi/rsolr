@@ -2,9 +2,38 @@
 ### SolrExpression objects
 ### -------------------------------------------------------------------------
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Base classes
+###
+
 setClass("SolrExpression", contains=c("Expression", "VIRTUAL"))
 
+setClass("SolrFunctionExpression",
+         representation(name="ANY"),
+         contains="SolrExpression")
+
 setClass("SolrLuceneExpression", contains=c("SolrExpression", "VIRTUAL"))
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Solr Symbols
+###
+
+## a symbol that refers to a Solr field
+setClass("SolrSymbol", contains=c("SimpleSymbol", "SolrFunctionExpression"))
+setClassUnion("SolrSymbolORNULL", c("SolrSymbol", "NULL"))
+
+## for targeting Lucene expressions
+setClass("SolrLuceneSymbol", contains="SolrSymbol")
+
+## Result of x[i]
+setClass("PredicatedSolrSymbol",
+         representation(subject="SolrSymbol",
+                        predicate="SolrLuceneExpression"),
+         contains="SolrExpression")
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### SolrExpression subtypes
+###
 
 setClass("SolrLuceneBinaryOperator",
          representation(e1="SolrLuceneExpression",
@@ -42,8 +71,6 @@ setClass("SolrLuceneRangeTerm",
 setClass("SolrQParserExpression",
          representation(query="Expression"),
          contains="SolrLuceneExpression")
-
-setClassUnion("SolrSymbolORNULL", c("SolrSymbol", "NULL"))
 
 setClass("LuceneQParserExpression",
          representation(op="character",
@@ -96,10 +123,6 @@ setClass("JoinQParserExpression",
              }
          })
 
-setClass("SolrFunctionExpression",
-         representation(name="ANY"),
-         contains="SolrExpression")
-
 setClass("AbstractSolrFunctionCall")
 
 setClass("SolrFunctionCall",
@@ -114,7 +137,7 @@ setClass("SolrFunctionCall",
 
 setClassUnion("functionORNULL", c("function", "NULL"))
 
-setClass("SolrAggregateExpression",
+setClass("SolrAggregateCall",
          representation(name="character",
                         subject="SolrFunctionExpression",
                         params="list",
@@ -124,7 +147,7 @@ setClass("SolrAggregateExpression",
          validity=function(object) {
              c(if (!isSingleString(object@name))
                    stop("'name' of a Solr aggregate call must be a string"),
-               validHomogeneousList(object@args, "SolrAggregateExpression"))
+               validHomogeneousList(object@args, "SolrAggregateCall"))
          })
 
 setClass("SolrSortExpression",
@@ -132,21 +155,6 @@ setClass("SolrSortExpression",
                         decreasing="logical"),
          contains="SolrExpression")
 
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Solr Symbols
-###
-
-## a symbol that refers to a Solr field
-setClass("SolrSymbol", contains=c("SimpleSymbol", "SolrFunctionExpression"))
-
-## for targeting Lucene expressions
-setClass("SolrLuceneSymbol", contains="SolrSymbol")
-
-## Result of x[i]
-setClass("PredicatedSolrSymbol",
-         representation(subject="SolrSymbol",
-                        predicate="SolrLuceneExpression"),
-         contains="Expression")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
@@ -207,10 +215,10 @@ SolrFunctionCall <- function(name, args) {
     new("SolrFunctionCall", name=name, args=args)
 }
 
-SolrAggregateExpression <- function(name, subject, na.rm, params=list(),
+SolrAggregateCall <- function(name, subject, na.rm, params=list(),
                                     aux = list(), postprocess = NULL)
 {
-    new("SolrAggregateExpression", name=name,
+    new("SolrAggregateCall", name=name,
         subject=as(subject, "SolrFunctionExpression"),
         na.rm=na.rm, params=params, aux=aux, postprocess=postprocess)
 }
@@ -281,6 +289,7 @@ setGeneric("args", function(x) standardGeneric("args"))
 setMethod("args", "SolrFunctionCall", function(x) x@args)
 setMethod("args", "SolrAggregateCall", function(x) c(x@subject, x@params))
 
+setGeneric("name", function(x) standardGeneric("name"))
 setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
            function(x) x@name)
 
@@ -352,7 +361,7 @@ normLuceneLiteral <- function(x) {
         x <- tolower(as.character(x))
     }
     if (length(x) > 1L) {
-        x <- paste(x, collapse=" ")
+        x <- paste0("(", paste(x, collapse=" "), ")")
     }
     as.character(x)
 }
@@ -401,11 +410,11 @@ setMethod("translate", c("ANY", "SolrSortExpression"),
 ### Lucene coercion
 ###
 
-setAs("LuceneExpression", "SolrQParserExpression", function(from) {
+setAs("SolrLuceneExpression", "SolrQParserExpression", function(from) {
           LuceneQParserExpression(from)
       })
 
-setAs("SolrQParserExpression", "LuceneExpression", function(from) {
+setAs("SolrQParserExpression", "SolrLuceneExpression", function(from) {
 ### NOTE: _query_: prefix not necessary with Solr >= 4.8
           SolrLuceneTerm("_query_", from)
       })
