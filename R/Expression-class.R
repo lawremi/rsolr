@@ -31,11 +31,11 @@ setIs("Symbol", "Expression")
 
 setClass("SimpleSymbol",
          representation(name="character"),
-         contains="Symbol",
          validity=function(object) {
              if (!isSingleString(object@name))
                  "'name' must be a single, non-NA string"
          })
+setIs("SimpleSymbol", "Symbol")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Translation
@@ -49,7 +49,7 @@ setMethod("translate", c("ANY", "Expression"),
                   return(x)
               }
               symbolFactory(context) <- symbolFactory(target, ...)
-              translation <- eval(expr, context) 
+              translation <- eval(x, context)
               if (is(translation, "Promise")) {
                   if (!compatible(context(translation), frame(context))) {
                       stop("target context incompatible with source context")
@@ -61,13 +61,11 @@ setMethod("translate", c("ANY", "Expression"),
 
 setClass("SymbolFactory", contains = "function")
 
-setGeneric("symbolFactory", function(x, ...) standardGeneric("symbolFactory"))
-setGeneric("symbolFactory<-", function(x, ..., value)
-    standardGeneric("symbolFactory<-"))
-
 setClass("TranslationRequest",
          representation(src="Expression",
                         target="Expression"))
+
+setMethod("as.character", "TranslationRequest", function(x) as.character(x@src))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Utilities

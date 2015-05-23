@@ -96,7 +96,7 @@ setReplaceMethod("[", "GroupedSolrFrame", function(x, i, j, ..., value) {
 ### READ
 ###
 
-setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
+setMethod("[", "GroupedSolrFrame", function(x, i, j, ..., drop = TRUE) {
               if (!missing(i) && !(is(i, "Promise") || is(i, "Expression"))) {
                   if (is.list(i) && !is.null(names(i)) &&
                       !all(vapply(i, is.character, logical(1L)))) {

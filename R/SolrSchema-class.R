@@ -37,7 +37,7 @@ parseSchemaXML <- function(doc) {
     uniqueKey <- xmlValue(uniqueKey)
   }
   likeREST <-
-    list(name=xmlAttrs(schema)["name"],
+    list(name=as.character(xmlAttrs(schema)["name"]),
          version=as.numeric(xmlAttrs(schema)["version"]),
          uniqueKey=uniqueKey,
          fields=attrsToList(getNodeSet(schema, "//field")),
@@ -217,11 +217,13 @@ resolveMeta <- function(x) {
   x
 }
 
-fromSolr_default <- function(x, type) {
+fromSolr_default <- function(x, type, query=NULL) {
+  if (!is.null(query)) {
+    type <- augment(type, query)
+  }
   ans <- convertCollection(x, type, fromSolr)
   ans <- resolveIds(ans, type)
   ans <- resolveMeta(ans)
-  origin(ans) <- NULL # for now
   ans
 }
 

@@ -134,9 +134,11 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
   }
   query <- query(x)
   readColumn <- drop && !missing(j) && length(j) == 1L
+  lazyReadColumn <- readColumn &&
+      (is(j, "Symbol") || !is.null(symbolFactory(x)))
   if (!missing(i)) {
     lazyI <- is(i, "Promise") || is(i, "Expression")
-    if (!readColumn && !lazyI) {
+    if ((!readColumn || lazyReadColumn) && !lazyI) {
         if (is.null(uniqueKey(schema(core(x))))) {
             stop("retrieving a doc by ID requires a 'uniqueKey' in the schema")
         }
@@ -146,14 +148,25 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
         if (any(is.na(i))) {
             stop("'i' resolved to one or more NAs")
         }
-        if (length(i) > MAX_LUCENE_QUERY_LENGTH) {
-            warning("more than ", MAX_LUCENE_QUERY_LENGTH, " ids requested, ",
-                    "expect Lucene to break (try using a promise).")
+        tooManyIds <- length(i) > MAX_LUCENE_QUERY_LENGTH
+        if (!(lazyReadColumn && tooManyIds)) {
+            if (tooManyIds) {
+                warning("more than ", MAX_LUCENE_QUERY_LENGTH,
+                        " ids requested, expect Lucene to break ",
+                        "(try using a promise).")
+            }
+            query <- subset(query, .field(uniqueKey(schema(core(x)))) %in% .(i))
+            lazyI <- TRUE
         }
-        query <- subset(query, .field(uniqueKey(schema(core(x)))) %in% .(i))
     } else if (lazyI) {
       query <- subset(query, .(i))
     }
+  }
+  if (lazyReadColumn && (missing(i) || lazyI)) {
+      query(x) <- query
+      if (!is(j, "Symbol"))
+          j <- symbolFactory(x)(j)
+      return(Promise(j, x))
   }
   if (!missing(j)) {
     query <- subset(query,
@@ -161,22 +174,15 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
                                union(j, uniqueKey(schema(core(x))))
                              else j)
   }
-  query(x) <- query
+  query(x) <- query  
   if (readColumn) {
-    if (missing(i) && (is(j, "Symbol") || !is.null(symbolFactory(x)))) {
-      if (!is(j, "Symbol"))
-        j <- symbolFactory(x)(j)
-      ans <- Promise(j, x)   
-    }  else {
       ans <- as.data.frame(x, row.names=!missing(i))
       ## ensure things are in the correct order
       if (!missing(i)) {
-        ans <- ans[i,j]
+        ans[i,j]
       } else {
-        ans <- ans[,j]
+        ans[,j]
       }
-    }
-    ans
   } else {
     readDoc <- drop && !missing(drop) && identical(ndoc(x), 1L)
     if (readDoc) {

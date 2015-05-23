@@ -210,7 +210,7 @@ setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
     warning("delete() cannot handle 'which' more complex than ",
             "'subset(SolrQuery(), [expr])'")
   }
-  query <- params(which)$fq
+  query <- as.character(eval(params(which)$fq, x))
   if (is.null(query)) {
     query <- params(which)$q
   }
@@ -229,7 +229,7 @@ setMethod("read", "SolrCore",
             }
             as <- match.arg(as)
             responseType(query) <- if (grouped(query)) "list" else as
-            as(eval(query, x), as)            
+            as(docs(eval(query, x)), as, strict=FALSE)
           })
 
 readSchemaFromREST <- function(uri) {
@@ -271,9 +271,9 @@ setMethod("facets", "SolrCore", function(x, by, ...) {
               facets(eval(by, x), ...)
           })
 
-setGeneric("groupings", function(x, by, ...) standardGeneric("groupings"))
+setGeneric("groupings", function(x, ...) standardGeneric("groupings"))
 
-setMethod("groupings", c("SolrCore", "SolrQuery"), function(x, by, ...) {
+setMethod("groupings", "SolrCore", function(x, by, ...) {
               groupings(eval(by, x), ...)
           })
 
@@ -318,44 +318,13 @@ SolrErrorHandler <- function(core, query) {
 setMethod("eval", c("SolrQuery", "SolrCore"),
           function (expr, envir, enclos)
           {
-            params <- prepareQueryParams(envir, expr)
+            params <- translate(expr, core=envir)
             expected.type <- params["wt"]
             response <- tryCatch(read(envir@uri$select, params),
                                  error = SolrErrorHandler(envir, expr))
             response <- processSolrResponse(response, expected.type)
             convertSolrQueryResponse(response, envir, expr)
           })
-
-prepareBoundsParams <- function(p, nrows) {
-  ans_start <- 0L
-  ans_rows <- .Machine$integer.max
-
-  stopifnot(identical(length(p$start), length(p$rows)))
-  
-  for (i in seq_along(p$start)) {
-    head_minus <- p$rows[i] < 0L
-    if (isTRUE(head_minus)) {
-      ans_rows <- min(ans_rows, nrows) + p$rows[i]
-    } else {
-      ans_rows <- min(ans_rows, p$rows[i], na.rm=TRUE)
-    }
-    tail_plus <- p$start[i] < 0L
-    if (tail_plus) {
-      ans_start <- ans_start + min(ans_rows, nrows) + p$start[i]
-      if (is.na(p$rows[i]))
-        ans_rows <- min(ans_rows, abs(p$start[i]))
-    } else {
-      ans_start <- ans_start + p$start[i]
-      if (is.na(p$rows[i]))
-        ans_rows <- min(ans_rows, nrows) - p$start[i]
-    }
-  }
-  
-  p$start <- ans_start
-  p$rows <- ans_rows
-
-  p
-}
 
 setGeneric("ngroup", function(x, ...) standardGeneric("ngroup"))
 
@@ -374,26 +343,16 @@ resultLength <- function(x, query) {
   ans
 }
 
-prepareQueryParams <- function(x, query) {
-  params(query) <- prepareBoundsParams(params(query), resultLength(x, query))
-  if (is.null(responseType(query)))
-      responseType(query) <- "list"
-  query <- translateParams(query, x)
-  query <- prepareExcludeTags(query)
-  query <- addAuxStats(query)
-  as.character(query)
-}
-
 setGeneric("convertSolrQueryResponse",
            function(x, core, query) standardGeneric("convertSolrQueryResponse"),
            signature=c("x"))
 
 setMethod("convertSolrQueryResponse", "ANY", function(x, core, query) {
-              x
+              fromSolr(x, schema(core), query)
           })
 
 setMethod("convertSolrQueryResponse", "list", function(x, core, query) {
-              SolrQueryResult(x, core, query)
+              ListSolrResult(x, core, query)
           })
 
 setMethod("eval", c("TranslationRequest", "SolrCore"),
@@ -425,7 +384,7 @@ commit_SolrCore <- function(x, waitSearcher=TRUE, softCommit=FALSE,
 {
   args <- tail(as.list(match.call()), -2)
   resp <- read(x@uri$update, do.call(commitQueryParams, args), wt="json")
-  invisible(as.integer(processSolrResponse(resp$responseHeader$status)))
+  invisible(as.integer(processSolrResponse(resp)$responseHeader$status))
 }
 setMethod("commit", "SolrCore", commit_SolrCore)
 

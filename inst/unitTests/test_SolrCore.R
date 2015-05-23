@@ -7,12 +7,19 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
+library(rsolr)
+library(RUnit)
+
 test_SolrCore_accessors <- function() {
   solr <- rsolr:::TestSolr()
   sc <- SolrCore(solr$uri)
   checkIdentical(name(sc), "example")
-  checkIdentical(ndoc(sc), 0L)
+  checkIdentical(ndoc(sc), 32L)
   checkIdentical(uniqueKey(schema(sc)), "id")
+  checkIdentical(version(sc), package_version("5.1.0"))
+
+  delete(sc)
+  checkIdentical(ndoc(sc), 0L)
   
   doc <- list(id="1112211111", name="my name!")
   dc <- as(list(doc), "DocCollection")
@@ -35,12 +42,23 @@ test_SolrCore_accessors <- function() {
     )
 
   update(sc, docs)
+  fn <- c("id", "name", "price", "inStock", "text", "timestamp_dt", "price_c")
+  checkIdentical(fieldNames(sc), fn)
+  checkIdentical(fieldNames(sc, "*_c"), "price_c")
+  checkIdentical(fieldNames(sc, "text*", includeStatic=TRUE),
+                 c("text", "text_rev"))
+  checkIdentical(fieldNames(sc, onlyStored=TRUE), setdiff(fn, "text"))
+  unindexed <- setdiff(fieldNames(sc, includeStatic=TRUE),
+                       fieldNames(sc, includeStatic=TRUE, onlyIndexed=TRUE))
+  checkIdentical(unindexed, "content")
+  checkIdentical(fieldNames(sc, character(0L)), character(0L))
 
   docs <- as(docs, "DocCollection")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- docs[,"id"]
 
   q <- SolrQuery(id %in% as.character(2:4))
+  checkIdentical(ndoc(sc, q), 3L)
   checkResponseEquals(read(sc, q), docs[1:3])
 
   q <- SolrQuery(id == .(doc$id))

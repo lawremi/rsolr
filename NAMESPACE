@@ -4,7 +4,7 @@ import(BiocGenerics)
 import(restfulr)
 importFrom(graph, graphNEL, edges)
 importClassesFrom(graph, graph)
-importFrom(rjson, fromJSON)
+importFrom(rjson, fromJSON, toJSON)
 importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
            xmlValue, getNodeSet)
 #importClassesFrom(XML, XMLDocument, XMLNode)

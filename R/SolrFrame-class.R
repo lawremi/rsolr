@@ -131,9 +131,7 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
     }
     return(x[,i,drop=FALSE,...])
   }
-  mc <- match.call()
-  mc[[1L]] <- quote(.Solr_2DBracket)
-  eval(mc)
+  .Solr_2DBracket(x, i, j, ..., drop=drop)
 })
 
 setMethod("eval", c("SolrExpression", "SolrFrame"),

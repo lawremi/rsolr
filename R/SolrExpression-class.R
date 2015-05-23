@@ -284,10 +284,11 @@ PredicatedSolrSymbol <- function(name, predicate) {
 ### Accessor
 ###
 
-setGeneric("args", function(x) standardGeneric("args"))
+setGeneric("args", function(name) standardGeneric("args"))
 
-setMethod("args", "SolrFunctionCall", function(x) x@args)
-setMethod("args", "SolrAggregateCall", function(x) c(x@subject, x@params))
+setMethod("args", "SolrFunctionCall", function(name) name@args)
+setMethod("args", "SolrAggregateCall",
+          function(name) c(name@subject, name@params))
 
 setGeneric("name", function(x) standardGeneric("name"))
 setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
@@ -314,7 +315,7 @@ setMethod("as.character", "SolrLuceneNOT", function(x) {
           })
 
 setMethod("as.character", "SolrLuceneTerm", function(x) {
-              term <- normLuceneLiteral(y@term)
+              term <- normLuceneLiteral(x@term)
               if (!is.null(x@field)) {
                   paste0(x@field, ":", term)
               } else term

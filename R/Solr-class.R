@@ -61,7 +61,7 @@ normFL <- function(fl) {
     fl
   else {
     fl[names(fl) != ""] <- names(fl)[names(fl) != ""]
-    unname(fl)
+    unlist(fl, use.names=FALSE)
   }
 }
 
@@ -110,6 +110,8 @@ undefer <- function(x) {
 setGeneric("compatible", function(x, y, ...) standardGeneric("compatible"))
 
 setMethod("compatible", c("Solr", "Solr"), function(x, y) {
+              params(query(x))$fl <- params(query(y))$fl
+              params(query(x))$json$facet <- params(query(y))$json$facet
               identical(query(x), query(y)) && identical(core(x), core(y))
           })
 

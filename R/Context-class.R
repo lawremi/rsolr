@@ -18,7 +18,27 @@ setIs("DelegateContext", "Context")
 ###
 
 frame <- function(x) x@frame
+`frame<-` <- function(x, value) {
+    x@frame <- value
+    x
+}
+
 parent <- function(x) x@parent
+`parent<-` <- function(x, value) {
+    x@parent <- value
+    x
+}
+
+setGeneric("symbolFactory", function(x, ...) standardGeneric("symbolFactory"))
+setMethod("symbolFactory", "DelegateContext",
+          function(x) symbolFactory(frame(x)))
+
+setGeneric("symbolFactory<-", function(x, ..., value)
+    standardGeneric("symbolFactory<-"))
+setReplaceMethod("symbolFactory", "DelegateContext", function(x, value) {
+                     symbolFactory(frame(x)) <- value
+                     x
+                 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructor
@@ -37,5 +57,8 @@ setMethod("eval", c("ANY", "DelegateContext"),
               if (!missing(enclos)) {
                   warning("'enclos' is ignored")
               }
-              eval(expr, frame(context), parent(context))
+              if (is.environment(frame(envir))) {
+                  frame(envir) <- as.list(frame(envir), all.names=TRUE)
+              }
+              eval(expr, frame(envir), parent(envir))
           })

@@ -284,6 +284,10 @@ unmeta <- function(x) {
   x
 }
 
+setGeneric("docs", function(x, ...) standardGeneric("docs"))
+
+setMethod("docs", "DocCollection", function(x) x)
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Iteration
 ###
@@ -319,7 +323,9 @@ setMethod("show", "DocCollection", function(object) {
 
 showDoc <- function(x, title) {
     cat(title, "\n")
-    lines <- labeledLine(names(x), x, count = lengths(x) > 1L, vectorized=TRUE)
+    lines <- BiocGenerics:::labeledLine(names(x), unname(x),
+                                        count = lengths(x) > 1L,
+                                        vectorized=TRUE)
     cat(lines, "\n", sep="")
 }
 

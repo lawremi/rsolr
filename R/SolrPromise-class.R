@@ -52,11 +52,9 @@
 ###        limitation. We already capture pretty much all base R
 ###        aggregation functions, so this is a low priority.
 
-setClass("SolrContext", contains="Context")
-
 setClass("SolrPromise",
          representation(expr="SolrExpression",
-                        context="SolrContext"),
+                        context="Context"),
          contains="SimplePromise")
 
 setClassUnion("SolrLuceneExpressionOrSymbol",
@@ -134,7 +132,7 @@ setMethod("Promise",
           c("SolrSymbol", "Solr"),
           function(expr, context) {
               context <- as(context, "SolrFrame")
-              prom <- computedFieldPromise(context, expr)
+              prom <- computedFieldPromise(context, name(expr))
               if (is.null(prom)) {
                   prom <- SolrSymbolPromise(SolrSymbol(expr), context)
               }
@@ -200,7 +198,7 @@ setMethods("Logic",
                } else {
                    SolrLuceneOR(expr(e1), expr(e2))
                }
-               LuceneSolrPromise(expr, ctx)
+               SolrLucenePromise(expr, ctx)
            })
 
 setMethod("!", "SolrPromise", function(x) {
@@ -233,7 +231,7 @@ setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
               if (missing(i)) {
                   i <- I("*:*")
                   ctx <- context(x)
-              } else if (!is(i, "literal")) {
+              } else {
                   if (!is(i, "Promise")) {
                       stop("currently, 'i' must be a Promise")
                   }
@@ -242,6 +240,22 @@ setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
               }
               symbol <- PredicatedSolrSymbol(expr(x), i)
               PredicatedSolrSymbolPromise(symbol, ctx)
+          })
+
+setMethod("[", "SolrPromise", function(x, i, j, ..., drop = TRUE) {
+              if (!missing(j) || length(list(...)) > 0L || !missing(drop)) {
+                  stop("'[' only accepts x[i] or x[] syntax")
+              }
+              if (missing(i)) {
+                  return(x)
+              }
+              if (is(i, "Promise")) {
+                  ctx <- resolveContext(x, i)
+              } else {
+                  ctx <- context(x)
+              }
+              context(x) <- ctx[i,]
+              x
           })
 
 setMethod("grepl", c("ANY", "SolrSymbolPromise"),
@@ -337,7 +351,7 @@ luceneRelational <- function(fun, x, y) {
                    "<"  = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, FALSE),
                    "<=" = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, TRUE))
     ctx <- resolveContext(x, y)
-    LuceneSolrPromise(expr, ctx)
+    SolrLucenePromise(expr, ctx)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -494,6 +508,11 @@ setAs("SolrPromise", "SolrFunctionPromise", function(from) {
                               context(from))
       })
 
+setAs("PredicatedSolrSymbolPromise", "SolrFunctionPromise", function(from) {
+          ctx <- subset(context(from), .(expr(from)@predicate))
+          SolrSymbolPromise(expr(x)@subject, ctx)
+      })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Function utilities
 ###
@@ -640,7 +659,7 @@ setGeneric("mad", function(x, center = median(x), constant = 1.4826,
                            na.rm = FALSE, low = FALSE, high = FALSE)
            standardGeneric("mad"), signature=c("x", "center"))
 
-setMethod("mad", c("SolrPromise", "SolrAggregatePromise"),
+setMethod("mad", c("SolrPromise", "ANY"),
           function (x, center = median(x), constant = 1.4826, na.rm = FALSE, 
                     low = FALSE, high = FALSE) {
               if (!identical(low, FALSE) || !identical(high, FALSE)) {
@@ -756,7 +775,8 @@ setMethod("table", "SolrSymbolPromise",
           })
 
 setGeneric("ftable", function (..., exclude = c(NA, NaN), row.vars = NULL,
-                               col.vars = NULL) standardGeneric("ftable"))
+                               col.vars = NULL) standardGeneric("ftable"),
+           signature="...")
 
 setMethod("ftable", "SolrSymbolPromise",
           function (..., exclude = c(NA, NaN), row.vars = NULL,
@@ -769,12 +789,13 @@ setMethod("ftable", "SolrSymbolPromise",
 ### General utilities
 ###
 
-resolveContext <- function(args) {
+resolveContext <- function(...) {
+    args <- list(...)
     isProm <- vapply(args, is, "Promise", FUN.VALUE=logical(1L))
     ctx <- Filter(Negate(is.null), lapply(args[isProm], context))
     if (any(!vapply(ctx[-1], compatible, ctx[[1L]], FUN.VALUE=logical(1L)))) {
         stop("cannot combine promises from different contexts")
     }
-    ctx
+    ctx[[1L]]
 }
 

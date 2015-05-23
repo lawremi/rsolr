@@ -73,7 +73,7 @@ setClass("SolrQuery",
              q     = "*:*",
              start = 0L,
              rows  = .Machine$integer.max,
-             fl    = "*")
+             fl    = list("*"))
            ))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -108,11 +108,11 @@ configure <- function(x, ...) {
 }
 
 json <- function(x) {
-    params(x)$json
+    params(x)[["json"]]
 }
 
 `json<-` <- function(x, value) {
-    params(x)$json <- value
+    params(x)[["json"]] <- value
     x
 }
 
@@ -131,51 +131,21 @@ setClass("SolrQueryTranslationSource",
                         grouping="formulaORNULL"),
          contains="Expression")
 
-setMethod("translate", c("SolrQueryTranslationSource", "ANY"),
+setMethod("translate", c("SolrQueryTranslationSource", "Expression"),
           function(x, target, core, ...) {
-              frame <- group(.SolrFrame(x@query, core), x@grouping)
+              frame <- group(.SolrFrame(core, x@query), x@grouping)
               context <- DelegateContext(frame, x@env)
               translate(x@expr, target, context, ...)
           })
+
+setMethod("as.character", "SolrQueryTranslationSource",
+          function(x) deparse(x@expr))
 
 deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
     src <- new("SolrQueryTranslationSource", expr=expr, query=x, env=env,
                grouping=grouping)
     new("TranslationRequest", src=src, target=target)
-}
-
-translateParams <- function(x, context) {
-### FIRST TIME EVER USING rapply()!!!!
-    params(x) <- rapply(params(x), eval, "TranslationRequest", how="replace",
-                        envir=context)
-    x
-}
-
-prepareExcludeTags <- function(x) {
-### SECOND TIME EVER USING rapply()!!!!
-    fq <- names(params(x)$fl)
-    params(x) <- rapply(params(x), function(xi) {
-                            xi$excludeTags <- tail(fq, -xi$nfq)
-                            xi$nfq <- NULL
-                            xi
-                        }, "facet", how="replace")
-    x
-}
-
-getAuxExpr <- function(x) {
-    if (is(x, "SolrAggregateExpression"))
-        lapply(x@aux, expr)
-}
-
-addAuxStats <- function(x, context) {
-### THIRD TIME EVER USING rapply()!!!!
-    params(x) <- rapply(params(x), function(xi) {
-                            aux <- unlist(unname(lapply(xi, getAuxExpr)))
-                            xi[names(aux)] <- aux
-                            xi
-                        }, "facetlist", how="replace")
-    x
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -185,7 +155,7 @@ addAuxStats <- function(x, context) {
 setMethod("subset", "SolrQuery",
           function(x, subset, select, fields, select.from = character()) {
   if (!missing(subset)) {
-    fq <- deferTranslation(x, substitute(subset), SolrLuceneExpression(),
+    fq <- deferTranslation(x, substitute(subset), SolrQParserExpression(),
                            top_prenv(subset))
     params(x) <- c(params(x), fq = fq)
   }
@@ -345,8 +315,11 @@ configureGroups <- function(x, limit, offset, ...) {
   if (!isSingleNumber(offset)) {
     stop("'offset' must be a single, non-NA number")
   }
-  configure(x, group="true", group.limit=limit, group.offset=offset,
-            group.sort=params(x)$sort, ...)
+  if (is.null(params(x)$group.sort)) {
+      params(x)$group.sort <- params(x)$sort
+      params(x)$sort <- NULL
+  }
+  configure(x, group="true", group.limit=limit, group.offset=offset, ...)
 }
 
 setGeneric("group", function(x, by, ...) standardGeneric("group"))
@@ -368,8 +341,7 @@ setMethod("group", c("SolrQuery", "character"),
   if (!isSingleString(by)) {
     stop("'by' must be a single, non-NA string")
   }
-  group.field <- setNames(by, rep("group.field", length(by)))
-  configureGroups(x, limit, offset, group.field)
+  configureGroups(x, limit, offset, group.field=by)
 })
 
 setMethod("group", c("SolrQuery", "formula"), function(x, by, ...) {
@@ -477,7 +449,7 @@ setMethod("facetParams", c("SolrQuery", "call"),
                   by[[1L]] <- quote(facet_cut)
                   params <- eval(by, where)
               } else {
-                  query <- deferTranslation(x, by, SolrLuceneExpression(),
+                  query <- deferTranslation(x, by, SolrQParserExpression(),
                                             where)
                   params <- list(type="query", q=query)
               }
@@ -625,15 +597,11 @@ facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
          include=facet.include)
   }
   else {
-### TODO: use interval facet instead of facet query here, once it is
+### TODO: use interval facet here, once it is
 ### supported by the JSON API. Interval facets are actually so general
 ### that one could implement counting of genomic overlaps. Especially
 ### if the JSON API kept the interval syntax terse.
-    dummy.cut <- cut(integer(), breaks, include.lowest=include.lowest,
-                     right=right)
-    tokens <- cutLabelsToLucene(levels(dummy.cut))
-    facet.query <- setNames(paste0(var, ":", tokens), levels(dummy.cut))
-    list(type="query", q=facet.query)
+    stop("non-uniform cut() breaks not yet supported")
   }
 }
 
@@ -665,8 +633,8 @@ mergeFacetParams <- function(x, params, terms, ...) {
     params
 }
 
-enablesFacet <- function(x) {
-    !is.null(params(x)$json.facet)
+faceted <- function(x) {
+    !is.null(json(x)$facet)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -707,31 +675,146 @@ responseType <- function(x) {
 ###
 
 paramToCSV <- function(x) {
-  aliased <- nzchar(names(x))
-  x[aliased] <- paste0(names(x)[aliased], ":", x[aliased])
-  if (length(x) > 0L)
-    paste(x, collapse=",")
-  else x
+    if (!is.null(names(x)))
+        x <- BiocGenerics:::qualifyByName(x, ":")
+    if (length(x) > 0L)
+        paste(x, collapse=",")
+    else x
 }
 
-setMethod("as.character", "SolrQuery", function(x, ...) {
-  p <- params(x)
-  p$fl <- list(paramToCSV(p$fl))
-  p$start <- list(paramToCSV(p$start))
-  p$rows <- list(paramToCSV(p$rows))
-  param.names <- rep(names(p), elementLengths(unlist(p, recursive=FALSE)))
-  setNames(unlist(p, use.names=FALSE), param.names)
-})
+translateParams <- function(x, context) {
+### FIRST TIME EVER USING rapply()!!!!
+    params(x) <- rapply(params(x), eval, "TranslationRequest", how="replace",
+                        envir=context)
+    x
+}
 
-setAs("SolrQuery", "character", function(from) as.character.SolrQuery(from))
+prepareExcludeTags <- function(x) {
+### SECOND TIME EVER USING rapply()!!!!
+    fq <- names(params(x)$fl)
+    params(x) <- rapply(params(x), function(xi) {
+                            xi$excludeTags <- tail(fq, -xi$nfq)
+                            xi$nfq <- NULL
+                            xi
+                        }, "facet", how="replace")
+    x
+}
+
+getAuxExpr <- function(x) {
+    if (is(x, "SolrAggregateExpression"))
+        lapply(x@aux, expr)
+}
+
+addAuxStats <- function(x, context) {
+### THIRD TIME EVER USING rapply()!!!!
+    params(x) <- rapply(params(x), function(xi) {
+                            aux <- unlist(unname(lapply(xi, getAuxExpr)))
+                            xi[names(aux)] <- aux
+                            xi
+                        }, "facetlist", how="replace")
+    x
+}
+
+prepareBoundsParams <- function(p, nrows) {
+    ans_start <- 0L
+    ans_rows <- .Machine$integer.max
+
+    stopifnot(identical(length(p$start), length(p$rows)))
+    
+    for (i in seq_along(p$start)) {
+        head_minus <- p$rows[i] < 0L
+        if (isTRUE(head_minus)) {
+            ans_rows <- min(ans_rows, nrows) + p$rows[i]
+        } else {
+            ans_rows <- min(ans_rows, p$rows[i], na.rm=TRUE)
+        }
+        tail_plus <- p$start[i] < 0L
+        if (tail_plus) {
+            ans_start <- ans_start + min(ans_rows, nrows) + p$start[i]
+            if (is.na(p$rows[i]))
+                ans_rows <- min(ans_rows, abs(p$start[i]))
+        } else {
+            ans_start <- ans_start + p$start[i]
+            if (is.na(p$rows[i]))
+                ans_rows <- min(ans_rows, nrows) - p$start[i]
+        }
+    }
+    
+    p$start <- ans_start
+    p$rows <- ans_rows
+
+    p
+}
+
+paramsAsCharacter <- function(p) {
+    exprClasses <- unique(names(getClass("SolrExpression")@subclasses))
+    p <- rapply(p, as.character, exprClasses, how="replace")
+    p$sort <- paramToCSV(p$sort)
+    p$fl <- paramToCSV(p$fl)
+    if (!is.null(p[["json"]])) # partial match hits 'json.nl'
+        p[["json"]] <- toJSON(p[["json"]])
+    storage.mode(p) <- "character"
+    p
+}
+
+setMethod("translate", c("SolrQuery", "missing"), function(x, target, core) {
+              params(x) <- prepareBoundsParams(params(x), resultLength(core, x))
+              if (is.null(responseType(x)))
+                  responseType(x) <- "list"
+              x <- translateParams(x, core)
+              x <- prepareExcludeTags(x)
+              x <- addAuxStats(x)
+              paramsAsCharacter(params(x))
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show
 ###
 
+sortForShow <- function(x) {
+    decreasing <- vapply(x, function(s) s@target@decreasing, logical(1L))
+    paste0("`", lapply(x, as.character), "`:", ifelse(decreasing, "v", "^"))
+}
+
+groupForShow <- function(x) {
+    c(x[names(x) == "group.field"],
+      paste0("`", lapply(x[names(x) == "group.func"], as.character), "`"))
+}
+
+facetForShow <- function(x) {
+    if (x$type == "query") {
+        as.character(x$q)
+    } else if (type == "range") {
+        deparse(substitute(cut(field, seq(start, end, gap)), x))
+    } else {
+        x$field
+    }
+}
+
+facetsForShow <- function(x) {
+    rapply(x, facetForShow, "facet")
+}
+
+showLine <- function(...) {
+    cat(BiocGenerics:::labeledLine(...))
+}
+
 setMethod("show", "SolrQuery", function(object) {
-  cat("SolrQuery object\n")
-  char <- as.character(object)
-  cat(BiocGenerics:::labeledLine("params", paste0(names(char), "='", char, "'"),
-                                 ellipsisPos = "start"))
-})
+              cat("SolrQuery object\n")
+              p <- params(object)
+              fq <- p[names(p) == "fq"]
+              if (length(fq) > 0L)
+                  showLine("subset", paste0("`", lapply(fq, as.character), "`"))
+              if (!identical(p$fl, list("*")))
+                  showLine("select", p$fl)
+              if (!is.null(p$sort))
+                  showLine("sort", sortForShow(p$sort))
+              if (grouped(object))
+                  showLine("group", groupForShow(p))
+              if (faceted(object))
+                  showLine("facet", facetsForShow(json(object)$facet))
+              if (!identical(p$start, 0L))
+                  showLine("start", p$start[-1L])
+              if (!identical(p$rows, .Machine$integer.max))
+                  showLine("rows", p$rows[-1L])
+          })

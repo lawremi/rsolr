@@ -198,8 +198,8 @@ list2LazyEnv <- function(x, enclos) {
 
 varsEnv <- function(expr, frame, parent) {
     vars <- all.vars(expr)
-    objs <- lapply(vars, `[[`, x=frame) # could support mget()...
-    list2env(objs, parent=parent)
+    objs <- lapply(vars, function(i) frame[[i]]) # could support mget()...
+    list2env(setNames(objs, vars), parent=parent)
 }
 
 startsWith <- function(x, prefix) {

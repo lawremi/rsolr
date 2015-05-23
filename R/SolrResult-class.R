@@ -27,6 +27,10 @@ setClass("SolrResult",
 setClass("ListSolrResult",
          contains=c("list", "SolrResult"))
 
+setClass("Grouping",
+         representation(groups="list",
+                        schema="SolrSchema"))
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
 ###
@@ -35,14 +39,23 @@ ListSolrResult <- function(x, core, query) {
     new("ListSolrResult", x, core=core, query=query)
 }
 
+Grouping <- function(groups, schema) {
+    names(groups) <- pluck(groups, "groupValue")
+    groups <- pluck(pluck(groups, "doclist"), "docs")
+    new("Grouping", groups=groups, schema=schema)
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
 ###
 
-docs <- function(x) {
-    schema <- augment(schema(core(x)), query(x))
-    fromSolr(x$response$docs, schema)
-}
+setMethod("docs", "ListSolrResult", function(x) {
+              if (grouped(query(x))) {
+                  groupings(x)[[1L]]
+              } else {
+                  fromSolr(x$response$docs, schema(core(x)), query(x))
+              }
+          })
 
 setMethod("ndoc", "ListSolrResult",
           function(x) as.integer(x$response$numFound))
@@ -55,41 +68,34 @@ setMethod("ngroup", "ListSolrResult", function(x) {
               vapply(x$grouped, function(g) length(g$groups), integer(1L))
           })
 
-groupsAsList <- function(x, schema) {
-    lapply(x, fromSolr, schema)
-}
-
-groupsAsDataFrame <- function(x, schema, ...) {
-    docs <- as(unlist(x, recursive=FALSE), "DocList")
-    df <- fromSolr(as.data.frame(docs, ...), schema)
-    as.data.frame(lapply(df, relist, x))
-}
-
-setMethod("groupings", c("ListSolrResult", "missing"),
-          function(x, by, as=c("list", "data.frame"), ...) {
-              schema <- schema(core(x))
-              as <- match.arg(as)
-              lapply(x$grouped, function(grouping) {
-                         groups <- grouping$groups
-                         names(groups) <- pluck(groups, "groupValue")
-                         docs <- pluck(pluck(groups, "doclist"), "docs")
-                         if (as == "list") {
-                             groupsAsList(docs, schema, ...)
-                         } else {
-                             groupsAsDataFrame(docs, schema, ...)
-                         }
-                     })
+setMethod("groupings", "ListSolrResult", function(x) {
+              schema <- augment(schema(core(x)), query(x))
+              lapply(x$grouped, Grouping, schema)
           })
 
-AsDocs <- function(type) {
-    function(from) {
-        if (grouped(query(from))) {
-            groupings(from, as=type)[[1L]]
-        } else {
-            as(docs(from), type)
-        }
-    }
-}
+setMethod("ngroup", "Grouping", function(x) {
+              length(x@groups)
+          })
 
-setAs("SolrResult", "list", AsDocs("list"))
-setAs("SolrResult", "data.frame", AsDocs("data.frame"))
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Coercion
+###
+
+setAs("Grouping", "list", function(from) {
+          lapply(from@groups, fromSolr, schema(from))
+      })
+
+setAs("Grouping", "data.frame", function(from) {
+          docs <- as(unlist(from@groups, recursive=FALSE), "DocList")
+          df <- fromSolr(as.data.frame(docs, ...), schema(from))
+          as.data.frame(lapply(df, relist, from@groups))
+      })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Show
+###
+
+setMethod("show", "Grouping", function(object) {
+              cat("Grouping object\n")
+              cat("ngroup: ", ngroup(object), "\n")
+          })
