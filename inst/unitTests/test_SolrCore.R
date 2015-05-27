@@ -7,9 +7,6 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
-library(rsolr)
-library(RUnit)
-
 test_SolrCore_accessors <- function() {
   solr <- rsolr:::TestSolr()
   sc <- SolrCore(solr$uri)

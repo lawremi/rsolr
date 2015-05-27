@@ -19,9 +19,9 @@ test_SolrQuery <- function() {
   sc <- core(s)
 
   docs <- list(
-    list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
-    list(id="3", inStock=TRUE, price=4, timestamp_dt=Sys.time()),
-    list(id="4", inStock=TRUE, price=3, timestamp_dt=Sys.time()),
+    list(id="2", inStock=TRUE, price=2, weight=1, timestamp_dt=Sys.time()),
+    list(id="3", inStock=TRUE, price=4, weight=5, timestamp_dt=Sys.time()),
+    list(id="4", price=3, weight=3, timestamp_dt=Sys.time()),
     list(id="5", inStock=FALSE, price=5, timestamp_dt=Sys.time())
     )
   s[] <- docs
@@ -32,41 +32,76 @@ test_SolrQuery <- function() {
 
   ## CHECK: subset() queries
   query <- SolrQuery()
-  subset.query <- subset(query, id %in% 2:4)
-  checkResponseEquals(read(sc, subset.query), docs[1:3])
+  subset.query <- subset(query, id %in% 3:5)
+  checkResponseEquals(read(sc, subset.query), docs[2:4])
   subset.query <- subset(subset.query, fields=c("id", "inStock"))
-  checkResponseEquals(read(sc, subset.query), docs[1:3, c("id", "inStock")])
-  ## TODO: relational, arithmetic, compound logical, vs. summaries
+  checkResponseEquals(read(sc, subset.query),
+                      docs[2:4, c("id", "inStock")])
+  subset.query <- subset(subset.query, fields="*")
+  checkResponseEquals(read(sc, subset.query), docs[2:4])
+  subset.query <- subset(subset.query, inStock)
+  checkResponseEquals(read(sc, subset.query), docs[2])
+
+  query <- SolrQuery()
+  subset.query <- subset(query, price > 2)
+  checkResponseEquals(read(sc, subset.query), docs[2:4])
+  subset.query <- subset(query, price < 5)
+  checkResponseEquals(read(sc, subset.query), docs[1:3])
+  subset.query <- subset(query, price <= 4)
+  checkResponseEquals(read(sc, subset.query), docs[1:3])
+  subset.query <- subset(query, price >= 5)
+  checkResponseEquals(read(sc, subset.query), docs[4])
+  subset.query <- subset(query, price > 2 & price < 5)
+  checkResponseEquals(read(sc, subset.query), docs[2:3])
+  subset.query <- subset(query, price <= 2 | price >= 5)
+  checkResponseEquals(read(sc, subset.query), docs[c(1,4)])
+  subset.query <- subset(query, !(price <= 2 | price >= 5))
+  checkResponseEquals(read(sc, subset.query), docs[2:3])
+  subset.query <- subset(query, (price + 1) > 3)
+  checkResponseEquals(read(sc, subset.query), docs[2:4])
+  subset.query <- subset(query, is.na(inStock))
+  checkResponseEquals(read(sc, subset.query), docs[3])
+  subset.query <- subset(query, grepl("[0-4]", id))
+  checkResponseEquals(read(sc, subset.query), docs[1:3])
+  subset.query <- subset(query, grepl("[0-4]", id, fixed=TRUE))
+  checkResponseEquals(read(sc, subset.query), unname(docs[NULL]))
+  subset.query <- subset(query, grepl("2", id, fixed=TRUE))
+  checkResponseEquals(read(sc, subset.query), docs[1])
+  subset.query <- subset(query, (price + 1) > 3 & (price - 1) < 4)
+  checkResponseEquals(read(sc, subset.query), docs[2:3])
+  subset.query <- subset(query, price > 3 & FALSE)
+  checkResponseEquals(read(sc, subset.query), unname(docs[NULL]))
+  subset.query <- subset(query, TRUE & price > 3)
+  checkResponseEquals(read(sc, subset.query), docs[c(2,4)])
+  subset.query <- subset(query, TRUE | price > 3)
+  checkResponseEquals(read(sc, subset.query), docs)
+  subset.query <- subset(query, price > weight)
+  checkResponseEquals(read(sc, subset.query), docs[1])
+  subset.query <- subset(query, !(price > weight))
+  checkResponseEquals(read(sc, subset.query), docs[2:3])
+  subset.query <- subset(query, price <= weight)
+  checkResponseEquals(read(sc, subset.query), docs[2:3])
+  subset.query <- subset(query, price < weight)
+  checkResponseEquals(read(sc, subset.query), docs[2])
+  subset.query <- subset(query, price >= weight)
+  checkResponseEquals(read(sc, subset.query), docs[c(1,3)])
+  
+  
+  joindocs <- as(list(
+      list(id="6", links="4"),
+      list(id="7", links="2")
+      ), "DocList")
+  names(joindocs) <- joindocs[,"id"]
+  s[ids(joindocs)] <- joindocs
+
+  subset.query <- subset(query, links %in% id[price > 2])
+  checkResponseEquals(read(sc, subset.query), joindocs[1])
+
+  subset.query <- subset(query, links %in% id)
+  checkResponseEquals(read(sc, subset.query), joindocs)
   
   ## CHECK: bounds restriction
-  head.query <- head(query, 2L)
-  checkResponseEquals(read(sc, head.query), head(docs, 2L))
-  tail.query <- tail(query, 2L)
-  checkResponseEquals(read(sc, tail.query), tail(docs, 2L))
-  tail.query <- tail(query, -3L)
-  checkResponseEquals(read(sc, tail.query), tail(docs, -3L))
-  head.query <- head(query, -3L)
-  checkResponseEquals(read(sc, head.query), head(docs, -3L))
-  restricted.query <- tail(head(query, -2L), 1L)
-  checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), 1L))
-  restricted.query <- head(tail(query, -2L), 1L)
-  checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), 1L))
-  restricted.query <- head(tail(query, 2L), -1L)
-  checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), -1L))
-  restricted.query <- tail(head(query, 2L), -1L)
-  checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), -1L))
-  restricted.query <- head(tail(query, -1L), 2L)
-  checkResponseEquals(read(sc, restricted.query), head(tail(docs, -1L), 2L))
-  restricted.query <- tail(head(query, -2L), -1L)
-  checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), -1L))
-  restricted.query <- tail(head(query, -1L), -2L)
-  checkResponseEquals(read(sc, restricted.query), tail(head(docs, -1L), -2L))
-  restricted.query <- head(tail(query, -2L), -1L)
-  checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), -1L))
-  restricted.query <- head(tail(query, 2L), 1L)
-  checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), 1L))
-  restricted.query <- tail(head(query, 2L), 1L)
-  checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), 1L))
+  checkBoundsRestriction(query)
   
   ## CHECK: sort
   query <- SolrQuery()
@@ -206,6 +241,37 @@ testFacets <- function(sc, version="") {
     if (as.package_version(version) >= "5.1") {
         testAdvancedFacets()
     }
+}
+
+checkBoundsRestriction <- function(query) {
+    head.query <- head(query, 2L)
+    checkResponseEquals(read(sc, head.query), head(docs, 2L))
+    tail.query <- tail(query, 2L)
+    checkResponseEquals(read(sc, tail.query), tail(docs, 2L))
+    tail.query <- tail(query, -3L)
+    checkResponseEquals(read(sc, tail.query), tail(docs, -3L))
+    head.query <- head(query, -3L)
+    checkResponseEquals(read(sc, head.query), head(docs, -3L))
+    restricted.query <- tail(head(query, -2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), 1L))
+    restricted.query <- head(tail(query, -2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), 1L))
+    restricted.query <- head(tail(query, 2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), -1L))
+    restricted.query <- tail(head(query, 2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), -1L))
+    restricted.query <- head(tail(query, -1L), 2L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -1L), 2L))
+    restricted.query <- tail(head(query, -2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), -1L))
+    restricted.query <- tail(head(query, -1L), -2L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -1L), -2L))
+    restricted.query <- head(tail(query, -2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), -1L))
+    restricted.query <- head(tail(query, 2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), 1L))
+    restricted.query <- tail(head(query, 2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), 1L))
 }
 
 testAdvancedFacets <- function() {

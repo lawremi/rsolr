@@ -126,12 +126,8 @@ setMethod("ids", "DocCollection", function(x) ROWNAMES(x))
 
 setGeneric("ids<-", function(x, value) standardGeneric("ids<-"))
 setReplaceMethod("ids", "DocList", function(x, value) {
-  if (is.null(value)) { 
-    unname(x) # FIXME: names(x@.Data) <- NULL does not behave as expected
-  } else {
-    names(x@.Data) <- value
+    names(x) <- value
     x
-  }
 })
 setReplaceMethod("ids", "DocDataFrame", function(x, value) {
   rownames(x) <- value
@@ -142,6 +138,16 @@ unid <- function(x) {
   ids(x) <- NULL
   x
 }
+
+setReplaceMethod("names", "DocCollection", function(x, value) {
+### FIXME: names(x@.Data) <- NULL does not behave as expected
+                     if (is.null(value)) {
+                         callNextMethod()
+                     } else {
+                         names(x@.Data) <- value
+                         x
+                     }
+                 })
 
 setGeneric("fieldNames", function(x, ...) standardGeneric("fieldNames"))
 setMethod("fieldNames", "DocList", function(x) {
@@ -159,11 +165,11 @@ setReplaceMethod("fieldNames", "DocDataFrame", function(x, value) {
   x
 })
 
-setGeneric("ndoc", function(x) standardGeneric("ndoc"))
+setGeneric("ndoc", function(x, ...) standardGeneric("ndoc"))
 setMethod("ndoc", "DocCollection", function(x) NROW(x))
 
-setGeneric("nfield", function(x) standardGeneric("nfield"))
-setMethod("nfield", "DocCollection", function(x) NCOL(x))
+setGeneric("nfield", function(x, ...) standardGeneric("nfield"))
+setMethod("nfield", "ANY", function(x) length(fieldNames(x)))
 setMethod("nfield", "DocList", function(x) length(unique(fieldNames(x))))
 
 uncommonFields <- function(x, j) {
@@ -171,14 +177,6 @@ uncommonFields <- function(x, j) {
   common <- names(fieldtab)[fieldtab == length(x)]
   setdiff(j, common)
 }
-
-setGeneric("ndoc", function(x, ...) standardGeneric("ndoc"))
-setMethod("ndoc", "DocList", function(x) length(x))
-setMethod("ndoc", "DocDataFrame", function(x) nrow(x))
-
-setGeneric("nfield", function(x, ...) standardGeneric("nfield"))
-setMethod("nfield", "ANY", function(x) length(fieldNames(x)))
-setMethod("nfield", "DocList", function(x) sum(lengths(x)))
 
 setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
   if (!isTRUEorFALSE(drop)) {
@@ -201,7 +199,10 @@ setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
       ans <- simplify2array2(lapply(unname(ans), `[[`, j))
       dropped <- TRUE
     } else {
-      ans <- lapply(ans, `[`, j)
+      ans <- lapply(ans, function(d) {
+                      d <- d[j]
+                      d[!is.na(names(d))]
+                    })
     }
   }
   if (dropped) {

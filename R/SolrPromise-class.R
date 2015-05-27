@@ -16,7 +16,8 @@
 ### Other things to add:
 ### Transform:
 ###  cut() using nested map() calls, or defer and wait for table()=>facets
-###
+### 
+### rank() using the Solr ord() and rord() functions.
 
 ### All translations follow this basic strategy:
 
@@ -52,13 +53,40 @@
 ###        limitation. We already capture pretty much all base R
 ###        aggregation functions, so this is a low priority.
 
+### FIXME: Solr functions do not propagate missingness. In fact, they
+###        are documented to always return 0 when missing. A possible
+###        work-around is to wrap every call with:
+##            if(exists(arg), fun(arg), query({!lucene v='-*:*'}))
+###        but wow, that's crazy. Alternative: each call to a Solr
+###        function is wrapped in an
+##            if(and(exists(sym1), ...)), ., query({!lucene v='-*:*'}))
+###        where condition is composed of the condition for each of
+###        the call args, and there is a new exists() added for each
+###        symbol arg. If exists() is called explicitly, it is given
+###        that condition from the previous call (if there is
+###        one). The call to exists() is *not* wrapped in the
+###        if(). The implementation is simple: the expression keeps
+###        track of symbols that are potentially NA, and each function
+###        (except is.na) builds an expression with the unique set of
+###        potential missing symbols. It clears the missing symbols
+###        from each of its arguments, possibly via class
+###        coercion. During coercion to character, the NA-protected
+###        expression constructs the necessary calls to exists(). The
+###        is.na() function calls exist() on each of the missing
+###        symbols in its argument, and and()s the result. The
+###        ifelse() function is another special case: we cannot
+###        propagate potential missings up past the Solr if()
+###        condition. Luckily, if() does propagate missings, so we
+###        just do nothing. But missables should propagate past the
+###        condition argument.
+
 setClass("SolrPromise",
          representation(expr="SolrExpression",
                         context="Context"),
          contains="SimplePromise")
 
 setClassUnion("SolrLuceneExpressionOrSymbol",
-              c("SolrLuceneExpression", "SolrSymbol"))
+              c("SolrLuceneExpression", "SolrQParserExpression", "SolrSymbol"))
 setIs("SolrLuceneExpressionOrSymbol", "SolrExpression")
 
 setClass("SolrLucenePromise",
@@ -91,13 +119,9 @@ setClass("PredicatedSolrSymbolPromise",
 ### Relations to basic classes
 ###
 
-### NOTE: if we do this, we should probably have SolrLucenePromise
-### inherit directly from Promise.
-setIs("SolrLucenePromise", "logical")
-### Not quite true, only function CALLS return numeric. For arbitrary
-### symbols, we would need one subclass for each type.
-##setIs("SolrFunctionPromise", "numeric")
-setIs("SolrAggregatePromise", "numeric")
+### One could imagine defining abstract fundamental data types:
+## setClassUnion("Logical", c("SolrLucenePromise", "logical"))
+## setClassUnion("Numeric", c("SolrAggregatePromise", "numeric"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
@@ -124,14 +148,14 @@ setMethod("Promise",
           function(expr, context) {
               promise <- callNextMethod()
               if (is(promise, "SolrSymbolPromise"))
-                  as(promise, "SolrLuceneSymbolPromise")
+                  as(promise, "SolrLuceneSymbolPromise", strict=FALSE)
               else promise
           })
 
 setMethod("Promise",
           c("SolrSymbol", "Solr"),
           function(expr, context) {
-              context <- as(context, "SolrFrame")
+              context <- as(context, "SolrFrame", strict=FALSE)
               prom <- computedFieldPromise(context, name(expr))
               if (is.null(prom)) {
                   prom <- SolrSymbolPromise(SolrSymbol(expr), context)
@@ -140,17 +164,26 @@ setMethod("Promise",
           })
 
 SolrLucenePromise <- function(expr, context) {
-    new("SolrLucenePromise", expr=as(expr, "SolrLuceneExpression"),
+    new("SolrLucenePromise",
+        expr=as(expr, "SolrLuceneExpression", strict=FALSE),
         context=context)
 }
 
 SolrFunctionPromise <- function(expr, context) {
-    new("SolrFunctionPromise", expr=as(expr, "SolrFunctionExpression"),
+    new("SolrFunctionPromise",
+        expr=as(expr, "SolrFunctionExpression", strict=FALSE),
         context=context)
 }
 
 SolrAggregatePromise <- function(expr, context) {
-    new("SolrAggregatePromise", expr=as(expr, "SolrAggregateExpression"),
+    new("SolrAggregatePromise",
+        expr=as(expr, "SolrAggregateExpression", strict=FALSE),
+        context=context)
+}
+
+PredicatedSolrSymbolPromise <- function(expr, context) {
+    new("PredicatedSolrSymbolPromise",
+        expr=as(expr, "PredicatedSolrSymbol", strict=FALSE),
         context=context)
 }
 
@@ -178,7 +211,7 @@ setMethod("%in%", c("SolrSymbolPromise", "SolrSymbolPromise"),
               x %in% table[]
           })
 
-setMethod("%in%", c("SolrSymbolPromise", "ANY"),
+setMethod("%in%", c("SolrSymbolPromise", "vector"),
           function(x, table) {
               expr <- SolrLuceneTerm(expr(x), table)
               SolrLucenePromise(expr, context(x))
@@ -188,10 +221,14 @@ setMethod("%in%", c("SolrSymbolPromise", "ANY"),
 ### expressions are conveniently expressed with Lucene syntax...
 setMethods("Logic",
            list(c("SolrPromise", "SolrLucenePromise"),
-                c("SolrLucenePromise", "SolrPromise")),
+                c("SolrLucenePromise", "SolrPromise"),
+                c("SolrLucenePromise", "SolrLucenePromise"),
+                c("SolrPromise", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "SolrPromise"),
+                c("SolrSymbolPromise", "SolrSymbolPromise")),
            function(e1, e2) {
-               e1 <- as(e1, "SolrLucenePromise")
-               e2 <- as(e2, "SolrLucenePromise")
+               e1 <- as(e1, "SolrLucenePromise", strict=FALSE)
+               e2 <- as(e2, "SolrLucenePromise", strict=FALSE)
                ctx <- resolveContext(e1, e2)
                expr <- if (.Generic == "&") {
                    SolrLuceneAND(expr(e1), expr(e2))
@@ -202,17 +239,25 @@ setMethods("Logic",
            })
 
 setMethod("!", "SolrPromise", function(x) {
-              x <- as(x, "SolrLucenePromise")
-              SolrLucenePromise(LuceneNOT(expr(x)), context(x))
+              x <- as(x, "SolrLucenePromise", strict=FALSE)
+              SolrLucenePromise(SolrLuceneNOT(expr(x)), context(x))
+          })
+
+setMethod("!", "SolrLuceneSymbolPromise", function(x) {
+              SolrLucenePromise(SolrLuceneTerm(expr(x), FALSE), context(x))
           })
 
 setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
-              x != I("*:*")
+              x != I("*")
           })
 
 setMethods("Compare",
-           list(c("SolrSymbolPromise", "ANY"),
-                c("ANY", "SolrSymbolPromise")),
+           list(c("SolrSymbolPromise", "vector"),
+                c("vector", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "AsIs"),
+                c("AsIs", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "numeric"),
+                c("numeric", "SolrSymbolPromise")),
            function(e1, e2) {
                luceneRelational(.Generic, e1, e2)
            })
@@ -229,7 +274,7 @@ setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
                   stop("'[' only accepts x[i] or x[] syntax")
               }
               if (missing(i)) {
-                  i <- I("*:*")
+                  i <- TRUE
                   ctx <- context(x)
               } else {
                   if (!is(i, "Promise")) {
@@ -258,7 +303,7 @@ setMethod("[", "SolrPromise", function(x, i, j, ..., drop = TRUE) {
               x
           })
 
-setMethod("grepl", c("ANY", "SolrSymbolPromise"),
+setMethod("grepl", c("character", "SolrSymbolPromise"),
           function(pattern, x, ignore.case = FALSE, perl = FALSE,
                    fixed = FALSE, useBytes = FALSE) {
               if (!isSingleString(pattern)) {
@@ -279,7 +324,8 @@ setMethod("grepl", c("ANY", "SolrSymbolPromise"),
               if (!fixed) {
                   pattern <- I(paste0("/", pattern, "/"))
               }
-              SolrLucenePromise(SolrLuceneTerm(expr(x), pattern))
+              SolrLucenePromise(SolrLuceneTerm(expr(x), pattern),
+                                context(x))
           })
 
 setMethod("grep", c("ANY", "SolrSymbolPromise"),
@@ -304,7 +350,8 @@ setMethod("grep", c("ANY", "SolrSymbolPromise"),
 ###
 
 setAs("SolrPromise", "SolrLucenePromise", function(from) {
-          SolrLucenePromise(as(expr(from), "SolrLuceneExpression"),
+          SolrLucenePromise(as(expr(from), "SolrLuceneExpression",
+                               strict=FALSE),
                             context(from))
       })
 
@@ -314,7 +361,7 @@ setAs("SolrPromise", "SolrLucenePromise", function(from) {
 
 frangeRelational <- function(fun, x, y) {
     promise <- if (is.numeric(x)) y else x
-    query <- expr(as(promise, "SolrFunctionPromise"))
+    query <- expr(as(promise, "SolrFunctionPromise", strict=FALSE))
     num  <- if (is.numeric(x)) x else y
     expr <- FRangeQParserExpression(query,
                                     l    = if (fun %in% c(">", ">=", "==")) num,
@@ -358,13 +405,27 @@ luceneRelational <- function(fun, x, y) {
 ### Solr Function translation
 ###
 
-setMethods("Logic",
-           list(c("SolrFunctionPromise", "SolrFunctionPromise"),
-                c("ANY", "SolrPromise"),
-                c("SolrPromise", "ANY")),
+setMethod("Logic",
+          c("SolrFunctionPromise", "SolrFunctionPromise"),
            function(e1, e2) {
                solrCall(if (.Generic == "&") "and" else "or", e1, e2)
            })
+
+## Probably rare to encounter a scalar logical value, but it can happen,
+## and so we do the obvious simplification here...
+setMethod("Logic", c("logical", "SolrPromise"),
+          function(e1, e2) {
+              callGeneric(e2, e1)
+           })
+
+setMethod("Logic", c("SolrPromise", "logical"),
+          function(e1, e2) {
+              if (length(e2) != 1L) {
+                  stop("logical operand must be scalar")
+              }
+              if (.Generic == "&") if (isTRUE(e2)) e1 else FALSE
+              else if (isTRUE(e2)) TRUE else e1
+          })
 
 setMethod("!", "SolrFunctionPromise", function(x) {
               solrCall("not", x)
@@ -372,15 +433,22 @@ setMethod("!", "SolrFunctionPromise", function(x) {
 
 setMethod("Compare", c("SolrPromise", "SolrPromise"),
           function(e1, e2) {
-              switch(.Generic,
-### crazy construct enables field comparisons using Solr functions
-                     ">" = ifelse(ceiling(e1 / e2) - 1L, TRUE, FALSE),
-                     "<" = e2 > e1,
-                     ">=" = !(e1 < e2),
-                     "<=" = !(e1 > e2),
-                     "==" = !(e1 != e2),
-                     "!=" = ifelse(abs(e1 - e2), TRUE, FALSE)
-                     )
+              `>` <- function(e1, e2) {
+                  ifelse(ceiling(e1 / e2) - 1L, TRUE, FALSE)
+              }
+              `!=` <- function(e1, e2) {
+                  ifelse(abs(e1 - e2), TRUE, FALSE)
+              }
+              ans <- switch(.Generic,
+                            ">" = e1 > e2,
+                            "<" = e2 > e1,
+                            ">=" = !(e2 > e1),
+                            "<=" = !(e1 > e2),
+                            "==" = !(e1 != e2),
+                            "!=" = e1 != e2)
+              e1 <- as(e1, "SolrFunctionPromise", strict=TRUE)
+              e2 <- as(e2, "SolrFunctionPromise", strict=TRUE)
+              ifelse(is.na(e1) | is.na(e2), FALSE, ans)
           })
 
 setMethods("Arith",
@@ -410,21 +478,23 @@ setMethod("Math", "SolrPromise", function(x) {
               fun <- switch(.Generic,
                             abs = "abs",
                             sqrt = "sqrt",
-                            ceiling = "Math.ceil",
-                            floor = "Math.floor",
-                            log = "Math.ln",
+                            ceiling = "ceil",
+                            floor = "floor",
+                            log = "ln",
                             log10 = "log",
-                            acos = "Math.acos",
-                            asin = "Math.asin",
-                            atan = "Math.atan",
-                            exp = "Math.exp",
-                            cos = "Math.cos",
-                            cosh = "Math.cosh",
-                            sin = "Math.sin",
-                            sinh = "Math.sinh",
-                            tan = "Math.tan",
-                            tanh = "Math.tanh")
+                            acos = "acos",
+                            asin = "asin",
+                            atan = "atan",
+                            exp = "exp",
+                            cos = "cos",
+                            cosh = "cosh",
+                            sin = "sin",
+                            sinh = "sinh",
+                            tan = "tan",
+                            tanh = "tanh")
               if (is.null(fun)) {
+                  pi <- SolrFunctionPromise(SolrFunctionCall("pi", list()),
+                                            context(x))
                   prom <- switch(.Generic, ## will not be as accurate as native
                                  sign = x / abs(x),
                                  trunc = floor(abs(x)) * sign(x),
@@ -433,9 +503,9 @@ setMethod("Math", "SolrPromise", function(x) {
                                  asinh = log(x + sqrt(x^2 + 1)),
                                  atanh = 0.5 * log((1+x)/(1-x)),
                                  expm1 = exp(x) - 1,
-                                 cospi = cos(x * Constant(x, "pi")),
-                                 sinpi = sin(x * Constant(x, "pi")),
-                                 tanpi = tan(x * Constant(x, "pi")))
+                                 cospi = cos(x * pi),
+                                 sinpi = sin(x * pi),
+                                 tanpi = tan(x * pi))
                   if (is.null(prom)) {
                       ## cummax, cummin, cumprod, cumsum, log2, *gamma
                       x <- fulfill(x)
@@ -451,7 +521,7 @@ setMethod("round", "SolrPromise", function(x, digits = 0L) {
               if (digits != 0L) {
                   stop("'digits' must be 0")
               }
-              solrCall("Math.rint", x)
+              solrCall("rint", x)
           })
 
 setGeneric("rescale", function(x, ...) standardGeneric("rescale"))
@@ -504,7 +574,8 @@ setMethod("is.na", "SolrFunctionPromise", function(x) {
 ###
 
 setAs("SolrPromise", "SolrFunctionPromise", function(from) {
-          SolrFunctionPromise(as(expr(from), "SolrFunctionExpression"),
+          SolrFunctionPromise(as(expr(from), "SolrFunctionExpression",
+                                 strict=FALSE),
                               context(from))
       })
 
@@ -523,12 +594,13 @@ checkArgLengths <- function(args) {
 }
 
 solrCall <- function(fun, ...) {
-    args <- lapply(list(...), function(x) {
-                       if (is(x, "Promise"))
-                           as(x, "SolrFunctionPromise")
-                       else x
-                   })
-    checkArgLengths(args)
+    args <- list(...)
+    promises <- vapply(args, is, "Promise", FUN.VALUE=logical(1L))
+    args[promises] <- lapply(args[promises], function(p) {
+                                 expr(as(p, "SolrFunctionPromise",
+                                         strict=FALSE))
+                             })
+    checkArgLengths(args[!promises])
     expr <- SolrFunctionCall(fun, args)
     ctx <- resolveContext(...)
     SolrFunctionPromise(expr, ctx)
@@ -691,7 +763,7 @@ solrAggregate <- function(fun, x, na.rm, params = list(), aux = list(),
             postprocess2(ifelse(aux$.anyNA, NA, val), aux)
         }
     }
-    x <- as(x, "SolrFunctionPromise")
+    x <- as(x, "SolrFunctionPromise", strict=FALSE)
     expr <- SolrAggregateExpression(fun, expr(x), params, aux, postprocess)
     SolrAggregatePromise(expr)
 }

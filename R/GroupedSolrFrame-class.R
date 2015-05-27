@@ -14,6 +14,24 @@
 ### where is.list(promise) returns TRUE. But for now we can get away
 ### with basic promises.
 
+### FIXME: Need some way to transform based on grouped stats. Like:
+
+## > transform(x, x.norm=x/mean(x))
+
+### That works "fine" (via multiple requests) for ungrouped data, but
+### generating a separate summary for each group would just not
+### scale. Solr (and thus us) could support this by allowing an 'fl'
+### expression to refer to a statistic in the facets. That is a pretty
+### high bar though.
+
+### The closest we have right now requires modification of the Solr core:
+
+## df <- aggregate(foo ~ group, x, mean)
+## x[df$group,"foo.mean_d"] <- df["foo.mean"]
+## transform(x, foo.norm=foo/foo.mean_d)
+
+### Of course, we could always just force...
+
 setClass("GroupedSolrFrame",
          representation(grouping="formula"),
          contains="SolrFrame",

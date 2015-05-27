@@ -195,7 +195,8 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
     return(`_data`)
   if (is.null(names(e)))
     names(e) <- ""
-  fl <- mapply(deferTranslation, list(x), e, list(SolrFunctionExpression()),
+  fl <- mapply(deferTranslation, list(`_data`), e,
+               list(SolrFunctionExpression()),
                top_prenv_dots(...))
   ## If a simple symbol is passed, Solr will rename the field, rather
   ## than copy the column. That is different from transform()
