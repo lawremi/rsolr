@@ -11,6 +11,7 @@ importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
 importFrom(parallel, mcparallel)
 importFrom(tools, pskill)
 importFrom(utils, stack)
+importFrom(stats, quantile)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,

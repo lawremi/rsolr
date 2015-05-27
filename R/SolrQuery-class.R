@@ -444,7 +444,10 @@ setMethod("facetParams", c("SolrQuery", "name"),
           })
 
 setMethod("facetParams", c("SolrQuery", "call"),
-          function(x, by, where, ...) {
+          function(x, by, where, useNA=FALSE, ...) {
+              if (!identical(useNA, FALSE)) {
+                  stop("'useNA' must be FALSE for complex facets")
+              }
               by <- stripI(by)
               if (by[[1L]] == quote(cut)) {
                   by[[1L]] <- quote(facet_cut)

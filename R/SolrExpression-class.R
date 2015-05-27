@@ -69,8 +69,13 @@ setClass("SolrLuceneRangeTerm",
          contains="SolrLuceneTerm")
 
 setClass("SolrQParserExpression",
-         representation(query="Expression"),
+         representation(query="Expression",
+                        useValueParam="logical"),
+         prototype(useValueParam=FALSE),
          contains="SolrExpression")
+
+setClassUnion("SolrLuceneExpressionOrSymbol",
+              c("SolrLuceneExpression", "SolrQParserExpression", "SolrSymbol"))
 
 setClass("LuceneQParserExpression",
          representation(op="character",
@@ -122,11 +127,13 @@ setClass("AbstractSolrFunctionCall")
 
 setClass("SolrFunctionCall",
          representation(name="character",
-                        args="list"),
+                        args="list",
+                        missables="list"),
          contains=c("AbstractSolrFunctionCall", "SolrFunctionExpression"),
          validity=function(object) {
-             if (!isSingleString(object@name))
-                 stop("'name' of a Solr function call must be a string")
+             c(if (!isSingleString(object@name))
+                   stop("'name' of a Solr function call must be a string"),
+               validHomogeneousList(object@missables, "SolrSymbol"))
          })
 
 setClassUnion("functionORNULL", c("function", "NULL"))
@@ -212,8 +219,42 @@ SolrFunctionExpression <- function(name) {
     new("SolrFunctionExpression", name=name)
 }
 
+getMissables <- function(fun, args) {
+    getMissablesForArg <- function(arg) {
+        if (is(arg, "Symbol")) {
+            arg
+        } else if (is(arg, "SolrFunctionCall")) {
+            arg@missables
+        } else {
+            list()
+        }
+    }
+    if (fun == "if") {
+        args <- args[1L]
+    }
+    as.list(if (fun != "exists") {
+                unique(unlist(lapply(args, getMissablesForArg)))
+            })
+}
+
+clearMissables <- function(fun, args) {
+    clearMissablesForArg <- function(arg) {
+        if (is(arg, "SolrFunctionCall")) {
+            arg@missables <- list()
+        }
+        arg
+    }
+    if (fun == "if") {
+        args[1L] <- clearMissablesForArg(args[[1L]])
+    } else if (fun != "exists") {
+        args <- lapply(args, clearMissablesForArg)
+    }
+    args
+}
+
 SolrFunctionCall <- function(name, args) {
-    new("SolrFunctionCall", name=name, args=args)
+    new("SolrFunctionCall", name=name, args=clearMissables(name, args),
+        missables=getMissables(name, args))
 }
 
 SolrAggregateCall <- function(name, subject, na.rm, params=list(),
@@ -295,17 +336,19 @@ setMethod("as.character", "LuceneRange", function(x) {
 setMethod("as.character", "SolrQParserExpression", function(x) {
               params <- slotsAsList(x)
               params$query <- NULL
+              params$useValueParam <- NULL
               params <- Filter(Negate(is.null), params)
               def <- mapply(identical, params,
                             slotsAsList(new(class(x)))[names(params)])
               params <- params[!as.logical(def)]
-              logical.params <- vapply(params, is.logical, logical(1))
-              params[logical.params] <- tolower(params[logical.params])
+              if (x@useValueParam) { # just could not stand the \\\\\" escapes
+                  params$v <- x@query
+              }
               qparser <- qparserFromExpr(x)
               params <- vapply(params, normLuceneLiteral, character(1L))
               paste0("{!", qparser, if (length(params)) " ",
                      paste(names(params), params, sep="=", collapse=" "), 
-                     "v=", normLuceneLiteral(x@query), "}")
+                     "}", if (!x@useValueParam) x@query)
           })
 
 setMethod("as.character", "JoinQParserExpression", function(x) {
@@ -353,6 +396,20 @@ normSolrArg <- function(x) {
 setMethod("as.character", "AbstractSolrFunctionCall", function(x) {
               args <- vapply(args(x), normSolrArg, character(1L))
               paste0(name(x), "(", paste(args, collapse=","), ")")
+          })
+
+setMethod("as.character", "SolrFunctionCall", function(x) {
+              if (length(x@missables) > 0L) {
+                  exists <- function(x) SolrFunctionCall("exists", list(x))
+                  and <- function(x, y) SolrFunctionCall("and", list(x, y))
+                  condition <- Reduce(and, lapply(x@missables, exists))
+                  nullQuery <- SolrLuceneNOT(SolrLuceneTerm("*", I("*")))
+                  x@missables <- list()
+                  x <- SolrFunctionCall("if", list(condition,
+                                                   x,
+                                                   callQuery(nullQuery)))
+              }
+              callNextMethod()
           })
 
 setMethod("as.character", "SolrSortExpression", function(x) {
@@ -417,16 +474,23 @@ setAs("ANY", "SolrQParserExpression", function(from) {
           LuceneQParserExpression(from)
       })
 
+setAs("ANY", "SolrLuceneExpressionOrSymbol", function(from) {
+          as(from, "SolrQParserExpression")
+      })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Function coercion
 ###
 
+callQuery <- function(x) {
+    query <- as(x, "SolrQParserExpression", strict=FALSE)
+    query@useValueParam <- TRUE
+    quoted <- SolrFunctionExpression(query) # solr has NSE too!
+    SolrFunctionCall("query", list(quoted))
+}
+
 setAs("Expression", "SolrFunctionExpression", function(from) {
-          ## we assume that the Solr QParser framework is more general
-          ## and thus targetable by more languages...
-          query <- as(from, "SolrQParserExpression", strict=FALSE)
-          arg <- SolrFunctionExpression(query)
-          SolrFunctionCall("exists", list(SolrFunctionCall("query", list(arg))))
+          SolrFunctionCall("exists", list(callQuery(from)))
       })
 
 setAs("ANY", "SolrFunctionExpression", function(from) {

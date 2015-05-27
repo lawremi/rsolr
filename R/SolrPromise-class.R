@@ -17,7 +17,9 @@
 ### Transform:
 ###  cut() using nested map() calls, or defer and wait for table()=>facets
 ### 
-### rank() using the Solr ord() and rord() functions.
+### rank(na.last='keep', ties.method='first') and xtfrm() using ord().
+### - need to somehow convert NA/null to 0, -1 to NA, and add 1 (for rank).
+###
 
 ### All translations follow this basic strategy:
 
@@ -85,8 +87,6 @@ setClass("SolrPromise",
                         context="Context"),
          contains="SimplePromise")
 
-setClassUnion("SolrLuceneExpressionOrSymbol",
-              c("SolrLuceneExpression", "SolrQParserExpression", "SolrSymbol"))
 setIs("SolrLuceneExpressionOrSymbol", "SolrExpression")
 
 setClass("SolrLucenePromise",
@@ -165,7 +165,7 @@ setMethod("Promise",
 
 SolrLucenePromise <- function(expr, context) {
     new("SolrLucenePromise",
-        expr=as(expr, "SolrLuceneExpression", strict=FALSE),
+        expr=as(expr, "SolrLuceneExpressionOrSymbol", strict=FALSE),
         context=context)
 }
 
@@ -259,14 +259,14 @@ setMethods("Compare",
                 c("SolrSymbolPromise", "numeric"),
                 c("numeric", "SolrSymbolPromise")),
            function(e1, e2) {
-               luceneRelational(.Generic, e1, e2)
+               luceneCompare(.Generic, e1, e2)
            })
 
 setMethods("Compare",
            list(c("SolrPromise", "numeric"),
                 c("numeric", "SolrPromise")),
            function(e1, e2) {
-               frangeRelational(.Generic, e1, e2)
+               frangeCompare(.Generic, e1, e2)
            })
 
 setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
@@ -350,19 +350,24 @@ setMethod("grep", c("ANY", "SolrSymbolPromise"),
 ###
 
 setAs("SolrPromise", "SolrLucenePromise", function(from) {
-          SolrLucenePromise(as(expr(from), "SolrLuceneExpression",
-                               strict=FALSE),
-                            context(from))
+          SolrLucenePromise(expr(from), context(from))
       })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lucene utilities
 ###
 
-frangeRelational <- function(fun, x, y) {
+frangeCompare <- function(fun, x, y) {
     promise <- if (is.numeric(x)) y else x
+    num <- if (is.numeric(x)) x else y
+    crossesZero <- # crossing zero will cover NA
+        (substring(fun, 2, 2) == "=" && num == 0) ||
+            (substring(fun, 1, 1) == "<" && num > 0) ||
+                (substring(fun, 1, 1) == ">" && num < 0)
+    if (crossesZero) {
+        return(numericCompare(fun, x, y))
+    }
     query <- expr(as(promise, "SolrFunctionPromise", strict=FALSE))
-    num  <- if (is.numeric(x)) x else y
     expr <- FRangeQParserExpression(query,
                                     l    = if (fun %in% c(">", ">=", "==")) num,
                                     u    = if (fun %in% c("<", "<=", "==")) num,
@@ -380,7 +385,7 @@ reverseRelational <- function(call) {
 ### NOTE: '==' will *search* text fields, not look for an exact match.
 ###       String and other fields behave as expected.
 
-luceneRelational <- function(fun, x, y) {
+luceneCompare <- function(fun, x, y) {
     if (fun == "!=") {
         return(!(x == y))
     }
@@ -431,24 +436,21 @@ setMethod("!", "SolrFunctionPromise", function(x) {
               solrCall("not", x)
           })
 
+numericCompare <- function(.Generic, e1, e2) {
+    `>` <- function(e1, e2) ifelse(ceiling(e1 / e2) - 1L, TRUE, FALSE)
+    `==` <- function(e1, e2) !(e1 - e2)
+    switch(.Generic,
+           ">" = e1 > e2,
+           "<" = e2 > e1,
+           ">=" = !(e2 > e1),
+           "<=" = !(e1 > e2),
+           "==" = e1 == e2,
+           "!=" = !(e1 == e2))
+}
+
 setMethod("Compare", c("SolrPromise", "SolrPromise"),
           function(e1, e2) {
-              `>` <- function(e1, e2) {
-                  ifelse(ceiling(e1 / e2) - 1L, TRUE, FALSE)
-              }
-              `!=` <- function(e1, e2) {
-                  ifelse(abs(e1 - e2), TRUE, FALSE)
-              }
-              ans <- switch(.Generic,
-                            ">" = e1 > e2,
-                            "<" = e2 > e1,
-                            ">=" = !(e2 > e1),
-                            "<=" = !(e1 > e2),
-                            "==" = !(e1 != e2),
-                            "!=" = e1 != e2)
-              e1 <- as(e1, "SolrFunctionPromise", strict=TRUE)
-              e2 <- as(e2, "SolrFunctionPromise", strict=TRUE)
-              ifelse(is.na(e1) | is.na(e2), FALSE, ans)
+              numericCompare(.Generic, e1, e2)
           })
 
 setMethods("Arith",
@@ -518,7 +520,7 @@ setMethod("Math", "SolrPromise", function(x) {
           })
 
 setMethod("round", "SolrPromise", function(x, digits = 0L) {
-              if (digits != 0L) {
+              if (!identical(digits, 0L)) {
                   stop("'digits' must be 0")
               }
               solrCall("rint", x)
@@ -658,6 +660,8 @@ setMethod("Summary", "SolrPromise",
           })
 
 setMethod("mean", "SolrPromise", function(x, na.rm=FALSE) {
+### FIXME: na.rm=TRUE will give wrong answer, avg() counts NAs as 0.
+### Could count the existing and scale by count/count(!na)
               solrAggregate("avg", x, na.rm)
           })
 
@@ -679,16 +683,10 @@ lengthUnique <- function(x, na.rm=FALSE) {
 }
 
 setGeneric("quantile",
-           function (x, probs = seq(0, 1, 0.25), na.rm = FALSE,
-                     names = TRUE, type = 7, ...) standardGeneric("quantile"),
-           signature="x")
+           function (x, ...) standardGeneric("quantile"))
 
 setMethod("quantile", "SolrPromise",
-          function (x, probs = seq(0, 1, 0.25), na.rm = FALSE, names = TRUE,
-                    type = 7) {
-              if (!missing(type)) {
-                  warning("'type' is ignored")
-              }
+          function (x, probs = seq(0, 1, 0.25), na.rm = FALSE, names = TRUE) {
               if (!isTRUEorFALSE(names)) {
                   stop("'names' must be TRUE or FALSE")
               }
@@ -710,7 +708,8 @@ setGeneric("weighted.mean", function(x, w, ...)
 
 setMethod("weighted.mean", c("SolrPromise", "SolrPromise"),
           function(x, w, na.rm=FALSE) {
-              solrAggregate("sum", x*w, na.rm, aux=list(wsum=sum(w)),
+              solrAggregate("sum", x*w, na.rm,
+                            aux=list(wsum=sum(w,na.rm=na.rm)),
                             postprocess=function(sum, aux) {
                                 sum / aux$wsum
                             })

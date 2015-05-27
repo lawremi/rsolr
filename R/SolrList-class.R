@@ -137,6 +137,7 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
   lazyReadColumn <- readColumn &&
       (is(j, "Symbol") || !is.null(symbolFactory(x)))
   if (!missing(i)) {
+### FIXME: lazy 'i' does not handle NAs (was fine for subset(), but not '[')
     lazyI <- is(i, "Promise") || is(i, "Expression")
     if ((!readColumn || lazyReadColumn) && !lazyI) {
         if (is.null(uniqueKey(schema(core(x))))) {
