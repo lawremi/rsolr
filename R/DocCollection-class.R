@@ -222,15 +222,17 @@ setMethod("[", "DocDataFrame", function(x, i, j, ..., drop = TRUE) {
           })
 
 setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
-  if (missing(j)) {
-    x@.Data[i] <- value # FIXME: broken: callNextMethod()
-    return(x)
+   if (missing(j)) {
+     tmp <- setNames(x@.Data, names(x))
+     tmp[i] <- value
+     x@.Data <- tmp
+     return(x)
   }
   if (missing(i)) {
     i <- seq_along(x)
   }
   if (is.null(value)) {
-    value <- rep(list(NULL), length(x))
+    value <- rep(list(NULL), length(x[i]))
   } else if (is.atomic(value) && !is.array(value)) {
     if (!is.vector(value)) {
       value <- lapply(value, list) # cannot rely on [<- to do this; drops attrs

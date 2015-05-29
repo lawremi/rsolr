@@ -48,7 +48,7 @@ setMethod("[", "FieldInfo", function(x, i, j, ..., drop=TRUE) {
     warning("arguments 'j', 'drop' and those in '...' are ignored")
   }
   if (is.character(i)) {
-    i <- match(i, x@name)
+    return(resolve(i, x))
   }
   initialize(x,
              name=x@name[i],
@@ -155,50 +155,32 @@ setMethod("as.list", "FieldInfo", as.list.FieldInfo)
 
 setGeneric("resolve", function(x, field, ...) standardGeneric("resolve"))
 
-### FIXME: ugly code
 setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
-  static.field <- field[!dynamic(field)]
-  static.ind <- match(x, names(static.field))
-  dyn.x <- x[is.na(static.ind)]
-  dyn.field <- field[dynamic(field)]
-  dyn.field <- dyn.field[order(nchar(names(dyn.field)), decreasing=TRUE)]
-  rx <- setNames(glob2rx(names(dyn.field)), names(dyn.field))
-  hits <- lapply(rx, grep, dyn.x, value=TRUE)
-  dyn.ind <- if (length(hits) > 0L) {
-      as.character(with(stack(hits), ind[match(dyn.x, values)]))
-  } else {
-      rep(NA_character_, length(dyn.x))
-  }
-  if (any(is.na(dyn.ind))) {
-    stop("field(s) ",
-         paste(dyn.x[is.na(dyn.ind)], collapse = ", "),
-         " not found in schema")
-  }
-  dyn.matched <- dyn.field[dyn.ind]
-  dyn.matched@name <- dyn.x
-  append(static.field[na.omit(static.ind)], dyn.matched)[x]
-})
-
-## alternative, looping over 'x'
-## setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
-##   static.field <- field[!dynamic(field)]
-##   dyn.field <- field[dynamic(field)]
-##   rx <- glob2rx(names(dyn.field))[order(nchar(dyn.field), decreasing=TRUE)]
-##   do.call(c, lapply(x, function(xi) {
-##     static.ind <- match(xi, names(static.field))
-##     if (!is.na(static.ind)) {
-##       static.field[static.ind]
-##     } else {
-##       dyn.ind <- which(vapply(rx, grepl, logical(1), xi))[1]
-##       if (is.na(dyn.ind)) {
-##         stop("unable to resolve field name ", xi)
-##       }
-##       f <- dyn.field[dyn.ind]
-##       f@name <- xi
-##       f
-##     }
-##   }))
-## })
+              static.x <- match(x, names(field), 0)
+              static.fields <- field[static.x]
+              dyn.x <- setdiff(x, names(static.fields))
+              if (length(dyn.x) == 0L) {
+                  return(static.fields)
+              }
+              dyn.fields <- field[dynamic(field)]
+              rx <- glob2rx(names(dyn.fields))
+              hits <- vapply(rx, grepl, dyn.x,
+                             FUN.VALUE=logical(length(dyn.x)))
+              if (!is.matrix(hits)) {
+                  hits <- t(hits)
+              }
+              nohits <- rowSums(hits) == 0L
+              if (any(nohits)) {
+                  stop("field(s) ",
+                       paste(dyn.x[nohits], collapse = ", "),
+                       " not found in schema")
+              }
+              selected <- max.col(hits, ties.method="first")
+              dyn.fields <- dyn.fields[selected]
+              dyn.fields@name <- dyn.x
+              ans <- append(static.fields, dyn.fields)
+              ans[match(x, names(ans))]
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

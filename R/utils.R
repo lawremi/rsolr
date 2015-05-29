@@ -164,9 +164,9 @@ VariadicToBinary <- function(variadic, binary)
     args <- formals(variadic)
     args$... <- NULL
     forwardArgs <- setNames(lapply(names(args), as.name), names(args))
-    reduceFun <- function(..x, ..y) NULL
-    body(reduceFun) <- as.call(c(list(binary, quote(..x), quote(..y)),
-                                 forwardArgs))
+    reduceBody <- as.call(c(list(binary, quote(..x), quote(..y)),
+                            forwardArgs))
+    reduceFun <- substitute(function(..x, ..y) BODY, list(BODY=reduceBody))
     body(variadic) <- substitute(Reduce(FUN2, list(...)), list(FUN2=reduceFun))
     variadic
 }

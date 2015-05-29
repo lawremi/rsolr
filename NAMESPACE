@@ -15,7 +15,7 @@ importFrom(stats, quantile)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,
-       query, core, params, "params<-", stats, defer, docs)
+       query, core, params, "params<-", stats, defer, docs, pmin, pmax)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               fieldNames, subset, xtabs, facets, transform, summary,
               head, tail, window, rev, aggregate, mean, sd, var, window, group,
@@ -25,7 +25,7 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               grepl, grep, Arith, "-", Math, round, rescale, ifelse, pmin2,
               pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
-              facet, ngroup)
+              facet, ngroup, complete.cases)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
 S3method(`names<-`, FieldTypeList)

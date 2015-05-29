@@ -183,6 +183,8 @@ setClass("solr.ICUCollationField", contains="CharacterField")
 setClass("solr.RandomSortField", contains="FieldType")
 setClass("solr.ExternalFileField", contains="NumericField")
 
+setClass("AnyField", contains="FieldType")
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Resolution of type against a field definition
 ###
@@ -230,6 +232,7 @@ setMethod("subFieldNames", "solr.LatLonType", function(x, field) {
 
 setGeneric("solrMode", function(x) standardGeneric("solrMode"))
 
+setMethod("solrMode", "AnyField", function(x) "any")
 setMethod("solrMode", "LogicalField", function(x) "logical")
 setMethod("solrMode", "CharacterField", function(x) "character")
 setMethod("solrMode", "NumericField", function(x) "numeric")

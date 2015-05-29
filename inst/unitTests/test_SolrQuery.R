@@ -31,18 +31,18 @@ test_SolrQuery <- function() {
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- as.character(rsolr:::pluck(docs, "id"))
 
-  testSubset(sc)
-  sc[] <- docs
-  testBoundsRestriction(sc)
-  testSort(sc)
-  testTransform(sc)
-  testFacets(sc)
+  testSubset(s, docs)
+  testBoundsRestriction(sc, docs)
+  testSort(sc, docs)
+  testTransform(sc, docs)
+  testFacets(sc, docs)
   
   solr$kill()
 }
 
-testSubset <- function(sc) {
+testSubset <- function(s, docs) {
     query <- SolrQuery()
+    sc <- core(s)
     subset.query <- subset(query, id %in% 3:5)
     checkResponseEquals(read(sc, subset.query), docs[2:4])
     subset.query <- subset(subset.query, fields=c("id", "inStock"))
@@ -111,24 +111,127 @@ testSubset <- function(sc) {
     checkResponseEquals(read(sc, subset.query), joindocs[1])
     subset.query <- subset(query, links %in% id)
     checkResponseEquals(read(sc, subset.query), joindocs)
+
+    s[] <- docs
 }
 
-testFacets <- function(sc) {
-    ## CHECK: facet
+testBoundsRestriction <- function(sc, docs) {
+    query <- SolrQuery()
+    head.query <- head(query, 2L)
+    checkResponseEquals(read(sc, head.query), head(docs, 2L))
+    tail.query <- tail(query, 2L)
+    checkResponseEquals(read(sc, tail.query), tail(docs, 2L))
+    tail.query <- tail(query, -3L)
+    checkResponseEquals(read(sc, tail.query), tail(docs, -3L))
+    head.query <- head(query, -3L)
+    checkResponseEquals(read(sc, head.query), head(docs, -3L))
+    restricted.query <- tail(head(query, -2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), 1L))
+    restricted.query <- head(tail(query, -2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), 1L))
+    restricted.query <- head(tail(query, 2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), -1L))
+    restricted.query <- tail(head(query, 2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), -1L))
+    restricted.query <- head(tail(query, -1L), 2L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -1L), 2L))
+    restricted.query <- tail(head(query, -2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), -1L))
+    restricted.query <- tail(head(query, -1L), -2L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -1L), -2L))
+    restricted.query <- head(tail(query, -2L), -1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), -1L))
+    restricted.query <- head(tail(query, 2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), 1L))
+    restricted.query <- tail(head(query, 2L), 1L)
+    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), 1L))
+}
+
+testSort <- function(s, docs) {
+    query <- SolrQuery()
+    sc <- core(s)
+    sorted.query <- sort(query, by = ~ price)
+    checkResponseEquals(read(sc, sorted.query), docs[c(1, 3, 2, 4)])
+    sorted.query <- sort(query, by = ~ price, decreasing=TRUE)
+    checkResponseEquals(read(sc, sorted.query), docs[c(4, 2, 3, 1)])
+    reverse.query <- rev(sorted.query)
+    checkResponseEquals(read(sc, reverse.query), rev(docs[c(4, 2, 3, 1)]))
+    sorted.query <- sort(query, by = ~ I(weight * -1))
+    checkResponseEquals(read(sc, sorted.query), docs[c(2, 3, 1, 4)])
+    sorted.query <- sort(query, by = ~ I(weight * -1), decreasing=TRUE)
+    checkResponseEquals(read(sc, sorted.query), docs[c(1, 3, 2, 4)])
+    sorted.query <- sort(query, by = ~ id, decreasing=TRUE)
+    checkResponseEquals(read(sc, sorted.query), rev(docs))
+}
+
+testTransform <- function(sc, docs) {
+    query <- SolrQuery()
+
+    tform.query <- transform(query, stocked=inStock)
+    tform.docs <- docs
+    tform.docs[,"stocked"] <- tform.docs[,"inStock"]
+    tform.docs["4","stocked"] <- NULL
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, membership = id %in% 3:5)
+    tform.docs <- docs
+    tform.docs[,"membership"] <- tform.docs[,"id"] %in% 3:5
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+    
+    tform.query <- transform(query, overpriced=price > weight)
+    tform.docs <- docs
+    tform.docs[,"overpriced"] <- tform.docs[,"price"] > tform.docs[,"weight"]
+    tform.docs["5","overpriced"] <- NULL
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+    
+    tform.query <- transform(query, negPrice = price * -1)
+    tform.docs <- docs
+    tform.docs[,"negPrice"] <- tform.docs[,"price"] * -1
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, price = price * -1)
+    tform.docs <- docs
+    tform.docs[,"price"] <- tform.docs[,"price"] * -1
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+    
+    tform.query <- transform(query, price = round(price/3))
+    tform.docs <- docs
+    tform.docs[,"price"] <- round(tform.docs[,"price"]/3)
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, pmin = pmin(price, weight),
+                             pmax = pmax(price, weight))
+    tform.docs <- docs
+    tform.docs[,"pmin"] <- pmin(tform.docs[,"price"], tform.docs[,"weight"])
+    tform.docs[,"pmax"] <- pmin(tform.docs[,"price"], tform.docs[,"weight"])
+    tform.docs["5",c("pmax", "pmin")] <- NULL
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, pmin = pmin(price, weight, na.rm=TRUE),
+                             pmax = pmax(price, weight, na.rm=TRUE))
+    tform.docs <- docs
+    tform.docs[,"pmin"] <- pmin(tform.docs[,"price"], tform.docs[,"weight"],
+                                na.rm=TRUE)
+    tform.docs[,"pmax"] <- pmin(tform.docs[,"price"], tform.docs[,"weight"],
+                                na.rm=TRUE)
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+}
+
+testFacets <- function(sc, docs) {
     checkFacet <- function(formula, counts, query = SolrQuery())
-    {
-        expr.lang <- attr(terms(formula), "variables")[[2]]
-        if (is.call(expr.lang) && expr.lang[[1]] == quote(cut)) {
-            expr.name <- as.character(expr.lang[[2]])
-        } else {
-            expr.name <- deparse(eval(call("bquote", expr.lang)))
+        {
+            expr.lang <- attr(terms(formula), "variables")[[2]]
+            if (is.call(expr.lang) && expr.lang[[1]] == quote(cut)) {
+                expr.name <- as.character(expr.lang[[2]])
+            } else {
+                expr.name <- deparse(eval(call("bquote", expr.lang)))
+            }
+            facet.query <- xtabs(formula, query)
+            fct <- facet(sc, facet.query)[[expr.name]]
+            correct.fct <- as.table(counts)
+            dimnames(correct.fct) <- setNames(list(names(counts)), expr.name)
+            checkIdentical(fct, correct.fct)
         }
-        facet.query <- xtabs(formula, query)
-        fct <- facet(sc, facet.query)[[expr.name]]
-        correct.fct <- as.table(counts)
-        dimnames(correct.fct) <- setNames(list(names(counts)), expr.name)
-        checkIdentical(fct, correct.fct)
-    }
 
     checkFacet(~ inStock, c("FALSE"=1L, "TRUE"=3L))
     checkFacet(~ !inStock, c("FALSE"=3L, "TRUE"=1L))
@@ -213,69 +316,4 @@ testFacets <- function(sc) {
     correct.facet.df <- cbind(inStock=rownames(correct.facet.df),
                               correct.facet.df)
     checkIdentical(stats.df, correct.facet.df)
-}
-
-testBoundsRestriction <- function(sc) {
-    query <- SolrQuery()
-    head.query <- head(query, 2L)
-    checkResponseEquals(read(sc, head.query), head(docs, 2L))
-    tail.query <- tail(query, 2L)
-    checkResponseEquals(read(sc, tail.query), tail(docs, 2L))
-    tail.query <- tail(query, -3L)
-    checkResponseEquals(read(sc, tail.query), tail(docs, -3L))
-    head.query <- head(query, -3L)
-    checkResponseEquals(read(sc, head.query), head(docs, -3L))
-    restricted.query <- tail(head(query, -2L), 1L)
-    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), 1L))
-    restricted.query <- head(tail(query, -2L), 1L)
-    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), 1L))
-    restricted.query <- head(tail(query, 2L), -1L)
-    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), -1L))
-    restricted.query <- tail(head(query, 2L), -1L)
-    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), -1L))
-    restricted.query <- head(tail(query, -1L), 2L)
-    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -1L), 2L))
-    restricted.query <- tail(head(query, -2L), -1L)
-    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -2L), -1L))
-    restricted.query <- tail(head(query, -1L), -2L)
-    checkResponseEquals(read(sc, restricted.query), tail(head(docs, -1L), -2L))
-    restricted.query <- head(tail(query, -2L), -1L)
-    checkResponseEquals(read(sc, restricted.query), head(tail(docs, -2L), -1L))
-    restricted.query <- head(tail(query, 2L), 1L)
-    checkResponseEquals(read(sc, restricted.query), head(tail(docs, 2L), 1L))
-    restricted.query <- tail(head(query, 2L), 1L)
-    checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), 1L))
-}
-
-
-testSort <- function(sc) {
-    query <- SolrQuery()
-    sorted.query <- sort(query, by = ~ price)
-    checkResponseEquals(read(sc, sorted.query), docs[c(1, 3, 2, 4)])
-
-    sorted.query <- sort(query, by = ~ price, decreasing=TRUE)
-    checkResponseEquals(read(sc, sorted.query), docs[c(4, 2, 3, 1)])
-    reverse.query <- rev(sorted.query)
-    checkResponseEquals(read(sc, reverse.query), rev(docs[c(4, 2, 3, 1)]))  
-    sorted.query <- sort(query, by = ~ I(price * -1))
-    checkResponseEquals(read(sc, sorted.query), docs[c(4, 2, 3, 1)])
-}
-
-testTransform <- function(sc) {
-    tform.query <- transform(query, negPrice = price * -1)
-    tform.docs <- docs
-    tform.docs[,"negPrice"] <- tform.docs[,"price"] * -1
-    checkResponseEquals(read(sc, tform.query), tform.docs)
-    tform.query <- transform(query, price = price * -1)
-    tform.docs <- docs
-    tform.docs[,"price"] <- tform.docs[,"price"] * -1
-    checkResponseEquals(read(sc, tform.query), tform.docs)
-    tform.query <- transform(query, inStock2=inStock, stocked=inStock)
-    tform.query <- subset(tform.query, fields="i*")
-    tform.docs <- docs
-    tform.docs[,"inStock2"] <- tform.docs[,"inStock"]
-    checkResponseEquals(read(sc, tform.query),
-                        tform.docs[,c("id", "inStock", "inStock2")])
-    tform.docs <- docs
-    
 }

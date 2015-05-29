@@ -236,15 +236,18 @@ setMethod("fromSolr", c("ANY", "SolrSchema"), fromSolr_default)
 
 augment <- function(x, query) {
   fl <- params(query)$fl
-  mode(fl) <- "character"
   new.fl <- fl[nzchar(names(fl))]
-  computed <- grepl("(", new.fl, fixed=TRUE)
+  computed <- vapply(new.fl, function(fi) {
+                         is(fi, "TranslationRequest") &&
+                             !is(expr(fi@src), "Symbol")
+                     }, logical(1L))
   x <- augmentComputed(x, new.fl[computed])
   x <- augmentAliases(x, new.fl[!computed])
   x
 }
 
 augmentAliases <- function(x, fl) {
+  fl <- vapply(fl, as.character, character(1L))
   alias.info <- fields(x)[fl]
   names(alias.info) <- names(fl)
   fields(x) <- append(fields(x), alias.info)
@@ -259,7 +262,7 @@ augmentComputed <- function(x, fl) {
                              typeName="..computed..",
                              dynamic=FALSE,
                              multivalued=FALSE)
-  computed.type <- FieldTypeList(..computed.. = new("solr.DoubleField"))
+  computed.type <- FieldTypeList(..computed.. = new("AnyField"))
   fields(x) <- append(fields(x), computed.info)
   fieldTypes(x) <- append(fieldTypes(x), computed.type)
   x
@@ -374,8 +377,9 @@ setMethod("deriveSolrSchema", "ANY",
 
 setMethod("deriveSolrSchema", "data.frame",
           function(x, name, version="1.5",
-                   uniqueKey=NULL, required=character(), indexed=colnames(x),
-                   stored=colnames(x), includeVersionField=TRUE)
+                   uniqueKey=NULL, required=colnames(Filter(Negate(anyNA), x)),
+                   indexed=colnames(x), stored=colnames(x),
+                   includeVersionField=TRUE)
             {
               if (!isSingleString(name)) {
                 stop("'name' must be a single, non-NA string")
@@ -391,8 +395,7 @@ setMethod("deriveSolrSchema", "data.frame",
               stored <- normColIndex(x, stored)
               types <- lapply(x, solrType)
               names(types) <- vapply(x, class, character(1L))
-              docValues <- names(x) %in% required &
-                vapply(types, isDocValueType, logical(1L))
+              docValues <- vapply(types, isDocValueType, logical(1L))
               fields <- FieldInfo(names(x),
                                   typeName=names(types),
                                   dynamic=FALSE,

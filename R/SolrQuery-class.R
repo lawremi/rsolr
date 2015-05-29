@@ -135,11 +135,11 @@ setMethod("translate", c("SolrQueryTranslationSource", "Expression"),
           function(x, target, core, ...) {
               frame <- group(.SolrFrame(core, x@query), x@grouping)
               context <- DelegateContext(frame, x@env)
-              translate(x@expr, target, context, ...)
+              translate(expr(x), target, context, ...)
           })
 
 setMethod("as.character", "SolrQueryTranslationSource",
-          function(x) deparse(x@expr))
+          function(x) deparse(expr(x)))
 
 deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
@@ -220,6 +220,42 @@ setMethod("rename", "SolrQuery", function(x, ...) {
               fl <- lapply(map, as, "SolrFunctionExpression")
               params(x)$fl <- c(params(x)$fl, fl)
               x
+          })
+
+solrInf <- SolrFunctionCall("div", list(1, 0))
+solrNegInf <- SolrFunctionCall("div", list(-1, 0))
+
+### SOLRBUG:
+### Seems that character types do not sort via function queries.
+### Any NAs are probably treated as empty strings and therefore come first,
+### unless the schema is configured to sort NAs specially.
+isCharacterSymbol <- function(expr, core) {
+    if (is(expr, "SolrSymbol")) {
+        !is(fieldTypes(schema(core), name(expr))[[1L]], "CharacterField")
+    } else {
+        FALSE
+    }
+}
+
+### FIXME: we substitute (-)infinity for NAs so that they sort
+### last. Solr itself supports sorting NAs last or first, according to
+### a setting in the schema. If we tracked that information, we could
+### avoid this hack in the case of symbols. But it's debatable whether
+### we should always obey the schema, or try to be always consistent
+### with R (and calls, which we would need to treat ourselves).
+
+setMethod("translate", c("SolrQueryTranslationSource", "SolrSortExpression"),
+          function(x, target, core, ...) {
+              expr <- translate(x, SolrFunctionExpression(), core, ...)
+              if (!isCharacterSymbol(expr, core)) {
+                  inf <- if (target@decreasing) solrNegInf else solrInf
+                  expr <- propagateNAs(expr, inf, fields(schema(core)))
+              }
+              initialize(target, by=expr)
+          })
+
+setMethod("as.character", "SolrSortExpression", function(x) {
+              paste(x@by, if (x@decreasing) "desc" else "asc")
           })
 
 sortParams <- function(x, by, decreasing) {

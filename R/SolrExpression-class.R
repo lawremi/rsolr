@@ -215,46 +215,58 @@ JoinQParserExpression <- function(query, from, to) {
         to=as(to, "SolrSymbol", strict=FALSE))
 }
 
-SolrFunctionExpression <- function(name) {
+SolrFunctionExpression <- function(name=character()) {
     new("SolrFunctionExpression", name=name)
 }
 
-getMissables <- function(fun, args) {
-    getMissablesForArg <- function(arg) {
-        if (is(arg, "Symbol")) {
-            arg
-        } else if (is(arg, "SolrFunctionCall")) {
-            arg@missables
-        } else {
-            list()
-        }
-    }
+setGeneric("missables", function(x, fields = NULL) standardGeneric("missables"),
+           signature="x")
+
+setMethod("missables", "Symbol", function(x, fields = NULL) {
+              if (is.null(fields) || !required(fields[name(x)])) {
+                  x
+              } else {
+                  list()
+              }
+          })
+
+setMethod("missables", "SolrFunctionCall",
+          function(x, fields = NULL) x@missables)
+
+setMethod("missables", "ANY", function(x, fields = NULL) list())
+
+missablesForArgs <- function(fun, args, fields) {
     if (fun == "if") {
         args <- args[1L]
     }
     as.list(if (fun != "exists") {
-                unique(unlist(lapply(args, getMissablesForArg)))
+                unique(unlist(lapply(args, missables, fields)))
             })
 }
 
-clearMissables <- function(fun, args) {
-    clearMissablesForArg <- function(arg) {
-        if (is(arg, "SolrFunctionCall")) {
-            arg@missables <- list()
-        }
-        arg
-    }
+setGeneric("dropMissables", function(x) standardGeneric("dropMissables"))
+
+setMethod("dropMissables", "SolrFunctionCall", function(x) {
+              x@missables <- list()
+              x
+          })
+
+setMethod("dropMissables", "ANY", function(x) {
+              x
+          })
+
+dropMissablesFromArgs <- function(fun, args) {
     if (fun == "if") {
-        args[1L] <- clearMissablesForArg(args[[1L]])
+        args[1L] <- dropMissables(args[[1L]])
     } else if (fun != "exists") {
-        args <- lapply(args, clearMissablesForArg)
+        args <- lapply(args, dropMissables)
     }
     args
 }
 
-SolrFunctionCall <- function(name, args) {
-    new("SolrFunctionCall", name=name, args=clearMissables(name, args),
-        missables=getMissables(name, args))
+SolrFunctionCall <- function(name, args, fields = NULL) {
+    new("SolrFunctionCall", name=name, args=dropMissablesFromArgs(name, args),
+        missables=missablesForArgs(name, args, fields))
 }
 
 SolrAggregateCall <- function(name, subject, na.rm, params=list(),
@@ -398,36 +410,30 @@ setMethod("as.character", "AbstractSolrFunctionCall", function(x) {
               paste0(name(x), "(", paste(args, collapse=","), ")")
           })
 
+callQuery <- function(x) {
+    query <- as(x, "SolrQParserExpression", strict=FALSE)
+    query@useValueParam <- TRUE
+    quoted <- SolrFunctionExpression(query) # solr has NSE too!
+    SolrFunctionCall("query", list(quoted))
+}
+
+propagateNAs <- function(x, na=solrNA, fields=NULL) {
+    missables <- missables(x, fields)
+    if (length(missables) == 0L) {
+        return(x)
+    }
+    exists <- function(x) SolrFunctionCall("exists", list(x))
+    and <- function(x, y) SolrFunctionCall("and", list(x, y))
+    condition <- Reduce(and, lapply(missables, exists))
+    if (is(x, "SolrFunctionCall")) {
+        x@missables <- list()
+    }
+    SolrFunctionCall("if", list(condition, x, na))
+}
+
 setMethod("as.character", "SolrFunctionCall", function(x) {
-              if (length(x@missables) > 0L) {
-                  exists <- function(x) SolrFunctionCall("exists", list(x))
-                  and <- function(x, y) SolrFunctionCall("and", list(x, y))
-                  condition <- Reduce(and, lapply(x@missables, exists))
-                  nullQuery <- SolrLuceneNOT(SolrLuceneTerm("*", I("*")))
-                  x@missables <- list()
-                  x <- SolrFunctionCall("if", list(condition,
-                                                   x,
-                                                   callQuery(nullQuery)))
-              }
+              x <- propagateNAs(x)
               callNextMethod()
-          })
-
-setMethod("as.character", "SolrSortExpression", function(x) {
-              paste(x@by, if (x@decreasing) "desc" else "asc")
-          })
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Translation overrides
-###
-
-### Because we store the 'decreasing' arg on the 'target'.  We could
-### support decreasing() in the expression itself, which would convert
-### a SolrFunctionExpression to a SolrSortExpression, but we want to
-### support the separate 'decreasing' arg, for consistency with R.
-setMethod("translate", c("ANY", "SolrSortExpression"),
-          function(x, target, ...) {
-              expr <- translate(x, SolrFunctionExpression(), ...)
-              initialize(target, by=expr)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -482,13 +488,6 @@ setAs("ANY", "SolrLuceneExpressionOrSymbol", function(from) {
 ### Solr Function coercion
 ###
 
-callQuery <- function(x) {
-    query <- as(x, "SolrQParserExpression", strict=FALSE)
-    query@useValueParam <- TRUE
-    quoted <- SolrFunctionExpression(query) # solr has NSE too!
-    SolrFunctionCall("query", list(quoted))
-}
-
 setAs("Expression", "SolrFunctionExpression", function(from) {
           SolrFunctionCall("exists", list(callQuery(from)))
       })
@@ -531,3 +530,10 @@ supportedSolrQParsers <- function() {
     ans <- cls[vapply(cls, extends, logical(1), "QParserExpression")]
     setNames(ans, qparserFromClassName(ans))
 }
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Global Solr NA hack
+###
+
+solrNA <- callQuery(SolrLuceneNOT(SolrLuceneTerm("*", I("*"))))
+

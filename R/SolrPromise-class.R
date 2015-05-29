@@ -193,6 +193,14 @@ PredicatedSolrSymbolPromise <- function(expr, context) {
 
 setMethod("length", "SolrPromise", function(x) nrow(context(x)))
 
+setMethod("missables", "SolrPromise",
+          function(x, fields = NULL) {
+              if (is.null(fields)) {
+                  fields <- fields(schema(core(context(x))))
+              }
+              missables(expr(x), fields)
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lucene translation
 ###
@@ -245,6 +253,10 @@ setMethod("!", "SolrPromise", function(x) {
 
 setMethod("!", "SolrLuceneSymbolPromise", function(x) {
               SolrLucenePromise(SolrLuceneTerm(expr(x), FALSE), context(x))
+          })
+
+setMethod("complete.cases", "SolrLuceneSymbolPromise", function(...) {
+              Reduce(`&`, lapply(list(...), `==`, I("*")))
           })
 
 setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
@@ -360,11 +372,8 @@ setAs("SolrPromise", "SolrLucenePromise", function(from) {
 frangeCompare <- function(fun, x, y) {
     promise <- if (is.numeric(x)) y else x
     num <- if (is.numeric(x)) x else y
-    crossesZero <- # crossing zero will cover NA
-        (substring(fun, 2, 2) == "=" && num == 0) ||
-            (substring(fun, 1, 1) == "<" && num > 0) ||
-                (substring(fun, 1, 1) == ">" && num < 0)
-    if (crossesZero) {
+    crossesZero <- do.call(fun, list(0, num))
+    if (crossesZero && length(missables(promise)) > 0L) {
         return(numericCompare(fun, x, y))
     }
     query <- expr(as(promise, "SolrFunctionPromise", strict=FALSE))
@@ -545,15 +554,41 @@ setMethod("ifelse",
               solrCall("if", test, yes, no)
           })
 
+setMethod("dropMissables", "SolrPromise", function(x) {
+              expr(x) <- dropMissables(expr(x))
+              x
+          })
+
+pairwiseNARm <- function(ans, x, y) {
+    ans <- dropMissables(ans)
+    xm <- missables(x)
+    ym <- missables(y)
+    if (length(xm) > 0L && length(ym) > 0L) {
+        ifelse(exists(x), ifelse(exists(y), ans, dropMissables(x)),
+               ifelse(exists(y), dropMissables(y),
+                      SolrFunctionPromise(solrNA, context(ans))))
+    } else {
+        if (length(xm) > 0L) {
+            ifelse(exists(x), ans, y)
+        } else {
+            ifelse(exists(y), ans, x)
+        }
+    }
+}
+
 setMethods("pmax2",
            list(c("numeric", "SolrPromise"),
                 c("SolrPromise", "numeric"),
                 c("SolrPromise", "SolrPromise")),
            function(x, y, na.rm=FALSE) {
-               if (!identical(na.rm, FALSE)) {
-                   stop("'na.rm' must be FALSE")
+               if (!isTRUEorFALSE(na.rm)) {
+                   stop("'na.rm' must be TRUE or FALSE")
                }
-               solrCall("max", x, y)
+               max <- solrCall("max", x, y)
+               if (na.rm) {
+                   max <- pairwiseNARm(max, x, y)
+               }
+               max
            })
 
 setMethods("pmin2",
@@ -561,14 +596,26 @@ setMethods("pmin2",
                 c("SolrPromise", "numeric"),
                 c("SolrPromise", "SolrPromise")),
            function(x, y, na.rm=FALSE) {
-               if (!identical(na.rm, FALSE)) {
-                   stop("'na.rm' must be FALSE")
+               if (!isTRUEorFALSE(na.rm)) {
+                   stop("'na.rm' must be TRUE or FALSE")
                }
-               solrCall("min", x, y)
+               min <- solrCall("min", x, y)
+               if (na.rm) {
+                   min <- pairwiseNARm(min, x, y)
+               }
+               min
            })
 
+exists <- function(x) {
+    solrCall("exists", x)
+}
+
+setMethod("complete.cases", "SolrFunctionPromise", function(...) {
+    Reduce(`&`, lapply(list(...), exists))
+})
+
 setMethod("is.na", "SolrFunctionPromise", function(x) {
-              !solrCall("exists", x)
+              !exists(x)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -603,17 +650,13 @@ solrCall <- function(fun, ...) {
                                          strict=FALSE))
                              })
     checkArgLengths(args[!promises])
-    expr <- SolrFunctionCall(fun, args)
     ctx <- resolveContext(...)
+    expr <- SolrFunctionCall(fun, args, fields(schema(core(ctx))))
     SolrFunctionPromise(expr, ctx)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Aggregation
-###
-
-###
-### FIXME: Unhandled: prod(), which is uncommon anyway
 ###
 
 ### The SolrAggregateExpression has two special abilities. First, it
@@ -637,6 +680,9 @@ solrCall <- function(fun, ...) {
 
 setMethod("Summary", "SolrPromise",
           function (x, ..., na.rm = FALSE) {
+              if (.Generic == "prod") {
+                  stop("'prod(x)' not yet supported")
+              }
               fun <- switch(.Generic,
                             max="max",
                             min="min",
