@@ -411,11 +411,8 @@ setMethod("xtabs", "SolrQuery",
               stop("all args except 'formula', 'data' and 'exclude' ",
                    "are ignored")
             }
-            if (!is.na(exclude) && !is.null(exclude)) {
+            if (!is.null(exclude) && (length(exclude)!=1L || !is.na(exclude))) {
               stop("'exclude' must be 'NA' or 'NULL'")
-            }
-            if (!is(formula, "formula")) {
-              stop("'formula' must be a formula")
             }
             facet(data, formula, useNA=is.null(exclude))
           })
@@ -468,7 +465,7 @@ setMethod("facetParams", c("SolrQuery", "character"),
                              stats <- statsParams(x, grouping, ...)
                              list(type="terms", field=f,
                                   missing=useNA,
-                                  facet=stats, sort=sort,
+                                  facets=stats, sort=sort,
                                   limit=limit, mincount=0L)
                          })
               params
@@ -493,7 +490,7 @@ setMethod("facetParams", c("SolrQuery", "call"),
                                             where)
                   params <- list(type="query", q=query)
               }
-              c(params, list(facet=statsParams(...)))
+              c(params, list(facets=statsParams(...)))
           })
 
 setMethod("facetParams", c("SolrQuery", "TranslationRequest"),
@@ -524,7 +521,7 @@ facetSort <- function(x, sort, decreasing) {
         stop("'decreasing' must be TRUE or FALSE")
     }
     dir <- if (decreasing) "desc" else "asc"
-    if (is.formula(sort)) {
+    if (is(sort, "formula")) {
         f <- parseFormulaRHS(sort)
         paste(vapply(f, function(t) {
                          if (is.name(t)) {
@@ -571,7 +568,7 @@ setMethod("makeName", "SolrFunctionExpression", function(x) {
 
 imputeStatNames <- function(x) {
     needsName <- if (is.null(names(x))) {
-        TRUE
+        rep(TRUE, length(x))
     } else {
         names(x) == ""
     }
@@ -580,11 +577,11 @@ imputeStatNames <- function(x) {
 }
 
 statsParams <- function(x, grouping, ..., .stats=list()) {
-    stats <- as.list(substitute(list(...))[-1L])
-    requests <- mapply(deferTranslation, list(x), stats,
-                       list(SolrAggregateExpression()),
-                       top_prenv_dots(...),
-                       grouping=grouping)
+    requests <- mapply(deferTranslation,
+                       expr=as.list(substitute(list(...))[-1L]),
+                       env=top_prenv_dots(...),
+                       MoreArgs=list(x=x, target=SolrAggregateCall(),
+                           grouping=grouping))
     requests <- imputeStatNames(requests)
     c(requests, .stats)
 }
@@ -655,12 +652,12 @@ mergeFacetParams <- function(x, params, terms, ...) {
         if (is.null(pterm)) {
             pterm <- facetParams(x, term)
         }
-        pterm$facet <- facetParams_json(x, params$facet, terms[-1L], ...)
+        pterm$facets <- facetParams_json(x, params$facets, terms[-1L], ...)
     } else {
         newfacet <- facetParams(x, term, ...)
-        subfacets <- pterm$facet[vapply(pterm$facet, is.list, logical(1L))]
-        newfacet$facet <- structure(c(newfacet$facet, subfacets),
-                                    class="facetlist")
+        subfacets <- pterm$facets[vapply(pterm$facets, is.list, logical(1L))]
+        newfacet$facets <- structure(c(newfacet$facets, subfacets),
+                                     class="facetlist")
         newfacet$nfq <- sum(names(params(x)) == "fq")
         pterm <- structure(newfacet, class="facet")
     }
@@ -722,37 +719,40 @@ paramToCSV <- function(x) {
     else x
 }
 
-translateParams <- function(x, context) {
-### FIRST TIME EVER USING rapply()!!!!
-    params(x) <- rapply(params(x), eval, "TranslationRequest", how="replace",
-                        envir=context)
-    x
+### FIXME: In R <= 3.2.0, rapply() strips attributes. Thus, we need to
+### process the parameters in one pass. Since rapply() is S3 based
+### (only considers class attribute), and the different methods expect
+### different arguments, it seems appropriate to use an S3 generic.
+
+processParam <- function(x, ...) UseMethod("processParam")
+
+processParam.Expression <- function(x, context, ...) {
+    eval(x, context)
 }
 
-prepareExcludeTags <- function(x) {
-### SECOND TIME EVER USING rapply()!!!!
-    fq <- names(params(x)$fl)
-    params(x) <- rapply(params(x), function(xi) {
-                            xi$excludeTags <- tail(fq, -xi$nfq)
-                            xi$nfq <- NULL
-                            xi
-                        }, "facet", how="replace")
+processParam.facet <- function(x, fq, ...) {
+    x$excludeTags <- tail(fq, -x$nfq)
+    x$nfq <- NULL
     x
 }
 
 getAuxExpr <- function(x) {
-    if (is(x, "SolrAggregateExpression"))
+    if (is(x, "SolrAggregateCall"))
         lapply(x@aux, expr)
 }
 
-addAuxStats <- function(x, context) {
-### THIRD TIME EVER USING rapply()!!!!
-    params(x) <- rapply(params(x), function(xi) {
-                            aux <- unlist(unname(lapply(xi, getAuxExpr)))
-                            xi[names(aux)] <- aux
-                            xi
-                        }, "facetlist", how="replace")
+processParam.facetlist <- function(x, ...) {
+    aux <- unlist(unname(lapply(x, getAuxExpr)))
+    x[names(aux)] <- aux
     x
+}
+
+processParams <- function(x, context) {
+    fq <- names(x$fl)
+### FIRST TIME EVER USING rapply()!!!!
+    rapply2(x, processParam,
+            c("Expression", "facet", "facetlist"),
+            context=context, fq=fq, how="replace")
 }
 
 prepareBoundsParams <- function(p, nrows) {
@@ -798,13 +798,9 @@ paramsAsCharacter <- function(p) {
 }
 
 setMethod("translate", c("SolrQuery", "missing"), function(x, target, core) {
-              params(x) <- prepareBoundsParams(params(x), resultLength(core, x))
-              if (is.null(responseType(x)))
-                  responseType(x) <- "list"
-              x <- translateParams(x, core)
-              x <- prepareExcludeTags(x)
-              x <- addAuxStats(x)
-              paramsAsCharacter(params(x))
+              p <- prepareBoundsParams(params(x), resultLength(core, x))
+              p <- processParams(p, core)
+              paramsAsCharacter(p)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -824,7 +820,7 @@ groupForShow <- function(x) {
 facetForShow <- function(x) {
     if (x$type == "query") {
         as.character(x$q)
-    } else if (type == "range") {
+    } else if (x$type == "range") {
         deparse(substitute(cut(field, seq(start, end, gap)), x))
     } else {
         x$field
@@ -832,7 +828,7 @@ facetForShow <- function(x) {
 }
 
 facetsForShow <- function(x) {
-    rapply(x, facetForShow, "facet")
+    unname(rapply2(x, facetForShow, "facet"))
 }
 
 showLine <- function(...) {

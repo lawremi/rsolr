@@ -142,13 +142,13 @@ setClass("SolrAggregateCall",
          representation(name="character",
                         subject="SolrFunctionExpression",
                         params="list",
-                        augment="list",
+                        aux="list",
                         postprocess="functionORNULL"),
          contains = c("AbstractSolrFunctionCall", "SolrExpression"),
          validity=function(object) {
              c(if (!isSingleString(object@name))
                    stop("'name' of a Solr aggregate call must be a string"),
-               validHomogeneousList(object@args, "SolrAggregateCall"))
+               validHomogeneousList(object@aux, "SolrAggregateCall"))
          })
 
 setClass("SolrSortExpression",
@@ -269,12 +269,13 @@ SolrFunctionCall <- function(name, args, fields = NULL) {
         missables=missablesForArgs(name, args, fields))
 }
 
-SolrAggregateCall <- function(name, subject, na.rm, params=list(),
-                                    aux = list(), postprocess = NULL)
+SolrAggregateCall <- function(name = "",
+                              subject = SolrFunctionExpression(),
+                              params=list(), aux = list(), postprocess = NULL)
 {
     new("SolrAggregateCall", name=name,
         subject=as(subject, "SolrFunctionExpression", strict=FALSE),
-        na.rm=na.rm, params=params, aux=aux, postprocess=postprocess)
+        params=params, aux=aux, postprocess=postprocess)
 }
 
 SolrSortExpression <- function(decreasing) {

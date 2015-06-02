@@ -318,6 +318,8 @@ SolrErrorHandler <- function(core, query) {
 setMethod("eval", c("SolrQuery", "SolrCore"),
           function (expr, envir, enclos)
           {
+            if (is.null(responseType(expr)))
+              responseType(expr) <- "list"
             params <- translate(expr, core=envir)
             expected.type <- params["wt"]
             response <- tryCatch(read(envir@uri$select, params),

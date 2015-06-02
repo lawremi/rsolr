@@ -51,7 +51,7 @@ buildCommandLine <- function() {
         paste0("-DSTOP.PORT=", 8079L),
         paste0("-DSTOP.KEY=", "rsolr"),
         paste0("-Dlog4j.configuration=file://", getLogConfFile()),
-        "-jar", basename(getStartJar()))
+        "-jar", basename(getStartJar()), "--module=http")
 }
 
 setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
@@ -75,7 +75,7 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                   while(!portIsOpen(port)) {
                     Sys.sleep(0.1)
                   }
-                  Sys.sleep(1) # a bit more time to let it start
+                  Sys.sleep(2) # a bit more time to let it start
                   message("Solr started at: ", .self$uri)
                 },
                 kill = function() {

@@ -218,7 +218,7 @@ testTransform <- function(sc, docs) {
 }
 
 testFacets <- function(sc, docs) {
-    checkFacet <- function(formula, counts, query = SolrQuery())
+    checkTable <- function(formula, counts, query = SolrQuery())
         {
             expr.lang <- attr(terms(formula), "variables")[[2]]
             if (is.call(expr.lang) && expr.lang[[1]] == quote(cut)) {
@@ -227,22 +227,22 @@ testFacets <- function(sc, docs) {
                 expr.name <- deparse(eval(call("bquote", expr.lang)))
             }
             facet.query <- xtabs(formula, query)
-            fct <- facet(sc, facet.query)[[expr.name]]
+            fct <- as.table(facets(sc, facet.query)[[expr.name]])
             correct.fct <- as.table(counts)
             dimnames(correct.fct) <- setNames(list(names(counts)), expr.name)
             checkIdentical(fct, correct.fct)
         }
 
-    checkFacet(~ inStock, c("FALSE"=1L, "TRUE"=3L))
-    checkFacet(~ !inStock, c("FALSE"=3L, "TRUE"=1L))
-    checkFacet(~ price, c("2.0"=1L, "3.0"=1L, "4.0"=1L, "5.0"=1L))
-    checkFacet(~ price > 3, c("FALSE"=2L, "TRUE"=2L))
-    checkFacet(~ price > 3 & inStock, c("FALSE"=3L, "TRUE"=1L))
-    checkFacet(~ price > log2(8), c("FALSE"=2L, "TRUE"=2L))
+    checkTable(~ inStock, c("FALSE"=1L, "TRUE"=2L))
+    checkTable(~ !inStock, c("FALSE"=3L, "TRUE"=1L))
+    checkTable(~ price, c("2.0"=1L, "3.0"=1L, "4.0"=1L, "5.0"=1L))
+    checkTable(~ price > 3, c("FALSE"=2L, "TRUE"=2L))
+    checkTable(~ price > 3 & inStock, c("FALSE"=3L, "TRUE"=1L))
+    checkTable(~ price > log2(8), c("FALSE"=2L, "TRUE"=2L))
     three <- 3
-    checkFacet(~ price > .(three), c("FALSE"=2L, "TRUE"=2L))
-    checkFacet(~ cut(price, seq(1, 5, 2)), c("(1,3]"=2L, "(3,5]"=2L))
-    checkFacet(~ cut(price, c(-Inf, 2, 4, 5, Inf)),
+    checkTable(~ price > .(three), c("FALSE"=2L, "TRUE"=2L))
+    checkTable(~ cut(price, seq(1, 5, 2)), c("(1,3]"=2L, "(3,5]"=2L))
+    checkTable(~ cut(price, c(-Inf, 2, 4, 5, Inf)),
                c("(-Inf,2]"=1L, "(2,4]"=2L, "(4,5]"=1L, "(5, Inf]"=0L))
     query <- SolrQuery()
     facet.query <- xtabs(~ price, query)
@@ -278,7 +278,7 @@ testFacets <- function(sc, docs) {
 
     ## CHECK: facet on restricted query
     sub.query <- subset(query, inStock)
-    checkFacet(~ inStock, c("FALSE"=0L, "TRUE"=3L), sub.query)
+    checkTable(~ inStock, c("FALSE"=0L, "TRUE"=3L), sub.query)
 
     ## CHECK: df upload and statistics
     val_pi <- c(23, 26, 38, 46, 55, 63, 77, 84, 92, 94)

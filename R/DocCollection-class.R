@@ -78,9 +78,8 @@ setAs("list", "DocDataFrame", function(from) {
 })
 
 setAs("DocDataFrame", "data.frame", function(from) {
-  as.data.frame(setNames(from@.Data, names(from)),
-                row.names=rownames(from), optional=TRUE, stringsAsFactors=FALSE)
-})
+          S3Part(from, TRUE)
+      })
 
 setAs("DocList", "data.frame", function(from) {
           as(from, "DocDataFrame")
@@ -140,13 +139,8 @@ unid <- function(x) {
 }
 
 setReplaceMethod("names", "DocCollection", function(x, value) {
-### FIXME: names(x@.Data) <- NULL does not behave as expected
-                     if (is.null(value)) {
-                         callNextMethod()
-                     } else {
-                         names(x@.Data) <- value
-                         x
-                     }
+                     names(S3Part(x, TRUE)) <- value
+                     x
                  })
 
 setGeneric("fieldNames", function(x, ...) standardGeneric("fieldNames"))
@@ -157,8 +151,7 @@ setMethod("fieldNames", "DocDataFrame", function(x) names(x))
 
 setGeneric("fieldNames<-", function(x, value) standardGeneric("fieldNames<-"))
 setReplaceMethod("fieldNames", "DocList", function(x, value) {
-  x@.Data <- lapply(x, setNames, value)
-  x
+  initialize(x, lapply(x, setNames, value))
 })
 setReplaceMethod("fieldNames", "DocDataFrame", function(x, value) {
   colnames(x) <- value
@@ -183,10 +176,7 @@ setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
     stop("'drop' should be TRUE or FALSE")
   }
   if (!missing(i)) {
-### FIXME: callNextMethod(x, i) broken because [ is primitive
-    d <- x@.Data
-    names(d) <- names(x)
-    ans <- d[i]
+    ans <- callNextMethod()
   } else {
     ans <- x
   }
@@ -222,11 +212,9 @@ setMethod("[", "DocDataFrame", function(x, i, j, ..., drop = TRUE) {
           })
 
 setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
-   if (missing(j)) {
-     tmp <- setNames(x@.Data, names(x))
-     tmp[i] <- value
-     x@.Data <- tmp
-     return(x)
+  if (missing(j)) {
+      S3Part(x, TRUE)[i] <- value
+      return(x)
   }
   if (missing(i)) {
     i <- seq_along(x)
@@ -244,7 +232,7 @@ setReplaceMethod("[", "DocList", function(x, i, j, ..., value) {
     xi[j] <- valuei
     xi
   }, x[i], value, SIMPLIFY=FALSE)
-   x
+  x
 })
 
 setGeneric("meta", function(x) standardGeneric("meta"))

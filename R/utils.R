@@ -22,6 +22,8 @@ vpluck <- function(x, name, value, required=TRUE) {
   }
 }
 
+### Copied from S4Vectors -- shouldn't we just depend on it?
+
 isSingleString <- function(x) {
   is.character(x) && length(x) == 1L && !is.na(x)
 }
@@ -33,6 +35,12 @@ isSingleNumber <- function(x) {
 isTRUEorFALSE <- function(x) {
   identical(x, TRUE) || identical(x, FALSE)
 }
+
+isSingleNumberOrNA <- function (x) {
+    is.atomic(x) && length(x) == 1L && (is.numeric(x) || is.na(x))
+}
+
+### End S4Vectors copy
 
 recycleVector <- function(x, length.out)
 {
@@ -211,6 +219,30 @@ parseFormulaRHS <- function(x) {
         stop("formula must not have an LHS")
     }
     lapply(attr(terms(x), "variables")[-1L], stripI)
+}
+
+rapply2 <- function(object, f, classes = "ANY", deflt = NULL,
+                    how = c("unlist", "replace", "list"), ...)
+{
+    how <- match.arg(how)
+    f <- match.fun(f)
+    if (!is.character(classes) || any(is.na(classes))) {
+        stop("'classes' should be character without NAs")
+    }
+    .rapply2 <- function(obj) {
+        if (is.recursive(obj)) {
+            obj[] <- lapply(obj, .rapply2)
+        }
+        if (any(vapply(classes, is, object=obj, FUN.VALUE=logical(1L)))) {
+            f(obj, ...)
+        } else if (how == "list") {
+            deflt
+        } else {
+            obj
+        }
+    }
+    ans <- .rapply2(object)
+    if (how == "unlist") unlist(ans) else ans
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

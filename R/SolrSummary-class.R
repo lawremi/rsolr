@@ -35,8 +35,6 @@ setMethod("facets", "SolrSummary", function(x) x@facets)
 ### Coercion
 ###
 
-setGeneric("as.table", function(x, ...) standardGeneric("as.table"))
-
 transposeStats <- function(x) {
     qtl <- x$quantile
     colnames(qtl) <- c("1st qu.", "median", "3rd qu.")

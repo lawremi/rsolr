@@ -97,10 +97,13 @@ setClass("FieldTypeList", contains="list",
            validHomogeneousList(object, "FieldType")
          })
 
-`names<-.FieldTypeList` <- function(x, value) {
-  names(x@.Data) <- value
+### NOTE:  The "list" class does not have a "names" slot (since the
+###        names attribute is optional), so we need to explicitly set
+###        the names on the S3 part.
+setReplaceMethod("names", "FieldTypeList", function(x, value) {
+  names(S3Part(x, TRUE)) <- value
   x
-}
+})
 
 FieldTypeList <- function(...) {
   args <- list(...)

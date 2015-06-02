@@ -177,7 +177,7 @@ SolrFunctionPromise <- function(expr, context) {
 
 SolrAggregatePromise <- function(expr, context) {
     new("SolrAggregatePromise",
-        expr=as(expr, "SolrAggregateExpression", strict=FALSE),
+        expr=as(expr, "SolrAggregateCall", strict=FALSE),
         context=context)
 }
 
@@ -659,7 +659,7 @@ solrCall <- function(fun, ...) {
 ### Solr Aggregation
 ###
 
-### The SolrAggregateExpression has two special abilities. First, it
+### The SolrAggregateCall has two special abilities. First, it
 ### can pass along additional, supporting statistics to calculate. The
 ### other is a function that post-processes the result, usually to
 ### combine the result with the auxillary statistics. It is passed
@@ -809,7 +809,8 @@ solrAggregate <- function(fun, x, na.rm, params = list(), aux = list(),
         }
     }
     x <- as(x, "SolrFunctionPromise", strict=FALSE)
-    expr <- SolrAggregateExpression(fun, expr(x), params, aux, postprocess)
+    aux <- lapply(aux, expr)
+    expr <- SolrAggregateCall(fun, expr(x), params, aux, postprocess)
     SolrAggregatePromise(expr)
 }
 

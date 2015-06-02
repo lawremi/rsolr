@@ -25,10 +25,9 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               grepl, grep, Arith, "-", Math, round, rescale, ifelse, pmin2,
               pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
-              facet, ngroup, complete.cases)
+              facet, ngroup, complete.cases, as.table)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
-S3method(`names<-`, FieldTypeList)
 S3method(as.data.frame, Solr)
 S3method(as.data.frame, DocList)
 S3method(as.data.frame, FieldInfo)
