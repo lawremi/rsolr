@@ -268,6 +268,7 @@ readVersion <- function(uri) {
 setGeneric("facets", function(x, ...) standardGeneric("facets"))
 
 setMethod("facets", "SolrCore", function(x, by, ...) {
+              by <- head(by, 0)
               facets(eval(by, x), ...)
           })
 

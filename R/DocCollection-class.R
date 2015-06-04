@@ -176,7 +176,12 @@ setMethod("[", "DocList", function(x, i, j, ..., drop = TRUE) {
     stop("'drop' should be TRUE or FALSE")
   }
   if (!missing(i)) {
-    ans <- callNextMethod()
+### FIXME: have to call S3Part() here due to bug in
+### callNextMethod(). It should probably use the C-level
+### callNextMethod, but when we specify arguments, it calls
+### .nextMethod(), which does not work when .nextMethod is a
+### primitive (infinite recursion).
+    ans <- callNextMethod(S3Part(x, TRUE), i)
   } else {
     ans <- x
   }

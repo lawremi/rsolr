@@ -455,19 +455,26 @@ setMethod("facetParams", c("SolrQuery", "character"),
               if (any(is.na(by))) {
                   stop("'by' must not contain NAs")
               }
+              groupings <- lapply(by, function(f) as.formula(paste("~", f)))
+              aliased <- by %in% names(params(x)$fl)              
+              params <- mapply(facetParams, params(x)$fl[by[aliased]],
+                               grouping = groupings[aliased],
+                               MoreArgs=list(x=x,
+                                   useNA=useNA, sort=sort,
+                                   decreasing=decreasing,
+                                   limit=limit, ...),
+                               SIMPLIFY=FALSE)
               sort <- facetSort(x, sort, decreasing)
               limit <- facetLimit(limit)
-              aliased <- by %in% names(params(x)$fl)
-              params <- lapply(params(x)$fl[by[aliased]], facetParams)
               params[by[!aliased]] <-
-                  lapply(by[!aliased], function(f) {
-                             grouping <- as.formula(paste("~", f))
+                  mapply(function(f, grouping) {
                              stats <- statsParams(x, grouping, ...)
                              list(type="terms", field=f,
                                   missing=useNA,
                                   facets=stats, sort=sort,
                                   limit=limit, mincount=0L)
-                         })
+                         }, by[!aliased], groupings[!aliased],
+                         SIMPLIFY=FALSE)
               params
           })
 
@@ -477,25 +484,34 @@ setMethod("facetParams", c("SolrQuery", "name"),
           })
 
 setMethod("facetParams", c("SolrQuery", "call"),
-          function(x, by, where, useNA=FALSE, ...) {
+          function(x, by, where, useNA=FALSE, sort=NULL,
+                   decreasing=FALSE, limit=NA_integer_, ...) {
+### FIXME: Support useNA=TRUE for query facets without extra stats,
+### since we have the overall count in the parent bucket.
               if (!identical(useNA, FALSE)) {
                   stop("'useNA' must be FALSE for complex facets")
               }
+              if (!is.null(sort)) {
+                  stop("'sort' is not supported for complex facets")
+              }
+              if (!identical(limit, NA_integer_)) {
+                  stop("'limit' is not supported for complex facets")
+              }
               by <- stripI(by)
               if (by[[1L]] == quote(cut)) {
-                  by[[1L]] <- quote(facet_cut)
+                  by[[1L]] <- facet_cut
                   params <- eval(by, where)
               } else {
                   query <- deferTranslation(x, by, SolrQParserExpression(),
                                             where)
                   params <- list(type="query", q=query)
               }
-              c(params, list(facets=statsParams(...)))
+              c(params, list(facets=statsParams(x, ...)))
           })
 
 setMethod("facetParams", c("SolrQuery", "TranslationRequest"),
           function(x, by, ...) {
-              facetParams(x, by@src@expr, ...)
+              facetParams(x, by@src@expr, where=by@src@env, ...)
           })
 
 `facetParams<-` <- function(x, value) {
@@ -621,13 +637,14 @@ unique.difftime <- function(x) {
 }
 
 facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
-  var <- substitute(x)
+  var <- deparse(substitute(x))
   if (length(gap <- unique(diff(breaks))) == 1L) {
     facet.include <- if (right) "upper" else "lower"
     if (include.lowest) {
       facet.include <- paste0(facet.include, ",", "edge")
     }
     list(type="range",
+         field=var,
          start=toSolrFacetBound(min(breaks)),
          end=toSolrFacetBound(max(breaks)),
          gap=toSolrFacetGap(gap),
@@ -664,7 +681,7 @@ mergeFacetParams <- function(x, params, terms, ...) {
     params[[deparse(term)]] <- pterm
     if (pterm$type == "query") {
         not_pterm <- pterm
-        not_pterm$query@src <- call("!", pterm$query@src)
+        not_pterm$q@src@expr <- call("!", pterm$q@src@expr)
         params[[paste0("_not_", deparse(term))]] <- not_pterm
     }
     params
@@ -726,7 +743,7 @@ paramToCSV <- function(x) {
 
 processParam <- function(x, ...) UseMethod("processParam")
 
-processParam.Expression <- function(x, context, ...) {
+processParam.TranslationRequest <- function(x, context, ...) {
     eval(x, context)
 }
 
@@ -751,7 +768,7 @@ processParams <- function(x, context) {
     fq <- names(x$fl)
 ### FIRST TIME EVER USING rapply()!!!!
     rapply2(x, processParam,
-            c("Expression", "facet", "facetlist"),
+            c("TranslationRequest", "facet", "facetlist"),
             context=context, fq=fq, how="replace")
 }
 
@@ -787,8 +804,7 @@ prepareBoundsParams <- function(p, nrows) {
 }
 
 paramsAsCharacter <- function(p) {
-    exprClasses <- unique(names(getClass("SolrExpression")@subclasses))
-    p <- rapply(p, as.character, exprClasses, how="replace")
+    p <- rapply2(p, as.character, "SolrExpression", how="replace")
     p$sort <- paramToCSV(p$sort)
     p$fl <- paramToCSV(p$fl)
     if (!is.null(p[["json"]])) # partial match hits 'json.nl'

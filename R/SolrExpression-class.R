@@ -47,12 +47,18 @@ setClass("SolrLuceneUnaryOperator",
          representation(e1="SolrLuceneExpression"),
          contains=c("SolrLuceneExpression", "VIRTUAL"))
 
-setClass("SolrLuceneNOT", contains="SolrLuceneUnaryOperator")
+setClass("SolrLuceneProhibit", contains="SolrLuceneUnaryOperator")
 
 setClass("SolrLuceneTerm",
          representation(field="SolrSymbolORNULL",
-                        term="ANY"),
-         contains="SolrLuceneExpression")
+                        term="ANY",
+                        inverted="logical"),
+         prototype(inverted=FALSE),
+         contains="SolrLuceneExpression",
+         validity=function(object) {
+             if (!isTRUEorFALSE(object@inverted))
+                 "'inverted' must be TRUE or FALSE"
+         })
 
 setClass("LuceneRange",
          representation(from="ANY", to="ANY",
@@ -78,21 +84,8 @@ setClassUnion("SolrLuceneExpressionOrSymbol",
               c("SolrLuceneExpression", "SolrQParserExpression", "SolrSymbol"))
 
 setClass("LuceneQParserExpression",
-         representation(op="character",
-                        df="SolrSymbolORNULL",
-                        query="SolrLuceneExpression"),
-         prototype(op="OR"),
-         contains="SolrQParserExpression",
-         validity=function(object) {
-             c(if (!isSingleString(object@op)) {
-                   "'op' parameter must be a single, non-NA string"
-               } else if (!object@op %in% c("OR", "AND")) {
-                   "'op' must be either OR or AND"
-               },
-               if (!is.null(object@df) && !isSingleString(object@df)) {
-                   "'df' must be a single, non-NA string, or NULL"
-               })
-         })
+         representation(query="SolrLuceneExpression"),
+         contains="SolrQParserExpression")
 
 setClassUnion("numericORNULL", c("numeric", "NULL"))
 
@@ -173,8 +166,8 @@ SolrLuceneAND <- function(e1, e2) {
         e2=as(e2, "SolrLuceneExpression", strict=FALSE))
 }
 
-SolrLuceneNOT <- function(e1) {
-    new("SolrLuceneNOT",
+SolrLuceneProhibit <- function(e1) {
+    new("SolrLuceneProhibit",
         e1=as(e1, "SolrLuceneExpression", strict=FALSE))
 }
 
@@ -202,10 +195,9 @@ FRangeQParserExpression <- function(query, l = NULL, u = NULL,
         l=l, u=u, incl=incl, incu=incu)
 }
 
-LuceneQParserExpression <- function(query, op = "OR", df = NULL) {
+LuceneQParserExpression <- function(query) {
     new("LuceneQParserExpression",
-        query=as(query, "SolrLuceneExpression", strict=FALSE),
-        op=op, df=df)
+        query=as(query, "SolrLuceneExpression", strict=FALSE))
 }
 
 JoinQParserExpression <- function(query, from, to) {
@@ -217,51 +209,6 @@ JoinQParserExpression <- function(query, from, to) {
 
 SolrFunctionExpression <- function(name=character()) {
     new("SolrFunctionExpression", name=name)
-}
-
-setGeneric("missables", function(x, fields = NULL) standardGeneric("missables"),
-           signature="x")
-
-setMethod("missables", "Symbol", function(x, fields = NULL) {
-              if (is.null(fields) || !required(fields[name(x)])) {
-                  x
-              } else {
-                  list()
-              }
-          })
-
-setMethod("missables", "SolrFunctionCall",
-          function(x, fields = NULL) x@missables)
-
-setMethod("missables", "ANY", function(x, fields = NULL) list())
-
-missablesForArgs <- function(fun, args, fields) {
-    if (fun == "if") {
-        args <- args[1L]
-    }
-    as.list(if (fun != "exists") {
-                unique(unlist(lapply(args, missables, fields)))
-            })
-}
-
-setGeneric("dropMissables", function(x) standardGeneric("dropMissables"))
-
-setMethod("dropMissables", "SolrFunctionCall", function(x) {
-              x@missables <- list()
-              x
-          })
-
-setMethod("dropMissables", "ANY", function(x) {
-              x
-          })
-
-dropMissablesFromArgs <- function(fun, args) {
-    if (fun == "if") {
-        args[1L] <- dropMissables(args[[1L]])
-    } else if (fun != "exists") {
-        args <- lapply(args, dropMissables)
-    }
-    args
 }
 
 SolrFunctionCall <- function(name, args, fields = NULL) {
@@ -313,6 +260,141 @@ setGeneric("name", function(x) standardGeneric("name"))
 setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
            function(x) x@name)
 
+### FIXME: missables are not being propagated from Solr query()
+### calls. Just need to add missable methods for the Lucene
+### expressions.
+
+setGeneric("missables", function(x, fields = NULL) standardGeneric("missables"),
+           signature="x")
+
+setMethod("missables", "Symbol", function(x, fields = NULL) {
+              if (is.null(fields) || !required(fields[name(x)])) {
+                  x
+              } else {
+                  list()
+              }
+          })
+
+setMethod("missables", "SolrFunctionCall",
+          function(x, fields = NULL) x@missables)
+
+setMethod("missables", "ANY", function(x, fields = NULL) list())
+
+missablesForArgs <- function(fun, args, fields) {
+    if (fun == "if") {
+        args <- args[1L]
+    }
+    as.list(if (fun != "exists") {
+                unique(unlist(lapply(args, missables, fields)))
+            })
+}
+
+setGeneric("dropMissables", function(x) standardGeneric("dropMissables"))
+
+setMethod("dropMissables", "SolrFunctionCall", function(x) {
+              x@missables <- list()
+              x
+          })
+
+setMethod("dropMissables", "ANY", function(x) {
+              x
+          })
+
+dropMissablesFromArgs <- function(fun, args) {
+    if (fun == "if") {
+        args[1L] <- dropMissables(args[[1L]])
+    } else if (fun != "exists") {
+        args <- lapply(args, dropMissables)
+    }
+    args
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Inversion
+###
+### If Lucene expressions are simply inverted with -(.), they will
+### match whatever is not in ".", including missing values. Thus, we
+### need to explicitly invert our expressions, in order to avoid
+### matching missings.
+
+setGeneric("invert", function(x) standardGeneric("invert"))
+
+setMethod("invert", "SolrQParserExpression", function(x) {
+              x@query <- invert(x@query)
+              x
+          })
+
+setMethod("invert", "SolrLuceneAND", function(x) {
+              SolrLuceneOR(invert(x@e1), invert(x@e2))
+          })
+
+setMethod("invert", "SolrLuceneOR", function(x) {
+              SolrLuceneAND(invert(x@e1), invert(x@e2))
+          })
+
+setMethod("invert", "SolrLuceneProhibit", function(x) {
+              x@e1
+          })
+
+### We defer inversion until serialization, because there is way to
+### invert a Lucene term without explicitly checking for
+### non-missing. If we generated that check prior to this point, it
+### would result in a more complicated expression, and one that, if
+### inverted, would match missings.
+
+setMethod("invert", "SolrLuceneTerm", function(x) {
+              x@inverted <- !x@inverted
+              x
+          })
+
+setMethod("invert", "SolrLuceneRangeTerm", function(x) {
+              x@term <- invert(x@term)
+              x
+          })
+
+setMethod("invert", "LuceneRange", function(x) {
+              initialize(x, from=x@to, to=x@from,
+                         fromInclusive=!x@toInclusive,
+                         toInclusive=!x@fromInclusive)
+          })
+
+frangeToNumeric <- function(x) {
+    fun <-
+        if (!is.null(x@u))
+            if (!is.null(x@l)) "=" else "<"
+        else ">"
+    if (x@incl || x@incu)
+        fun <- paste0(fun, "=")
+    v <- if (!is.null(x@u)) x@u else x@l
+    p <- SolrFunctionPromise(query(x), NULLContext())
+    ## crossesZero <- do.call(fun, list(0, v))
+    ## if (crossesZero && length(missables(p)) > 0L) 
+    as(expr(numericCompare(fun, p, v)), "SolrQParserExpression")
+}
+
+### FIXME: completely broken and ugly
+setMethod("invert", "FRangeQParserExpression", function(x) {
+              equals <- !is.null(x@u) && identical(x@u, x@l) && x@incl && x@incu
+              if (equals) {
+                  minus <- SolrFunctionCall("minus", list(query(x), x@u))
+                  abs <- SolrFunctionCall("abs", list(minus))
+                  inverted <- FRangeQParserExpression(abs, l=0L)
+              } else if (is.null(x@u) || is.null(x@l)) {
+                  inverted <- initialize(x, l=x@u, u=x@l,
+                                         incu=!x@incl, incl=!x@incu)
+              } else {
+                  stop("cannot invert frange")
+              }
+              if (length(missables(query(x))) > 0L) { # frange will cross zero
+                  inverted <- frangeToNumeric(inverted)
+              }
+              inverted
+          })
+
+setMethod("invert", "SolrFunctionExpression", function(x) {
+              SolrFunctionCall("not", list(x))
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Serialization
 ###
@@ -325,7 +407,7 @@ setMethod("as.character", "SolrLuceneAND", function(x) {
               paste(wrapParens(x@e1), "AND", wrapParens(x@e2))
           })
 
-setMethod("as.character", "SolrLuceneNOT", function(x) {
+setMethod("as.character", "SolrLuceneProhibit", function(x) {
               if (substring(x@e1, 1L, 1L) == "-") {
                   expr <- substring(x@e1, 2L)
               } else {
@@ -334,6 +416,20 @@ setMethod("as.character", "SolrLuceneNOT", function(x) {
           })
 
 setMethod("as.character", "SolrLuceneTerm", function(x) {
+              if (x@inverted) {
+                  x@inverted <- FALSE
+                  if (is.logical(x@term)) {
+                      x@term <- !x@term
+                  } else {
+                      wrapped <- SolrLuceneProhibit(x)
+                      naCheck <- identical(x@term, I("*"))
+                      if (!naCheck) {
+                          wrapped <- SolrLuceneAND(wrapped,
+                                                   initialize(x, term=I("*")))
+                      }
+                      return(as.character(wrapped))
+                  }
+              }
               term <- normLuceneLiteral(x@term)
               if (!is.null(x@field)) {
                   paste0(x@field, ":", term)
@@ -471,7 +567,7 @@ setAs("logical", "SolrLuceneExpression", function(from) {
           }
           true <- SolrLuceneTerm("*", I("*"))
           if (!from) {
-              SolrLuceneNOT(true)
+              SolrLuceneProhibit(true)
           } else {
               true
           }
@@ -536,5 +632,5 @@ supportedSolrQParsers <- function() {
 ### Global Solr NA hack
 ###
 
-solrNA <- callQuery(SolrLuceneNOT(SolrLuceneTerm("*", I("*"))))
+solrNA <- callQuery(SolrLuceneProhibit(SolrLuceneTerm("*", I("*"))))
 

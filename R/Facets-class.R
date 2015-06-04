@@ -72,9 +72,9 @@ enumerateFacetPaths <- function(query, pnames=NULL) {
 }
 
 cutLabels <- function(query) {
-    cut(integer(), seq(query$start, query$end, query$gap),
-        right=grepl("upper", query$include, fixed=TRUE),
-        include.lowest=grepl("edge", query$include, fixed=TRUE))
+    levels(cut(integer(), seq(query$start, query$end, query$gap),
+               right=grepl("upper", query$include, fixed=TRUE),
+               include.lowest=grepl("edge", query$include, fixed=TRUE)))
 }
 
 getBucketValues <- function(x) {
@@ -126,8 +126,6 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         stats[nonscalar] <- lapply(stats[nonscalar], function(v) I(t(v)))
         stats <- as.data.frame(stats)
 ### FIXME: ensure that calls to Solr unique() yield integer
-### FIXME: step further would be to ensure integer for aggregations on integer
-###        columns (except avg)
         stats$count <- as.integer(stats$count)
     } else {
         step <- path[[1L]]
@@ -158,7 +156,7 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
 
 collapseQueryPair <- function(query, inverted) {
     initialize(query,
-               stats=rbind(query@stats, inverted@stats),
+               stats=rbind(inverted@stats, query@stats),
                mapply(collapseQueryPair, query, inverted,
                              SIMPLIFY=FALSE))
 }
@@ -196,7 +194,7 @@ setMethod("as.table", "Facets", function(x) {
               count <- df$count
               groupings <- df[-countpos]
               dn <- lapply(groupings, as.character)
-              dim <- unname(vapply(groupings, nlevels, integer(1L)))
+              dim <- unname(vapply(groupings, lengthUnique, integer(1L)))
               as.table(array(count, dim=dim, dimnames=dn))
           })
 
@@ -205,6 +203,8 @@ setMethod("as.table", "Facets", function(x) {
 ###
 
 setMethod("show", "Facets", function(object) {
-              cat(BiocGenerics:::labeledLine("subfacets", names(object)))
+              if (length(object) > 0L)
+                  cat(BiocGenerics:::labeledLine("subfacets", names(object),
+                                                 sep=", "))
               show(stats(object))
           })

@@ -225,14 +225,16 @@ setMethod("%in%", c("SolrSymbolPromise", "vector"),
               SolrLucenePromise(expr, context(x))
           })
 
-### We are greedy here, which is probably OK, since most logical
-### expressions are conveniently expressed with Lucene syntax...
+### FIXME: Can we make this apply only to something with Lucene in it?
+###        In other words, make it so function promise uses and(), or()?
 setMethods("Logic",
            list(c("SolrPromise", "SolrLucenePromise"),
                 c("SolrLucenePromise", "SolrPromise"),
                 c("SolrLucenePromise", "SolrLucenePromise"),
                 c("SolrPromise", "SolrSymbolPromise"),
                 c("SolrSymbolPromise", "SolrPromise"),
+                c("SolrLucenePromise", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "SolrLucenePromise"),
                 c("SolrSymbolPromise", "SolrSymbolPromise")),
            function(e1, e2) {
                e1 <- as(e1, "SolrLucenePromise", strict=FALSE)
@@ -248,7 +250,7 @@ setMethods("Logic",
 
 setMethod("!", "SolrPromise", function(x) {
               x <- as(x, "SolrLucenePromise", strict=FALSE)
-              SolrLucenePromise(SolrLuceneNOT(expr(x)), context(x))
+              initialize(x, expr=invert(expr(x)))
           })
 
 setMethod("!", "SolrLuceneSymbolPromise", function(x) {
@@ -263,13 +265,57 @@ setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
               x != I("*")
           })
 
+
+### Comparisons. These are tricky.
+
+### We need to compare fields to a constant, computed values to constant,
+### and fields to other fields.
+###
+### Field compared to constant:
+###
+### Lucene: field:[1 TO *}, field:1 (for equality)
+### -- uses an index, so should be fast for restricted queries
+### -- we cannot know when a query is restricted enough,
+###    but we should use this for lucene symbols
+###
+### FRange: {!frange l=1 incl=true}field
+### -- more efficient data access, so faster for large results
+### -- missing values will pass if range crosses zero
+###    -- we could protect by taking all missables from the function and
+###       doing an {!frange l=0 incl=false}exists() in the enclosing query.
+###    -- it is probably simpler/faster to avoid crossing zero by
+###       doing a simple subtraction, potentially with a not()
+###    -- when we have <= or >= zero, we could use map()
+###    -- when inverting, we need to determine the inverted comparison
+###       and recompute it to avoid crossing zero
+###    -- and we still need to forward missings into an enclosing function,
+###       since exists(query()) erases that information
+###    -- so there are two competing approaches:
+###       1. avoid zero crossing by tricks
+###         - complicates inversion, corner cases like <=/>= 0
+###         - possibly slower for functions, because we still have to
+###           check for missings, but we are doing more math
+###       2. add query-level missing protection when crossing zero
+###         - simpler to code
+### -- encoding != is tricky, approaches:
+###    -- not(not(e1-e2)), no frange needed (but happens for queries)
+###    -- abs(e1-e2), frange > 0, probably faster for queries, slower for funs
+###    -- not(e1-e2), frange == 0, requires checking missings
+###
+### Computed value to constant: use frange, with a function instead of field
+###
+### Field compared to field:
+###
+### This is as simple as expressing '>' as 'e1 - e2 > 0', and so
+### becomes a comparison of a computed value to constant.
+
 setMethods("Compare",
-           list(c("SolrSymbolPromise", "vector"),
-                c("vector", "SolrSymbolPromise"),
-                c("SolrSymbolPromise", "AsIs"),
-                c("AsIs", "SolrSymbolPromise"),
-                c("SolrSymbolPromise", "numeric"),
-                c("numeric", "SolrSymbolPromise")),
+           list(c("SolrLuceneSymbolPromise", "vector"),
+                c("vector", "SolrLuceneSymbolPromise"),
+                c("SolrLuceneSymbolPromise", "AsIs"),
+                c("AsIs", "SolrLuceneSymbolPromise"),
+                c("SolrLuceneSymbolPromise", "numeric"),
+                c("numeric", "SolrLuceneSymbolPromise")),
            function(e1, e2) {
                luceneCompare(.Generic, e1, e2)
            })
@@ -386,7 +432,7 @@ frangeCompare <- function(fun, x, y) {
 }
 
 reverseRelational <- function(call) {
-    call$fun <- chartr("<>", "><", call$fun)
+    call$fun <- c(">"="<=", ">="="<", "<"=">=", "<="=">", "=="="==")[call$fun]
     call[c("x", "y")] <- call[c("y", "x")]
     call
 }
@@ -399,9 +445,8 @@ luceneCompare <- function(fun, x, y) {
         return(!(x == y))
     }
 
-    call <- list(fun=fun, x=x, y=y)
     if (is(y, "SolrSymbolPromise")) {
-        call <- reverseRelational(call)
+        call <- reverseRelational(list(fun=fun, x=x, y=y))
         return(do.call(luceneRelational, call))
     }
     
@@ -442,11 +487,16 @@ setMethod("Logic", c("SolrPromise", "logical"),
           })
 
 setMethod("!", "SolrFunctionPromise", function(x) {
-              solrCall("not", x)
+              SolrFunctionPromise(invert(expr(x)), context(x))
           })
 
+map <- function(x, min, max, target, value) {
+    solrCall("map", x, min, max, target, value)
+}
+
 numericCompare <- function(.Generic, e1, e2) {
-    `>` <- function(e1, e2) ifelse(ceiling(e1 / e2) - 1L, TRUE, FALSE)
+    `>` <- function(e1, e2) ifelse(map(e1 - e2, I("-Infinity"), 0, 0, 1),
+                                   TRUE, FALSE)
     `==` <- function(e1, e2) !(e1 - e2)
     switch(.Generic,
            ">" = e1 > e2,
@@ -618,6 +668,43 @@ setMethod("is.na", "SolrFunctionPromise", function(x) {
               !exists(x)
           })
 
+cut.SolrPromise <-
+    function(x, breaks, include.lowest = FALSE, right = TRUE, ...)
+        cut(x, breaks, include.lowest, right)
+
+setMethod("cut", "SolrPromise",
+          function(x, breaks, include.lowest = FALSE, right = TRUE) {
+              gap <- unique(diff(breaks))
+              if (length(gap) != 1L) {
+                  stop("only uniform breaks are supported")
+              }
+              if (!isTRUEorFALSE(include.lowest)) {
+                  stop("'include.lowest' must be TRUE or FALSE")
+              }
+              if (!isTRUEorFALSE(right)) {
+                  stop("'right' must be TRUE or FALSE")
+              }
+              scaled <- (x - breaks[1L]) / gap
+              if (right) {
+                  bins <- ceiling(scaled)
+                  if (include.lowest) {
+                      bins <- ifelse(bins == 0L, 1L, bins)
+                  }
+              } else {
+                  bins <- floor(scaled) + 1L
+                  if (include.lowest) {
+                      bins <- ifelse(bins == length(breaks) + 1L,
+                                     length(breaks), bins)
+                  }
+              }
+              lowest.fun <- if (include.lowest || !right) `<` else `<=`
+              highest.fun <- if (include.lowest || right) `>` else `>=`
+              na <- SolrFunctionPromise(solrNA, context(x))
+              ifelse(lowest.fun(x, breaks[1L]),
+                     ifelse(highest.fun(x, tail(breaks, 1L)), bins, na),
+                     na)
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Function coercion
 ###
@@ -724,9 +811,13 @@ setMethod("sd", "SolrPromise", function(x, na.rm=FALSE) {
                             })
           })
 
-lengthUnique <- function(x, na.rm=FALSE) {
-    solrAggregate("unique", x, na.rm)
-}
+setGeneric("lengthUnique", function(x, ...) standardGeneric("lengthUnique"))
+setMethod("lengthUnique", "ANY", function(x) length(unique(x)))
+setMethod("lengthUnique", "factor", function(x) nlevels(x))
+
+setMethod("lengthUnique", "SolrPromise", function(x, na.rm=FALSE) {
+              solrAggregate("unique", x, na.rm)
+          })
 
 setGeneric("quantile",
            function (x, ...) standardGeneric("quantile"))
