@@ -139,7 +139,7 @@ computedFieldPromise <- function(solr, name) {
     }
 }
 
-SolrSymbolPromise <- function(expr, context) {
+SolrSymbolPromise <- function(expr, context = NULL) {
     new("SolrSymbolPromise", expr=expr, context=context)
 }
 
@@ -163,25 +163,25 @@ setMethod("Promise",
               prom
           })
 
-SolrLucenePromise <- function(expr, context) {
+SolrLucenePromise <- function(expr, context = NULL) {
     new("SolrLucenePromise",
         expr=as(expr, "SolrLuceneExpressionOrSymbol", strict=FALSE),
         context=context)
 }
 
-SolrFunctionPromise <- function(expr, context) {
+SolrFunctionPromise <- function(expr, context = NULL) {
     new("SolrFunctionPromise",
         expr=as(expr, "SolrFunctionExpression", strict=FALSE),
         context=context)
 }
 
-SolrAggregatePromise <- function(expr, context) {
+SolrAggregatePromise <- function(expr, context = NULL) {
     new("SolrAggregatePromise",
         expr=as(expr, "SolrAggregateCall", strict=FALSE),
         context=context)
 }
 
-PredicatedSolrSymbolPromise <- function(expr, context) {
+PredicatedSolrSymbolPromise <- function(expr, context = NULL) {
     new("PredicatedSolrSymbolPromise",
         expr=as(expr, "PredicatedSolrSymbol", strict=FALSE),
         context=context)
@@ -225,8 +225,6 @@ setMethod("%in%", c("SolrSymbolPromise", "vector"),
               SolrLucenePromise(expr, context(x))
           })
 
-### FIXME: Can we make this apply only to something with Lucene in it?
-###        In other words, make it so function promise uses and(), or()?
 setMethods("Logic",
            list(c("SolrPromise", "SolrLucenePromise"),
                 c("SolrLucenePromise", "SolrPromise"),
@@ -276,33 +274,17 @@ setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
 ### Lucene: field:[1 TO *}, field:1 (for equality)
 ### -- uses an index, so should be fast for restricted queries
 ### -- we cannot know when a query is restricted enough,
-###    but we should use this for lucene symbols
+###    but we should use this when we can (symbols).
+###
+### Computed value to constant:
 ###
 ### FRange: {!frange l=1 incl=true}field
-### -- more efficient data access, so faster for large results
+### -- more efficient bulk data access, so faster for large results?
 ### -- missing values will pass if range crosses zero
-###    -- we could protect by taking all missables from the function and
-###       doing an {!frange l=0 incl=false}exists() in the enclosing query.
-###    -- it is probably simpler/faster to avoid crossing zero by
-###       doing a simple subtraction, potentially with a not()
-###    -- when we have <= or >= zero, we could use map()
-###    -- when inverting, we need to determine the inverted comparison
-###       and recompute it to avoid crossing zero
-###    -- and we still need to forward missings into an enclosing function,
-###       since exists(query()) erases that information
-###    -- so there are two competing approaches:
-###       1. avoid zero crossing by tricks
-###         - complicates inversion, corner cases like <=/>= 0
-###         - possibly slower for functions, because we still have to
-###           check for missings, but we are doing more math
-###       2. add query-level missing protection when crossing zero
-###         - simpler to code
+###    -- we protect by taking all missables from the function and
+###       doing a "AND field:*" in the enclosing query.
 ### -- encoding != is tricky, approaches:
 ###    -- not(not(e1-e2)), no frange needed (but happens for queries)
-###    -- abs(e1-e2), frange > 0, probably faster for queries, slower for funs
-###    -- not(e1-e2), frange == 0, requires checking missings
-###
-### Computed value to constant: use frange, with a function instead of field
 ###
 ### Field compared to field:
 ###
@@ -310,12 +292,12 @@ setMethod("is.na", "SolrLuceneSymbolPromise", function(x) {
 ### becomes a comparison of a computed value to constant.
 
 setMethods("Compare",
-           list(c("SolrLuceneSymbolPromise", "vector"),
-                c("vector", "SolrLuceneSymbolPromise"),
-                c("SolrLuceneSymbolPromise", "AsIs"),
-                c("AsIs", "SolrLuceneSymbolPromise"),
-                c("SolrLuceneSymbolPromise", "numeric"),
-                c("numeric", "SolrLuceneSymbolPromise")),
+           list(c("SolrSymbolPromise", "vector"),
+                c("vector", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "AsIs"),
+                c("AsIs", "SolrSymbolPromise"),
+                c("SolrSymbolPromise", "numeric"),
+                c("numeric", "SolrSymbolPromise")),
            function(e1, e2) {
                luceneCompare(.Generic, e1, e2)
            })
@@ -416,12 +398,15 @@ setAs("SolrPromise", "SolrLucenePromise", function(from) {
 ###
 
 frangeCompare <- function(fun, x, y) {
-    promise <- if (is.numeric(x)) y else x
-    num <- if (is.numeric(x)) x else y
-    crossesZero <- do.call(fun, list(0, num))
-    if (crossesZero && length(missables(promise)) > 0L) {
+    if (fun == "!=") {
         return(numericCompare(fun, x, y))
     }
+    if (is.numeric(x)) {
+        call <- reverseRelational(list(fun=fun, x=x, y=y))
+        return(do.call(frangeRelational, call))
+    }
+    promise <- x
+    num <- y
     query <- expr(as(promise, "SolrFunctionPromise", strict=FALSE))
     expr <- FRangeQParserExpression(query,
                                     l    = if (fun %in% c(">", ">=", "==")) num,
@@ -490,13 +475,8 @@ setMethod("!", "SolrFunctionPromise", function(x) {
               SolrFunctionPromise(invert(expr(x)), context(x))
           })
 
-map <- function(x, min, max, target, value) {
-    solrCall("map", x, min, max, target, value)
-}
-
 numericCompare <- function(.Generic, e1, e2) {
-    `>` <- function(e1, e2) ifelse(map(e1 - e2, I("-Infinity"), 0, 0, 1),
-                                   TRUE, FALSE)
+    `>` <- function(e1, e2) (e2 - e1) < 0L
     `==` <- function(e1, e2) !(e1 - e2)
     switch(.Generic,
            ">" = e1 > e2,
@@ -535,6 +515,10 @@ setMethod("-", c("SolrPromise", "missing"), function(e1, e2) {
               e1 * -1L
           })
 
+map <- function(x, min, max, target, value) {
+    solrCall("map", x, min, max, target, value)
+}
+
 setMethod("Math", "SolrPromise", function(x) {
               fun <- switch(.Generic,
                             abs = "abs",
@@ -557,8 +541,8 @@ setMethod("Math", "SolrPromise", function(x) {
                   pi <- SolrFunctionPromise(SolrFunctionCall("pi", list()),
                                             context(x))
                   prom <- switch(.Generic, ## will not be as accurate as native
-                                 sign = x / abs(x),
-                                 trunc = floor(abs(x)) * sign(x),
+                                 sign = map(x, 0, I("Infinity"), 1, -1),
+                                 trunc = floor(abs(x)) - sign(x),
                                  log1p = log(x + 1),
                                  acosh = log(x + sqrt(x^2 - 1)),
                                  asinh = log(x + sqrt(x^2 + 1)),

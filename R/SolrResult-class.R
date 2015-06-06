@@ -61,7 +61,7 @@ setMethod("ndoc", "ListSolrResult",
           function(x) as.integer(x$response$numFound))
 
 setMethod("facets", "ListSolrResult", function(x) {
-              Facets(x$facets, json(query(x))$facet)
+              Facets(as.list(x$facets), as.list(json(query(x))$facet))
           })
 
 setMethod("ngroup", "ListSolrResult", function(x) {

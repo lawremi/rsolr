@@ -165,8 +165,6 @@ setMethods <- function (f, signatures = list(), definition,
         setMethod(f, signature = signature, definition, where = where, ...)
 }
 
-wrapParens <- function(x) paste0("(", x, ")")
-
 VariadicToBinary <- function(variadic, binary)
 {
     args <- formals(variadic)

@@ -13,8 +13,6 @@ setClass("DelegateContext",
 
 setIs("DelegateContext", "Context")
 
-setClass("NULLContext", contains=c("NULL", "Context"))
-
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Accessors
 ###
@@ -50,10 +48,6 @@ DelegateContext <- function(frame, parent) {
     new("DelegateContext", frame=frame, parent=parent)
 }
 
-NULLContext <- function() {
-    new("NULLContext")
-}
-
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Evaluation
 ###
@@ -67,9 +61,4 @@ setMethod("eval", c("ANY", "DelegateContext"),
                   frame(envir) <- as.list(frame(envir), all.names=TRUE)
               }
               eval(expr, frame(envir), parent(envir))
-          })
-
-setMethod("eval", c("ANY", "NULLContext"),
-          function (expr, envir, enclos) {
-              NULL
           })

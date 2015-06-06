@@ -62,6 +62,12 @@ testSubset <- function(s, docs) {
     checkResponseEquals(read(sc, subset.query), docs[1:3])
     subset.query <- subset(query, price >= 5)
     checkResponseEquals(read(sc, subset.query), docs[4])
+    subset.query <- subset(query, price == 5)
+    checkResponseEquals(read(sc, subset.query), docs[4])
+    subset.query <- subset(query, price != 5)
+    checkResponseEquals(read(sc, subset.query), docs[1:3])
+    subset.query <- subset(query, !(price != 5))
+    checkResponseEquals(read(sc, subset.query), docs[4])
     subset.query <- subset(query, price > 2 & price < 5)
     checkResponseEquals(read(sc, subset.query), docs[2:3])
     subset.query <- subset(query, price <= 2 | price >= 5)
@@ -98,6 +104,8 @@ testSubset <- function(s, docs) {
     checkResponseEquals(read(sc, subset.query), docs[c(1,3)])
     subset.query <- subset(query, price %/% weight == 0)
     checkResponseEquals(read(sc, subset.query), docs[2])
+    subset.query <- subset(query, !(price %/% weight == 0))
+    checkResponseEquals(read(sc, subset.query), docs[c(1,3)])
     subset.query <- subset(query, trunc(-(weight/price)) == -1)
     checkResponseEquals(read(sc, subset.query), docs[2:3])
 
@@ -259,15 +267,15 @@ testFacets <- function(sc, docs) {
     checkIdentical(as.table(fct$inStock),  tab)
     tab <- as.table(c("FALSE"=2L, "TRUE"=2L))
     names(dimnames(tab)) <- "price > 2 + 1"
-    checkIdentical(fct$"price > 2 + 1",  tab)
+    checkIdentical(as.table(fct$"price > 2 + 1"),  tab)
     names(dimnames(tab)) <- "price - 2 > 1"
-    checkIdentical(fct$"price - 2 > 1", tab)
-    checkIdentical(length(facet(sc, query)), 0L)
-    facet.query <- sort(xtabs(~ inStock, query), decreasing=TRUE)
-    fct <- facet(sc, facet.query)
-    tab <- as.table(c("TRUE"=3L, "FALSE"=1L))
+    checkIdentical(as.table(fct$"price - 2 > 1"), tab)
+    checkIdentical(length(facets(sc, query)), 0L)
+    facet.query <- facet(query, ~ inStock, sort=~count, decreasing=TRUE)
+    fct <- facets(sc, facet.query)
+    tab <- as.table(c("TRUE"=2L, "FALSE"=1L))
     names(dimnames(tab)) <- "inStock"
-    checkIdentical(fct$inStock,  tab)
+    checkIdentical(as.table(fct$inStock),  tab)
     
     ## CHECK: xtabs() pivoting
     xtabs.query <- xtabs(~ price + inStock, query)

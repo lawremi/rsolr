@@ -412,7 +412,8 @@ setMethod("deriveSolrSchema", "data.frame",
               }
               if (includeVersionField) {
                 versionField <- FieldInfo("_version_", typeName="long",
-                                          indexed=TRUE, stored=TRUE)
+                                          indexed=TRUE, stored=TRUE,
+                                          docValues=TRUE)
                 fields <- append(fields, versionField)
                 types[[typeName(versionField)]] <- new("solr.TrieLongField")
               }
