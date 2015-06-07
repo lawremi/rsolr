@@ -19,7 +19,15 @@ setClass("SolrLuceneExpression", contains=c("SolrExpression", "VIRTUAL"))
 ###
 
 ## a symbol that refers to a Solr field
-setClass("SolrSymbol", contains=c("SimpleSymbol", "SolrFunctionExpression"))
+setClass("SolrSymbol",
+         representation(missable="logical"),
+         prototype(missable=TRUE),
+         contains=c("SimpleSymbol", "SolrFunctionExpression"),
+         validity=function(object) {
+             if (!isTRUEorFALSE(object@missable)) {
+                 "'missable' must be TRUE or FALSE"
+             }
+         })
 setClassUnion("SolrSymbolORNULL", c("SolrSymbol", "NULL"))
 
 ## for targeting Lucene expressions
@@ -125,7 +133,7 @@ setClass("SolrFunctionCall",
          contains=c("AbstractSolrFunctionCall", "SolrFunctionExpression"),
          validity=function(object) {
              c(if (!isSingleString(object@name))
-                   stop("'name' of a Solr function call must be a string"),
+                   "'name' of a Solr function call must be a string",
                validHomogeneousList(object@missables, "SolrSymbol"))
          })
 
@@ -140,7 +148,7 @@ setClass("SolrAggregateCall",
          contains = c("AbstractSolrFunctionCall", "SolrExpression"),
          validity=function(object) {
              c(if (!isSingleString(object@name))
-                   stop("'name' of a Solr aggregate call must be a string"),
+                   "'name' of a Solr aggregate call must be a string",
                validHomogeneousList(object@aux, "SolrAggregateCall"))
          })
 
@@ -211,9 +219,9 @@ SolrFunctionExpression <- function(name=character()) {
     new("SolrFunctionExpression", name=name)
 }
 
-SolrFunctionCall <- function(name, args, fields = NULL) {
+SolrFunctionCall <- function(name, args) {
     new("SolrFunctionCall", name=name, args=dropMissablesFromArgs(name, args),
-        missables=missablesForArgs(name, args, fields))
+        missables=missablesForArgs(name, args))
 }
 
 SolrAggregateCall <- function(name = "",
@@ -257,11 +265,16 @@ setMethod("args", "SolrAggregateCall",
           function(name) c(name@subject, name@params))
 
 setGeneric("name", function(x) standardGeneric("name"))
-setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
-           function(x) x@name)
+setMethod("name", "ANY", function(x) x@name)
 
 `name<-` <- function(x, value) {
     x@name <- value
+    x
+}
+
+query <- function(x) x@query
+`query<-` <- function(x, value) {
+    x@query <- value
     x
 }
 
@@ -283,7 +296,7 @@ setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
 ### structure. Note though that they propagate themselves as missable,
 ### and never drop the missables from their children.
 
-### In the Lucenecase, we do support the special cases of 'x |
+### In the Lucene case, we do support the special cases of 'x |
 ### is.na(x)' and 'x & !is.na(x)' by simply not forwarding missing
 ### values past the '|' or '&' that contains the check.
 
@@ -291,29 +304,33 @@ setMethods("name", list("SolrFunctionCall", "SolrAggregateCall"),
 ### condition. When if() is embedded into another expression, it
 ### should take that protected expression as missable.
 
+missable <- function(x) x@missable
+`missable<-` <- function(x, value) {
+    x@missable <- value
+    x
+}
+
 setGeneric("missables", function(x, fields = NULL) standardGeneric("missables"),
            signature="x")
 
-setMethod("missables", "Symbol", function(x, fields = NULL) {
-              if (is.null(fields) || !required(fields[name(x)])) {
+setMethod("missables", "SolrSymbol", function(x) {
+              if (missable(x)) {
                   list(x)
               } else {
                   list()
               }
           })
 
-setMethod("missables", "SolrFunctionCall",
-          function(x, fields = NULL) x@missables)
+setMethod("missables", "SolrFunctionCall", function(x) x@missables)
 
 setMethod("missables", "SolrFunctionExpression",
-          function(x, fields = NULL) missables(name(x), fields))
+          function(x) missables(name(x)))
 
-setMethod("missables", "SolrQParserExpression",
-          function(x, fields = NULL) missables(query(x), fields))
+setMethod("missables", "SolrQParserExpression", function(x) missables(query(x)))
 
 setMethod("missables", "SolrLuceneBinaryOperator",
-          function(x, fields = NULL) {
-              missables <- c(missables(x@e1, fields), missables(x@e2, fields))
+          function(x) {
+              missables <- c(missables(x@e1), missables(x@e2))
               naCheck <- if (isLuceneNACheck(x@e1)) x@e1
                          else if (isLuceneNACheck(x@e2)) x@e2
               if (!is.null(naCheck) &&
@@ -323,24 +340,17 @@ setMethod("missables", "SolrLuceneBinaryOperator",
               missables
           })
 
-setMethod("missables", "SolrLuceneUnaryOperator",
-          function(x, fields = NULL) missables(x@e1, fields))
+setMethod("missables", "SolrLuceneUnaryOperator", function(x) missables(x@e1))
 
 isLuceneNACheck <- function(x) {
     is(x, "SolrLuceneTerm") && identical(x@term, I("*"))
 }
 
-setMethod("missables", "SolrLuceneTerm",
-          function(x, fields = NULL) {
-              if (!isLuceneNACheck(x) && !is.null(x@field) &&
-                  (is.null(fields) || !required(fields[x@field]))) {
-                  list(x@field)
-              } else {
-                  list()
-              }
+setMethod("missables", "SolrLuceneTerm", function(x) {
+              if (isLuceneNACheck(x)) list() else missables(x@field)
           })
 
-setMethod("missables", "ANY", function(x, fields = NULL) list())
+setMethod("missables", "ANY", function(x) list())
 
 `missables<-` <- function(x, value) {
     x@missables <- value
@@ -352,12 +362,12 @@ isSolrNACheck <- function(fun, args) {
         !(is(args[[1L]], "SolrFunctionCall") && name(args[[1L]]) == "query")
 }
 
-missablesForArgs <- function(fun, args, fields) {
+missablesForArgs <- function(fun, args) {
     if (fun == "if") {
         args <- args[1L]
     }
     as.list(if (!isSolrNACheck(fun, args)) {
-                unique(unlist(lapply(args, missables, fields)))
+                unique(unlist(lapply(args, missables)))
             })
 }
 
@@ -384,6 +394,16 @@ setMethod("dropMissables", "SolrLuceneBinaryOperator", function(x) {
 
 setMethod("dropMissables", "SolrLuceneUnaryOperator", function(x) {
               initialize(x, e1=dropMissables(x@e1))
+          })
+
+setMethod("dropMissables", "SolrLuceneTerm", function(x) {
+              x@field <- dropMissables(x@field)
+              x
+          })
+
+setMethod("dropMissables", "SolrSymbol", function(x) {
+              missable(x) <- FALSE
+              x
           })
 
 setMethod("dropMissables", "ANY", function(x) {

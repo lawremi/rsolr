@@ -139,7 +139,8 @@ computedFieldPromise <- function(solr, name) {
     }
 }
 
-SolrSymbolPromise <- function(expr, context = NULL) {
+SolrSymbolPromise <- function(expr, context) {
+    missable(expr) <- !required(fields(schema(core(context)))[name(expr)])
     new("SolrSymbolPromise", expr=expr, context=context)
 }
 
@@ -163,25 +164,25 @@ setMethod("Promise",
               prom
           })
 
-SolrLucenePromise <- function(expr, context = NULL) {
+SolrLucenePromise <- function(expr, context) {
     new("SolrLucenePromise",
         expr=as(expr, "SolrLuceneExpressionOrSymbol", strict=FALSE),
         context=context)
 }
 
-SolrFunctionPromise <- function(expr, context = NULL) {
+SolrFunctionPromise <- function(expr, context) {
     new("SolrFunctionPromise",
         expr=as(expr, "SolrFunctionExpression", strict=FALSE),
         context=context)
 }
 
-SolrAggregatePromise <- function(expr, context = NULL) {
+SolrAggregatePromise <- function(expr, context) {
     new("SolrAggregatePromise",
         expr=as(expr, "SolrAggregateCall", strict=FALSE),
         context=context)
 }
 
-PredicatedSolrSymbolPromise <- function(expr, context = NULL) {
+PredicatedSolrSymbolPromise <- function(expr, context) {
     new("PredicatedSolrSymbolPromise",
         expr=as(expr, "PredicatedSolrSymbol", strict=FALSE),
         context=context)
@@ -194,11 +195,13 @@ PredicatedSolrSymbolPromise <- function(expr, context = NULL) {
 setMethod("length", "SolrPromise", function(x) nrow(context(x)))
 
 setMethod("missables", "SolrPromise",
-          function(x, fields = NULL) {
-              if (is.null(fields)) {
-                  fields <- fields(schema(core(context(x))))
-              }
-              missables(expr(x), fields)
+          function(x) {
+              missables(expr(x))
+          })
+
+setMethod("dropMissables", "SolrPromise", function(x) {
+              expr(x) <- dropMissables(expr(x))
+              x
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -221,7 +224,7 @@ setMethod("%in%", c("SolrSymbolPromise", "SolrSymbolPromise"),
 
 setMethod("%in%", c("SolrSymbolPromise", "vector"),
           function(x, table) {
-              expr <- SolrLuceneTerm(expr(x), table)
+              expr <- SolrLuceneTerm(dropMissables(expr(x)), table)
               SolrLucenePromise(expr, context(x))
           })
 
@@ -542,7 +545,7 @@ setMethod("Math", "SolrPromise", function(x) {
                                             context(x))
                   prom <- switch(.Generic, ## will not be as accurate as native
                                  sign = map(x, 0, I("Infinity"), 1, -1),
-                                 trunc = floor(abs(x)) - sign(x),
+                                 trunc = floor(abs(x)) * sign(x),
                                  log1p = log(x + 1),
                                  acosh = log(x + sqrt(x^2 - 1)),
                                  asinh = log(x + sqrt(x^2 + 1)),
@@ -722,7 +725,7 @@ solrCall <- function(fun, ...) {
                              })
     checkArgLengths(args[!promises])
     ctx <- resolveContext(...)
-    expr <- SolrFunctionCall(fun, args, fields(schema(core(ctx))))
+    expr <- SolrFunctionCall(fun, args)
     SolrFunctionPromise(expr, ctx)
 }
 

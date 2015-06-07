@@ -32,7 +32,6 @@ SolrCore <- function(uri, ...) {
 ### Accessors
 ###
 
-setMethod("name", "ANY", function(x) x@name)
 setMethod("name", "SolrCore", function(x) name(x@schema))
 
 numFound <- function(x, query) {

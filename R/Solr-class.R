@@ -43,12 +43,6 @@ setClass("Solr",
 
 core <- function(x) x@core
 
-query <- function(x) x@query
-`query<-` <- function(x, value) {
-  x@query <- value
-  x
-}
-
 setMethod("ids", "Solr", function(x) {
   uk <- uniqueKey(schema(core(x)))
   if (!is.null(uk))

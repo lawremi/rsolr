@@ -185,6 +185,12 @@ testTransform <- function(sc, docs) {
     tform.docs <- docs
     tform.docs[,"membership"] <- tform.docs[,"id"] %in% 3:5
     checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, equals = weight == 3)
+    tform.docs <- docs
+    tform.docs[,"equals"] <- tform.docs[,"weight"] == 3
+    tform.docs["5","equals"] <- NULL
+    checkResponseEquals(read(sc, tform.query), tform.docs)
     
     tform.query <- transform(query, overpriced=price > weight)
     tform.docs <- docs
