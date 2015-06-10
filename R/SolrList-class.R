@@ -144,7 +144,7 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
             stop("retrieving a doc by ID requires a 'uniqueKey' in the schema")
         }
         if (!is.character(i)) {
-            i <- ids(x)[i]
+            i <- ids(undefer(x))[i]
         }
         if (any(is.na(i))) {
             stop("'i' resolved to one or more NAs")

@@ -9,7 +9,7 @@ setClass("FieldInfo",
          representation(name="character",
                         typeName="character",
                         dynamic="logical",
-                        multivalued="logical",
+                        multiValued="logical",
                         required="logical",
                         indexed="logical",
                         stored="logical",
@@ -26,7 +26,7 @@ setClass("FieldInfo",
 ###
 
 dynamic <- function(x) x@dynamic
-multivalued <- function(x) x@multivalued
+multiValued <- function(x) x@multiValued
 typeName <- function(x) x@typeName
 indexed <- function(x) x@indexed
 stored <- function(x) x@stored
@@ -54,7 +54,7 @@ setMethod("[", "FieldInfo", function(x, i, j, ..., drop=TRUE) {
              name=x@name[i],
              typeName=x@typeName[i],
              dynamic=x@dynamic[i],
-             multivalued=x@multivalued[i],
+             multiValued=x@multiValued[i],
              required=x@required[i],
              indexed=x@indexed[i],
              stored=x@stored[i],
@@ -84,7 +84,7 @@ setReplaceMethod("[", c(x="FieldInfo", value="FieldInfo"),
 ### Constructor
 ###
 
-FieldInfo <- function(name, typeName, dynamic=FALSE, multivalued=FALSE,
+FieldInfo <- function(name, typeName, dynamic=FALSE, multiValued=FALSE,
                       required=FALSE, indexed=FALSE, stored=FALSE,
                       docValues=FALSE)
 {
@@ -93,7 +93,7 @@ FieldInfo <- function(name, typeName, dynamic=FALSE, multivalued=FALSE,
       name=name,
       typeName=recycleVector(typeName, len),
       dynamic=recycleVector(dynamic, len),
-      multivalued=recycleVector(multivalued, len),
+      multiValued=recycleVector(multiValued, len),
       required=recycleVector(required, len),
       indexed=recycleVector(indexed, len),
       stored=recycleVector(stored, len),
@@ -110,7 +110,7 @@ setMethod("append", c("FieldInfo", "FieldInfo"),
                        name=append(x@name, values@name, after),
                        typeName=append(x@typeName, values@typeName, after),
                        dynamic=append(x@dynamic, values@dynamic, after),
-                       multivalued=append(x@multivalued, values@multivalued,
+                       multiValued=append(x@multiValued, values@multiValued,
                          after),
                        required=append(x@required, values@required, after),
                        indexed=append(x@indexed, values@indexed, after),
@@ -134,7 +134,7 @@ setMethod("as.data.frame", "FieldInfo",
                   warning("all arguments besides 'x' are ignored")
               }
               with(attributes(x),
-                   data.frame(row.names=name, typeName, dynamic, multivalued,
+                   data.frame(row.names=name, typeName, dynamic, multiValued,
                               required, indexed, stored, docValues))
           })
           
@@ -155,6 +155,7 @@ setMethod("as.list", "FieldInfo", as.list.FieldInfo)
 
 setGeneric("resolve", function(x, field, ...) standardGeneric("resolve"))
 
+### FIXME: this is slow for dynamic fields
 setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
               static.x <- match(x, names(field), 0)
               static.fields <- field[static.x]

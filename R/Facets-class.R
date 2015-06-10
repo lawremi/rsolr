@@ -78,19 +78,19 @@ cutLabels <- function(query) {
 }
 
 getBucketValues <- function(x) {
-    guess <- x[[1L]]$val
-    if (is.null(guess)) {
+    if (length(x) == 0L) {
         factor()
     } else {
-        levels <- vpluck(x, "val", guess)
-        factor(levels, levels)
+        guess <- x[[1L]]$val
+        vpluck(x, "val", guess)
     }
 }
 
 getBucketStats <- function(x, names) {
-    svalue <- x[[1L]][names]
-    if (is.null(svalue)) {
+    if (length(x) == 0L) {
         svalue <- list(numeric())
+    } else {
+        svalue <- x[[1L]][names]
     }
     mapply(vpluck, names, svalue, MoreArgs=list(x=x), SIMPLIFY=FALSE)
 }
@@ -111,7 +111,7 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         name <- sub("^_not_", "", name)
     }
     if (!is.null(query$type)) {
-        query <- query$facets
+        query <- query$facet
     }
     if (length(path) == 0L) {
         snames <- names(query)[!vapply(query, is.list, logical(1L))]
@@ -172,14 +172,14 @@ collapseQueryFacets <- function(facets) {
 }
 
 postprocessStats <- function(facet, query) {
-    exprs <- vapply(query, is, logical(1L), "SolrAggregateCall")
+    exprs <- vapply(query, is, "SolrAggregateCall", FUN.VALUE=logical(1L))
     pp <- Filter(Negate(is.null), lapply(query[exprs], slot, "postprocess"))
     facet@stats[names(pp)] <- mapply(function(s, pp) pp(s, facet@stats),
                                      facet@stats[names(pp)], pp, SIMPLIFY=FALSE)
     hidden <- startsWith(names(facet@stats), ".")
     facet@stats <- facet@stats[!hidden]
     qfacet <- pluck(query[names(facet)], "facet")
-    initialize(facet, mapply(postprocessStats, facet, qfacet))
+    initialize(facet, mapply(postprocessStats, facet, qfacet, SIMPLIFY=FALSE))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -193,8 +193,8 @@ setMethod("as.table", "Facets", function(x) {
               df <- x@stats[1:countpos]
               count <- df$count
               groupings <- df[-countpos]
-              dn <- lapply(groupings, as.character)
-              dim <- unname(vapply(groupings, lengthUnique, integer(1L)))
+              dn <- lapply(groupings, function(g) as.character(unique(g)))
+              dim <- unname(lengths(dn))
               as.table(array(count, dim=dim, dimnames=dn))
           })
 

@@ -117,7 +117,9 @@ setMethod("[[", "SolrFrame", function(x, i, j, ...) {
     stop("'i' must be a single, non-NA string")
   if (!missing(j))
     warning("argument 'j' is ignored")
-  x[,i,...]
+  if (!missing(...)) ## FIXME: due to (fixed) bug in callNextMethod() R <= 3.2
+    warning("arguments in '...' are ignored")
+  x[,i]
 })
 
 setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
@@ -186,7 +188,7 @@ setMethod("group", "SolrFrame", function(x, by) {
               if (is.null(by)) {
                   return(x)
               }
-              if (!is.formula(by)) {
+              if (!is(by, "formula")) {
                   stop("'by' must be NULL or a formula")
               }
               GroupedSolrFrame(x, by)

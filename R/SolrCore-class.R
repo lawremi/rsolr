@@ -129,10 +129,11 @@ setMethod("updateParams", "ANY", function(x) {
 })
 
 setMethod("updateParams", "data.frame", function(x) {
-  list(map="NA:")
-})
-
-### FIXME: multivalued fields not supported for CSV upload
+              splitFields <- names(x)[vapply(x, is.list, logical(1L))]
+              splitParams <- rep("true", length(splitFields))
+              names(splitParams) <- paste0("f.", splitFields, ".split")
+              c(list(map="NA:"), splitParams)
+          })
 
 setMethod("update", "SolrCore", function(object, value, commit=TRUE,
                                          atomic=FALSE, ...)
@@ -320,9 +321,9 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
           {
             if (is.null(responseType(expr)))
               responseType(expr) <- "list"
-            params <- translate(expr, core=envir)
-            expected.type <- params["wt"]
-            response <- tryCatch(read(envir@uri$select, params),
+            expr <- translate(expr, core=envir)
+            expected.type <- params(expr)$wt
+            response <- tryCatch(read(envir@uri$select, as.character(expr)),
                                  error = SolrErrorHandler(envir, expr))
             response <- processSolrResponse(response, expected.type)
             convertSolrQueryResponse(response, envir, expr)

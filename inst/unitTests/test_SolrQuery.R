@@ -229,17 +229,26 @@ testTransform <- function(sc, docs) {
     tform.docs[,"pmax"] <- pmin(tform.docs[,"price"], tform.docs[,"weight"],
                                 na.rm=TRUE)
     checkResponseEquals(read(sc, tform.query), tform.docs)
+
+    tform.query <- transform(query, bins = cut(weight, seq(1, 5, 2)))
+    tform.docs <- docs
+    tform.docs[,"bins"] <- cut(tform.docs[,"weight"], seq(1, 5, 2))
+    tform.docs[c("2", "5"),"bins"] <- NULL
+    checkIdentical(as.integer(read(sc, tform.query)[,"bins"]),
+                   as.integer(tform.docs[,"bins"]))
 }
 
 testFacets <- function(sc, docs) {
     checkTable <- function(formula, counts, query = SolrQuery())
         {
-            expr.lang <- attr(terms(formula), "variables")[[2]]
-            expr.name <- deparse(eval(call("bquote", expr.lang)))
+            vars <- as.list(attr(terms(formula), "variables"))[-1L]
+            expr.name <- vapply(vars, function(v) {
+                                    deparse(eval(call("bquote", v)))
+                                }, character(1L))
             facet.query <- xtabs(formula, query)
             fct <- as.table(facets(sc, facet.query)[[expr.name]])
             correct.fct <- as.table(counts)
-            dimnames(correct.fct) <- setNames(list(names(counts)), expr.name)
+            dimnames(correct.fct) <- setNames(dimnames(correct.fct), expr.name)
             checkIdentical(fct, correct.fct)
         }
 
@@ -282,53 +291,82 @@ testFacets <- function(sc, docs) {
     tab <- as.table(c("TRUE"=2L, "FALSE"=1L))
     names(dimnames(tab)) <- "inStock"
     checkIdentical(as.table(fct$inStock),  tab)
-    
-    ## CHECK: xtabs() pivoting
-    xtabs.query <- xtabs(~ price + inStock, query)
-    fct <- facet(sc, xtabs.query)$"price,inStock"
-    correct.fct <- as.table(matrix(as.integer(c(0,0,0,1,1,1,1,0)), 4, 2))
-    dimnames(correct.fct) <- list(price=as.character(2:5),
-                                  inStock=c("FALSE", "TRUE"))
-    checkIdentical(fct, correct.fct)
-
-    ## CHECK: facet on restricted query
     sub.query <- subset(query, inStock)
-    checkTable(~ inStock, c("FALSE"=0L, "TRUE"=3L), sub.query)
+    checkTable(~ inStock, c("FALSE"=0L, "TRUE"=2L), sub.query)
+    sub.query <- subset(facet.query, inStock)
+    fct <- facets(sc, sub.query)
+    checkIdentical(as.table(fct$inStock), tab)
 
-    ## CHECK: df upload and statistics
-    val_pi <- c(23, 26, 38, 46, 55, 63, 77, 84, 92, 94)
-    price <- val_pi^2
-    df <- data.frame(id=seq_along(val_pi), name=paste0("doc:", val_pi), val_pi,
-                     price, inStock=rep(c(TRUE, FALSE), length=length(val_pi)))
+    ## Adapted this dataset and testset from the Solr JSON Facet tests
+    df <- data.frame(id=as.character(1:6),
+                     cat_s=c("A", "B", NA, "A", "B", "B"),
+                     where_s=c("NY", "NJ", NA, "NJ", "NJ", "NY"),
+                     num_d=c(4, -9, NA, 2, 11, -5),
+                     num_i=c(2, -5, NA, 3, 7, -5),
+                     super_s=c("zodiac", "superman", NA, "spiderman", "batman",
+                         "hulk"),
+                     date_dt=c("2001-01-01T01:01:01Z", "2002-02-02T02:02:02Z",
+                         NA, "2003-03-03T03:03:03Z", "2001-02-03T01:02:03Z",
+                         "2002-03-01T03:02:01Z"),
+                     val_b=c(TRUE, FALSE, NA, NA, NA, NA),
+                     sparse_s=c("one", NA, NA, NA, "two", NA),
+                     multi_ss=I(list(NULL, c("a", "b"), NULL, "b", "a",
+                         c("b", "a"))))
+    df$date_dt <- as.POSIXct(strptime(df$date_dt, "%Y-%m-%dT%H:%M:%SZ",
+                                      tz="UTC"))
     s[] <- df
 
-    stats.query <- stats(query, "val_pi")
-    stats.df <- as.data.frame(stats(sc, stats.query))
-    statsDf <- function(x, field=deparse(substitute(x))) {
-        data.frame(field, min=min(x), max=max(x),
-                   sum=sum(x), count=as.numeric(length(x)),
-                   missing=as.numeric(sum(is.na(x))),
-                   sumOfSquares=sum(x^2), mean=mean(x),
-                   stddev=sd(x), row.names=field, stringsAsFactors=FALSE)
+### CHECK: nested facets
+    checkTable(~ I(cat_s == "B") + I(where_s == "NJ"),
+               matrix(c(1L, 1L, 1L, 2L), 2,
+                      dimnames=rep(list(c("FALSE", "TRUE")), 2)))
+
+### CHECK: multiple nested facets
+    query <- SolrQuery()
+    facet.query <- query
+    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NJ"), facet.query)
+    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NY"), facet.query)
+    fct <- facets(sc, facet.query)
+    toTable <- function(tab) {
+        class(tab) <- "table"
+        attr(tab, "call") <- NULL
+        tab
     }
-    correct.stats.df <- statsDf(val_pi)
-    checkIdentical(stats.df, correct.stats.df)
+    tab <- xtabs(~ I(cat_s == "B") + I(where_s == "NJ"), df)
+    checkIdentical(as.table(fct[[1L]][[1L]]), toTable(tab))
+    tab <- xtabs(~ I(cat_s == "B") + I(where_s == "NY"), df)
+    checkIdentical(as.table(fct[[1L]][[2L]]), toTable(tab))
 
-    stats.query <- stats(query, val_pi ~ .)
-    stats.df <- as.data.frame(stats(sc, stats.query))
-    checkIdentical(stats.df, correct.stats.df)
+### CHECK: nested facet with stat
+    facet.query <- query
+    facet.query <- facet(facet.query, ~ I(cat_s == "B") + I(where_s == "NJ"),
+                         sum(num_d))
+    stats <- facets(sc, facet.query)[[1L]][[1L]]@stats
+    stats$count <- NULL
+    agg <- aggregate(num_d ~ I(cat_s == "B") + I(where_s == "NJ"), df, sum)
+    colnames(agg)[3L] <- "num_d.sum"
+    agg[1:2] <- lapply(agg[1:2], unclass)
+    checkIdentical(stats, agg)
 
-    stats.query <- stats(query, c(val_pi, price) ~ .)
-    stats.df <- as.data.frame(stats(sc, stats.query))
-    correct.stats.df2 <- rbind(correct.stats.df, statsDf(price))
-    checkIdentical(stats.df, correct.stats.df2 )
-    
-    stats.query <- stats(query, val_pi ~ inStock)
-    stats.df <- as.data.frame(stats(sc, stats.query)[val_pi ~ inStock])
-    correct.facet.df <- do.call(rbind, tapply(val_pi, df$inStock, statsDf,
-                                              field="val_pi"))
-    correct.facet.df$field <- NULL
-    correct.facet.df <- cbind(inStock=rownames(correct.facet.df),
-                              correct.facet.df)
-    checkIdentical(stats.df, correct.facet.df)
+### CHECK: sort on stat
+    facet.query <- facet(query, ~ cat_s, n1=sum(num_d), sort=~n1)
+    stats <- facets(sc, facet.query)[[1L]]@stats
+    stats$count <- NULL
+    agg <- aggregate(num_d ~ cat_s, df, sum)
+    colnames(agg)[2L] <- "n1"
+    agg <- agg[order(agg$n1),]
+    rownames(agg) <- NULL
+    checkIdentical(stats, agg)
+
+### CHECK: more stats
+    facet.query <- facet(query, ~ cat_s, min(num_d), max(num_d),
+                         lengthUnique(num_d), quantile(num_d), median(num_d),
+                         IQR(num_d), weighted.mean(num_d, abs(num_i)),
+                         range(num_d), mean(num_d), var(num_d), sd(num_d),
+                         any(val_b), all(val_b))
+    stats <- facets(sc, facet.query)[[1L]]@stats
+
+### CHECK: mad()
+    facet.query <- facet(query, mad(num_d))
+    stats <- facets(sc, facet.query)@stats
 }

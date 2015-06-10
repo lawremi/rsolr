@@ -144,7 +144,7 @@ setMethod("group", "GroupedSolrFrame", function(x, by) {
               if (is.null(by)) {
                   return(x)
               }
-              if (!is.formula(by)) {
+              if (!is(by, "formula")) {
                   stop("'by' must be NULL or a formula")
               }
               initialize(x, grouping=mergeGrouping(grouping(x), by))

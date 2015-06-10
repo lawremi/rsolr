@@ -199,8 +199,8 @@ setMethod("missables", "SolrPromise",
               missables(expr(x))
           })
 
-setMethod("dropMissables", "SolrPromise", function(x) {
-              expr(x) <- dropMissables(expr(x))
+setMethod("dropMissables", "SolrPromise", function(x, which) {
+              expr(x) <- dropMissables(expr(x), which)
               x
           })
 
@@ -224,7 +224,9 @@ setMethod("%in%", c("SolrSymbolPromise", "SolrSymbolPromise"),
 
 setMethod("%in%", c("SolrSymbolPromise", "vector"),
           function(x, table) {
-              expr <- SolrLuceneTerm(dropMissables(expr(x)), table)
+              sym <- expr(x)
+              missable(sym) <- FALSE
+              expr <- SolrLuceneTerm(sym, table)
               SolrLucenePromise(expr, context(x))
           })
 
@@ -591,18 +593,13 @@ setMethod("ifelse",
               solrCall("if", test, yes, no)
           })
 
-setMethod("dropMissables", "SolrPromise", function(x) {
-              expr(x) <- dropMissables(expr(x))
-              x
-          })
-
 pairwiseNARm <- function(ans, x, y) {
-    ans <- dropMissables(ans)
+    missables(expr(ans)) <- character()
     xm <- missables(x)
     ym <- missables(y)
     if (length(xm) > 0L && length(ym) > 0L) {
-        ifelse(exists(x), ifelse(exists(y), ans, dropMissables(x)),
-               ifelse(exists(y), dropMissables(y),
+        ifelse(exists(x), ifelse(exists(y), ans, dropMissables(x, xm)),
+               ifelse(exists(y), dropMissables(y, ym),
                       SolrFunctionPromise(solrNA, context(ans))))
     } else {
         if (length(xm) > 0L) {
@@ -687,9 +684,8 @@ setMethod("cut", "SolrPromise",
               lowest.fun <- if (include.lowest || !right) `<` else `<=`
               highest.fun <- if (include.lowest || right) `>` else `>=`
               na <- SolrFunctionPromise(solrNA, context(x))
-              ifelse(lowest.fun(x, breaks[1L]),
-                     ifelse(highest.fun(x, tail(breaks, 1L)), bins, na),
-                     na)
+              ifelse(lowest.fun(x, breaks[1L]), na,
+                     ifelse(highest.fun(x, tail(breaks, 1L)), na, bins))
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -752,6 +748,10 @@ solrCall <- function(fun, ...) {
 ### Complex example: weighted.mean sends sum(product(x, w)),
 ###                  augments it with sum(w), and later does val/sum(w).
 
+makeAux <- function(x) {
+    setNames(list(x), paste0(".", as.character(expr(x))))
+}
+
 setMethod("Summary", "SolrPromise",
           function (x, ..., na.rm = FALSE) {
               if (.Generic == "prod") {
@@ -767,25 +767,36 @@ setMethod("Summary", "SolrPromise",
               aux <- list()
               postprocess <- NULL
               if (.Generic == "range") {
-                  aux <- list(min=min(x))
-                  postprocess <- function(max, aux) max - aux$min
+                  aux <- makeAux(min(x, na.rm=TRUE))
+                  auxName <- names(aux)
+                  postprocess <- function(max, stats) max - stats[[auxName]]
               } else if (.Generic == "any") {
-                  postprocess <- function(sum, aux) sum > 0L
+                  postprocess <- function(sum, stats) sum > 0L
               } else if (.Generic == "all") {
-                  postprocess <- function(sum, aux) sum == aux$count
+                  postprocess <- function(sum, stats) sum == stats$count
               }
-              prom <- solrAggregate(.Generic, x, na.rm, aux=aux,
+              prom <- solrAggregate(fun, x, na.rm, aux=aux,
                                     postprocess=postprocess)
               prom
           })
 
 setMethod("mean", "SolrPromise", function(x, na.rm=FALSE) {
-### FIXME: na.rm=TRUE will give wrong answer, avg() counts NAs as 0.
-### Could count the existing and scale by count/count(!na)
-              solrAggregate("avg", x, na.rm)
+              if (!isTRUEorFALSE(na.rm)) {
+                  stop("'na.rm' must be TRUE or FALSE")
+              }
+              if (na.rm) {
+                  aux <- makeAux(sum(exists(x), na.rm=TRUE))
+                  postprocess <- function(sum, stats) {
+                      sum / stats[[names(aux)]]
+                  }
+                  solrAggregate("sum", x, na.rm,
+                                aux=aux, postprocess=postprocess)
+              } else {
+                  solrAggregate("avg", x, na.rm)
+              }
           })
 
-ppVar <- function(sumsq, aux) sumsq / (aux$count - 1L)
+ppVar <- function(sumsq, stats) sumsq / (stats$count - 1L)
 
 setMethod("var", "SolrPromise", function(x, na.rm=FALSE) {
               solrAggregate("sumsq", x, na.rm, postprocess=ppVar)
@@ -793,8 +804,8 @@ setMethod("var", "SolrPromise", function(x, na.rm=FALSE) {
 
 setMethod("sd", "SolrPromise", function(x, na.rm=FALSE) {
               solrAggregate("sumsq", x, na.rm,
-                            postprocess=function(sumsq, aux) {
-                                sqrt(ppVar(sumsq, aux))
+                            postprocess=function(sumsq, stats) {
+                                sqrt(ppVar(sumsq, stats))
                             })
           })
 
@@ -816,10 +827,10 @@ setMethod("quantile", "SolrPromise",
               }
               probs <- probs * 100
               solrAggregate("percentile", x, na.rm, as.list(probs),
-                            postprocess = function(percentile, aux) {
+                            postprocess = function(percentile, stats) {
                                 if (isTRUE(names))
                                     colnames(percentile) <- paste0(probs, "%")
-                                m
+                                percentile
                             })
           })
 
@@ -832,10 +843,20 @@ setGeneric("weighted.mean", function(x, w, ...)
 
 setMethod("weighted.mean", c("SolrPromise", "SolrPromise"),
           function(x, w, na.rm=FALSE) {
+              if (!isTRUEorFALSE(na.rm)) {
+                  stop("'na.rm' must be TRUE or FALSE")
+              }
+              if (na.rm) {
+                  w <- w * exists(x)
+              }
+              wsum <- sum(w)
+              aux <- makeAux(wsum)
               solrAggregate("sum", x*w, na.rm,
-                            aux=list(wsum=sum(w,na.rm=na.rm)),
-                            postprocess=function(sum, aux) {
-                                sum / aux$wsum
+                            aux=aux,
+                            postprocess=function(sum, stats) {
+                                wsum <- # if any 'w' are NA, result is NA
+                                    expr(wsum)@postprocess(stats[[names(aux)]])
+                                sum /  wsum
                             })
           })
 
@@ -845,7 +866,7 @@ setGeneric("IQR", function(x, na.rm=FALSE) standardGeneric("IQR"),
 setMethod("IQR", "SolrPromise",
           function(x, na.rm=FALSE) {
               solrAggregate("percentile", x, na.rm, list(25, 75),
-                            postprocess=function(percentile, aux) {
+                            postprocess=function(percentile, stats) {
                                 percentile[,2] - percentile[,1]
                             })
           })
@@ -863,7 +884,7 @@ setMethod("mad", c("SolrPromise", "ANY"),
               ## FIXME: computing center requires an extra round trip...
               ## ... and breaks this for grouped data.
               med <- median(abs(x - center), na.rm=na.rm)
-              med@postprocess <- function(median, aux) {
+              expr(med)@postprocess <- function(median, stats) {
                   median * constant
               }
               med
@@ -880,16 +901,25 @@ solrAggregate <- function(fun, x, na.rm, params = list(), aux = list(),
         stop("'na.rm' must be TRUE or FALSE")
     }
     if (!na.rm) {
-        aux <- c(aux, .anyNA=anyNA(x))
+        anyNA <- makeAux(anyNA(x))
+        aux <- c(aux, anyNA)
         postprocess2 <- postprocess
-        postprocess <- function(val, aux) {
-            postprocess2(ifelse(aux$.anyNA, NA, val), aux)
+        postprocess <- function(val, stats) {
+            if (is.matrix(val)) {
+                val[stats[[names(anyNA)]],] <- NA
+            } else {
+                val[stats[[names(anyNA)]]] <- NA
+            }
+            if (!is.null(postprocess2)) {
+                val <- postprocess2(val, stats)
+            }
+            val
         }
     }
     x <- as(x, "SolrFunctionPromise", strict=FALSE)
     aux <- lapply(aux, expr)
     expr <- SolrAggregateCall(fun, expr(x), params, aux, postprocess)
-    SolrAggregatePromise(expr)
+    SolrAggregatePromise(expr, context(x))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

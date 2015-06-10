@@ -84,10 +84,10 @@
 ###
 
 setClass("FieldType",
-         representation(multivalued="logical",
+         representation(multiValued="logical",
                         indexed="logical",
                         stored="logical"),
-         prototype(multivalued=FALSE,
+         prototype(multiValued=FALSE,
                    indexed=FALSE,
                    stored=FALSE),
          contains="VIRTUAL")
@@ -193,7 +193,7 @@ setClass("AnyField", contains="FieldType")
 ###
 
 setMethod("resolve", c("FieldType", "FieldInfo"), function(x, field, schema) {
-  x@multivalued <- field@multivalued
+  x@multiValued <- field@multiValued
   x@indexed <- field@indexed
   x@stored <- field@stored
   x
@@ -258,7 +258,7 @@ setMethod("solrType", "factor", function(x) new("solr.StrField"))
 setMethod("solrType", "list",
           function(x) {
             type <- solrType(unlist(x, use.names=FALSE))
-            initialize(type, multivalued=TRUE)
+            initialize(type, multiValued=TRUE)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -268,21 +268,47 @@ setMethod("solrType", "list",
 setGeneric("toSolr", function(x, type, ...) standardGeneric("toSolr"))
 setGeneric("fromSolr", function(x, type, ...) standardGeneric("fromSolr"))
 
+convertAtomic <- function(x, type, FUN) {
+    ans <- as.vector(x, solrMode(type))
+    if (storage.mode(x) != storage.mode(ans)) {
+        ans <- FUN(ans, type)
+    }
+    ans
+}
+
+convertList <- function(x, type, FUN) {
+    if (!multiValued(type)) {
+        return(callNextMethod())
+    }
+    if (length(x) == 0L) {
+        return(x)
+    }
+    ans <- unname(lapply(x, as.vector, solrMode(type)))
+    redo <- vapply(ans, storage.mode, character(1L)) !=
+        vapply(x, storage.mode, character(1L))
+    ans[redo] <- FUN(ans[redo], type)
+    ans
+}
+
 setMethod("toSolr", c("ANY", "FieldType"), function(x, type) {
-  ans <- as.vector(x, solrMode(type))
-  if (mode(x) != mode(ans)) {
-    ans <- toSolr(ans, type)
-  }
-  ans
-})
+              convertAtomic(x, type, toSolr)
+          })
+
+setMethod("toSolr", c("list", "FieldType"), function(x, type) {
+              convertList(x, type, toSolr)
+          })
+
+setMethod("toSolr", c("AsIs", "FieldType"), function(x, type) {
+              I(toSolr(unclass(x), type))
+          })
 
 setMethod("fromSolr", c("ANY", "FieldType"), function(x, type) {
-  ans <- as.vector(x, solrMode(type))
-  if (mode(x) != mode(ans)) {
-    ans <- fromSolr(ans, type)
-  }
-  ans
-})
+              convertAtomic(x, type, fromSolr)
+          })
+
+setMethod("fromSolr", c("list", "FieldType"), function(x, type) {
+              convertList(x, type, fromSolr)
+          })
 
 setMethod("fromSolr", c("character", "solr.BinaryField"),
           function(x, type) {
@@ -331,7 +357,7 @@ setGeneric("parseFieldType",
            signature="proto")
 
 setMethod("parseFieldType", "FieldType", function(x, proto) {
-  proto@multivalued <- if (is.null(x$multivalued)) FALSE else x$multivalued
+  proto@multiValued <- if (is.null(x$multiValued)) FALSE else x$multiValued
   proto@indexed <- if (is.null(x$indexed)) TRUE else x$indexed
   proto@stored <- if (is.null(x$stored)) TRUE else x$stored
   proto
@@ -352,6 +378,28 @@ setMethod("parseFieldType", "solr.PointType", function(x, proto) {
   proto@dimension <- as.integer(x$dimension)
   proto
 })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Coercion
+###
+
+as.data.frame.FieldTypeList <-
+    function(x, row.names = NULL, optional = FALSE, ...) {
+        as.data.frame(x, row.names=row.names, optional=optional, ...)
+    }
+
+setMethod("as.data.frame", "FieldTypeList",
+          function(x, row.names = NULL, optional = FALSE, ...) {
+              if (!missing(row.names) || !missing(optional) ||
+                  length(list(...)) > 0L) {
+                  warning("all arguments besides 'x' are ignored")
+              }
+              slots <- vapply(slotNames("FieldType"), function(s) {
+                                  vapply(x, slot, s, FUN.VALUE=logical(1L))
+                              }, logical(length(x)))
+              data.frame(class=vapply(x, class, character(1)), slots,
+                         row.names=NULL)
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show
@@ -379,5 +427,5 @@ setMethod("show", "solr.PointType", function(object) {
 })
 
 setMethod("show", "FieldTypeList", function(object) {
-  show(data.frame(class=vapply(object, class, character(1))))
+  show(as.data.frame(object))
 })

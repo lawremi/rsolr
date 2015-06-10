@@ -92,7 +92,7 @@ parseFields <- function(fields, fieldTypes, dynamic) {
   }
   FieldInfo(name=vpluck(fields, "name", character(1L)),
             typeName=typeName,
-            multivalued=resolveFromType("multivalued"),
+            multiValued=resolveFromType("multiValued"),
             dynamic=rep(dynamic, length(fields)),
             required=resolveFromType("required"),
             indexed=resolveFromType("indexed"),
@@ -261,7 +261,7 @@ augmentComputed <- function(x, fl) {
   computed.info <- FieldInfo(name=names(fl),
                              typeName="..computed..",
                              dynamic=FALSE,
-                             multivalued=FALSE)
+                             multiValued=FALSE)
   computed.type <- FieldTypeList(..computed.. = new("AnyField"))
   fields(x) <- append(fields(x), computed.info)
   fieldTypes(x) <- append(fieldTypes(x), computed.type)
@@ -287,7 +287,7 @@ addFieldNodes <- function(xml, schema, dynamic=FALSE) {
     xml$addNode(if (dynamic) "dynamicField" else "field", attrs=list(...))
   }, name=names(f), type=typeName(f), required=asAttr(required(f)),
      indexed=asAttr(indexed(f)), stored=asAttr(stored(f)),
-     multiValued=asAttr(multivalued(f)),
+     multiValued=asAttr(multiValued(f)),
      docValues=asAttr(docValues(f)))
 }
 
@@ -315,7 +315,7 @@ addTypeNodes <- function(xml, schema) {
                     class=asAttr(class(t)),
                     indexed=asAttr(indexed(t)),
                     stored=asAttr(stored(t)),
-                    multiValued=asAttr(multivalued(t))))
+                    multiValued=asAttr(multiValued(t))))
   }, types, names(types))
 }
 
@@ -399,7 +399,7 @@ setMethod("deriveSolrSchema", "data.frame",
               fields <- FieldInfo(names(x),
                                   typeName=names(types),
                                   dynamic=FALSE,
-                                  multivalued=vapply(x, is.list, logical(1L)),
+                                  multiValued=vapply(x, is.list, logical(1L)),
                                   required=required,
                                   indexed=indexed,
                                   stored=stored,
