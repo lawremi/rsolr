@@ -37,7 +37,7 @@ setClass("SolrLuceneSymbol", contains="SolrSymbol")
 ## Result of x[i]
 setClass("PredicatedSolrSymbol",
          representation(subject="SolrSymbol",
-                        predicate="SolrLuceneExpression"),
+                        predicate="SolrExpression"),
          contains="SolrExpression")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -150,14 +150,16 @@ setClass("SolrAggregateCall",
          representation(name="character",
                         subject="SolrFunctionExpression",
                         params="list",
-                        aux="list",
                         postprocess="functionORNULL"),
          contains = c("AbstractSolrFunctionCall", "SolrExpression"),
          validity=function(object) {
-             c(if (!isSingleString(object@name))
-                   "'name' of a Solr aggregate call must be a string",
-               validHomogeneousList(object@aux, "SolrAggregateCall"))
+             if (!isSingleString(object@name))
+                 "'name' of a Solr aggregate call must be a string"
          })
+
+setClass("ParentSolrAggregateCall",
+         representation(child="SolrAggregateCall"),
+         contains="SolrAggregateCall")
 
 setClass("SolrSortExpression",
          representation(by="SolrFunctionExpression",
@@ -231,8 +233,12 @@ JoinQParserExpression <- function(query, from, to) {
         to=as(to, "SolrSymbol", strict=FALSE))
 }
 
-SolrFunctionExpression <- function(name=character()) {
-    new("SolrFunctionExpression", name=name)
+SolrFunctionExpression <- function(name="") {
+    if (isNA(name)) {
+        solrNA
+    } else {
+        new("SolrFunctionExpression", name=name)
+    }
 }
 
 SolrFunctionCall <- function(name, args) {
@@ -242,11 +248,15 @@ SolrFunctionCall <- function(name, args) {
 
 SolrAggregateCall <- function(name = "",
                               subject = SolrFunctionExpression(),
-                              params=list(), aux = list(), postprocess = NULL)
+                              params=list(), child = NULL, postprocess = NULL)
 {
-    new("SolrAggregateCall", name=name,
-        subject=as(subject, "SolrFunctionExpression", strict=FALSE),
-        params=params, aux=aux, postprocess=postprocess)
+    obj <- new("SolrAggregateCall", name=name,
+               subject=as(subject, "SolrFunctionExpression", strict=FALSE),
+               params=params, postprocess=postprocess)
+    if (!is.null(child)) {
+        obj <- new("ParentSolrAggregateCall", obj, child=child)
+    }
+    obj
 }
 
 SolrSortExpression <- function(decreasing) {
@@ -267,11 +277,11 @@ SolrLuceneSymbol <- new("SymbolFactory", function(name) {
 
 PredicatedSolrSymbol <- function(subject, predicate) {
     new("PredicatedSolrSymbol", subject=subject,
-        predicate=as(predicate, "SolrLuceneExpression", strict=FALSE))
+        predicate=as(predicate, "SolrExpression", strict=FALSE))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Accessor
+### Accessors
 ###
 
 setGeneric("args", function(name) standardGeneric("args"))
@@ -298,6 +308,38 @@ setGeneric("tag", function(x, ...) standardGeneric("tag"))
 
 setMethod("tag", "ANY", function(x) NULL)
 setMethod("tag", "SolrQParserExpression", function(x) x@tag)
+
+setGeneric("child", function(x) standardGeneric("child"))
+setMethod("child", "ANY", function(x) NULL)
+setMethod("child", "ParentSolrAggregateCall", function(x) x@child)
+
+setGeneric("child<-", function(x, value) standardGeneric("child<-"))
+setReplaceMethod("child", "SolrAggregateCall", function(x, value) {
+                     if (!is.null(value)) {
+                         new("ParentSolrAggregateCall", x, child=value)
+                     } else {
+                         x
+                     }
+                 })
+setReplaceMethod("child", "ParentSolrAggregateCall", function(x, value) {
+                     x@child <- value
+                     x
+                 })
+
+resultWidth <- function(x) {
+    if (name(x) == "percentile")
+        length(params(x))
+    else 1L
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Translation
+###
+
+setMethod("translate", c("SolrExpression", "SolrExpression"),
+          function(x, target, context, ...) {
+              as(x, class(target), strict=FALSE)
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Missing value handling
@@ -625,11 +667,14 @@ setMethod("as.character", "SolrFunctionExpression", function(x) {
 normSolrArg <- function(x) {
     x <- fulfill(x)
     if (is(x, "Expression")) {
-        x <- as(x, "SolrFunctionExpression", strict=FALSE)
+        x <- as.character(as(x, "SolrFunctionExpression", strict=FALSE))
     } else {
         x <- normLuceneLiteral(x)
     }
-    as.character(x)
+    if (anyNA(x)) {
+        stop("cannot represent NA as a Solr function argument")
+    }
+    x
 }
 
 setMethod("as.character", "AbstractSolrFunctionCall", function(x) {
@@ -644,17 +689,31 @@ callQuery <- function(x) {
     SolrFunctionCall("query", list(quoted))
 }
 
-propagateNAs <- function(x, na=solrNA) {
-    missables <- missables(x)
-    if (length(missables) == 0L) {
-        return(x)
-    }
-    exists <- function(x) SolrFunctionCall("exists", list(I(x)))
-    and <- function(x, y) SolrFunctionCall("and", list(x, y))
-    condition <- Reduce(and, lapply(missables, exists))
-    x <- dropMissables(x, missables)
-    SolrFunctionCall("if", list(condition, x, na))
+symbolExists <- function(x) SolrFunctionCall("exists", list(I(x)))
+symbolAnd <- function(x, y) SolrFunctionCall("and", list(x, y))
+
+noneMissing <- function(missables) {
+    Reduce(symbolAnd, lapply(missables, symbolExists))
 }
+
+setGeneric("propagateNAs",
+           function(x, na=solrNA) standardGeneric("propagateNAs"),
+           signature="x")
+
+setMethod("propagateNAs", "SolrFunctionCall", function(x, na) {
+              missables <- missables(x)
+              if (length(missables) == 0L) {
+                  return(x)
+              }
+              condition <- noneMissing(missables)
+              x <- dropMissables(x, missables)
+              SolrFunctionCall("if", list(condition, x, na))
+          })
+
+setMethod("propagateNAs", "SolrSymbol", function(x, na) {
+              missable(x) <- FALSE
+              x
+          })
 
 setMethod("as.character", "SolrFunctionCall", function(x) {
               x <- propagateNAs(x)
@@ -690,8 +749,11 @@ setAs("AsIs", "SolrLuceneExpression", function(from) {
       })
 
 setAs("logical", "SolrLuceneExpression", function(from) {
+          if (isNA(from)) {
+              from <- FALSE
+          }
           if (!isTRUEorFALSE(from)) {
-              stop("'from' must be TRUE or FALSE")
+              stop("'from' must be TRUE, FALSE or NA")
           }
           true <- SolrLuceneTerm("*", I("*"))
           if (!from) {

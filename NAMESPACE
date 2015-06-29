@@ -59,3 +59,6 @@ S3method(transform, SolrQuery)
 S3method(transform, Solr)
 S3method(cut, SolrPromise)
 
+S3method(solrFormat, POSIXt)
+S3method(solrFormat, Date)
+S3method(solrFormat, difftime)

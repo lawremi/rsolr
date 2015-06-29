@@ -265,7 +265,7 @@ setMethod("translate", c("SolrQueryTranslationSource", "SolrSortExpression"),
           })
 
 sortParams <- function(x, by, decreasing) {
-    lapply(parseFormulaRHS(by), deferTranslation, x=x,
+    lapply(stripI(parseFormulaRHS(by)), deferTranslation, x=x,
            target=SolrSortExpression(decreasing), env=attr(by, ".Environment"))
 }
 
@@ -406,33 +406,57 @@ grouped <- function(x) identical(params(x)$group, "true")
 ### Facet component
 ###
 
+### NOTE: We only support 'exclude' for compatibility with
+###       xtabs(na.action=na.pass, exclude=NULL), but with our default,
+###       only 'na.action=na.pass' is needed for counting NAs.
+
+normNAAction <- function(na.action) {
+    if (missing(na.action)) {
+        na.action <- getOption("na.action", na.omit)
+    }
+    na.action <- match.fun(na.action)
+    if (!identical(na.action, na.omit) &&
+        !identical(na.action, na.pass)) {
+        stop("'na.action' must be either 'na.omit' or 'na.pass'")
+    }
+    na.action
+}
+
 setMethod("xtabs", "SolrQuery",
           function(formula, data,
                    subset, sparse = FALSE, 
-                   na.action, exclude = NA,
-                   drop.unused.levels = FALSE)
-          {
-            if (!all(names(match.call())[-1L] %in%
-                     c("formula", "data", "exclude"))) {
-              stop("all args except 'formula', 'data' and 'exclude' ",
-                   "are ignored")
-            }
-            if (!is.null(exclude) && (length(exclude)!=1L || !is.na(exclude))) {
-              stop("'exclude' must be 'NA' or 'NULL'")
-            }
-            facet(data, formula, useNA=is.null(exclude))
+                   na.action, exclude = NULL,
+                   drop.unused.levels = TRUE) {
+              if (!isTRUE(drop.unused.levels)) {
+                  stop("'drop.unused.levels' must be TRUE")
+              }
+              if (!identical(sparse, FALSE)) {
+                  stop("'sparse' must be FALSE")
+              }
+              na.action <- normNAAction(na.action)
+              if (!is.null(exclude) &&
+                  !(length(exclude)==1L && is.na(exclude))) {
+                  stop("'exclude' should be 'NA' or 'NULL'")
+              }
+              useNA <- is.null(exclude) && identical(na.action, na.pass)
+              if (!missing(subset)) {
+                  data <- rsolr::subset(data, .(substitute(subset)))
+              }
+              facet(data, formula, useNA=useNA, drop=FALSE)
           })
 
 setGeneric("facet", function(x, by = NULL, ...) standardGeneric("facet"))
 
-setMethod("facet", c("SolrQuery", "NULL"), function(x, by, ...) {
+setMethod("facet", c("SolrQuery", "NULL"),
+          function(x, by, ..., useNA=FALSE, sort=NULL,
+                   decreasing=FALSE, limit=NA_integer_) {
               stats <- statsParams(x, by, ...)
               facetParams(x)[names(stats)] <- stats
               x
           })
 
 setMethod("facet", c("SolrQuery", "formula"), function(x, by, ...) {
-              factors <- as.list(attr(terms(by), "variables")[-1L])
+              factors <- parseFormulaRHS(by)
               facetParams(x) <- mergeFacetParams(x, json(x)$facet, factors,
                                                  grouping=by,
                                                  where=attr(by, ".Environment"),
@@ -454,7 +478,7 @@ setMethod("facetParams", c("SolrQuery", "missing"), function(x, by, ...) {
 
 setMethod("facetParams", c("SolrQuery", "character"),
           function(x, by, ..., useNA=FALSE, sort=NULL,
-                   decreasing=FALSE, limit=NA_integer_) {
+                   decreasing=FALSE, limit=NA_integer_, drop=TRUE) {
               if (!isTRUEorFALSE(useNA)) {
                   stop("'useNA' must be TRUE or FALSE")
               }
@@ -465,19 +489,21 @@ setMethod("facetParams", c("SolrQuery", "character"),
               aliased <- by %in% names(params(x)$fl)
               facetAlias <- function(fl, grouping) {
                   facetParams(x, fl, ..., grouping=grouping, useNA=useNA,
-                              sort=sort, decreasing=decreasing, limit=limit)
+                              sort=sort, decreasing=decreasing, limit=limit,
+                              drop=drop)
               }
               params <- mapply(facetAlias, params(x)$fl[by[aliased]],
                                groupings[aliased], SIMPLIFY=FALSE)
               sort <- facetSort(x, sort, decreasing)
               limit <- facetLimit(limit)
+              mincount <- facetMinCount(drop, ...)
               params[by[!aliased]] <-
                   mapply(function(f, grouping) {
                              stats <- statsParams(x, grouping, ...)
                              list(type="terms", field=f,
                                   missing=useNA,
-                                  facets=stats, sort=sort,
-                                  limit=limit, mincount=0L)
+                                  facet=stats, sort=sort,
+                                  limit=limit, mincount=mincount)
                          }, by[!aliased], groupings[!aliased],
                          SIMPLIFY=FALSE)
               params
@@ -489,8 +515,8 @@ setMethod("facetParams", c("SolrQuery", "name"),
           })
 
 setMethod("facetParams", c("SolrQuery", "call"),
-          function(x, by, where, ..., useNA=FALSE, sort=NULL,
-                   decreasing=FALSE, limit=NA_integer_) {
+          function(x, by, where, grouping, ..., useNA=FALSE, sort=NULL,
+                   decreasing=FALSE, limit=NA_integer_, drop=TRUE) {
 ### FIXME: Support useNA=TRUE for query facets without extra stats,
 ### since we have the overall count in the parent bucket.
               if (!identical(useNA, FALSE)) {
@@ -502,7 +528,6 @@ setMethod("facetParams", c("SolrQuery", "call"),
               if (!identical(limit, NA_integer_)) {
                   stop("'limit' is not supported for complex facets")
               }
-              by <- stripI(by)
               if (by[[1L]] == quote(cut)) {
                   by[[1L]] <- facet_cut
                   params <- eval(by, where)
@@ -511,7 +536,9 @@ setMethod("facetParams", c("SolrQuery", "call"),
                                             where)
                   params <- list(type="query", q=query)
               }
-              c(params, list(facet=statsParams(x, ...)))
+              ## NOTE: Solr ignores mincount on query facet, but we handle later
+              c(params, list(facet=statsParams(x, grouping, ...),
+                             mincount=facetMinCount(drop, ...)))
           })
 
 setMethod("facetParams", c("SolrQuery", "TranslationRequest"),
@@ -523,7 +550,7 @@ setMethod("facetParams", c("SolrQuery", "TranslationRequest"),
     if (outputRestricted(x)) {
         warning("facets will ignore head/tail restriction")
     }
-    json(x)$facet <- value
+    json(x)$facet <- structure(value, class="facetlist")
     x
 }
 
@@ -536,6 +563,11 @@ facetLimit <- function(x) {
     }
     x
 }
+
+### FIXME: Sorting facet buckets does not handle NAs very well, since
+### Solr is doing the sorting, and it does not treat NAs
+### reasonably. Sure, we could sort ourselves, but really the whole
+### point of sorting is so that we can tell Solr to truncate the output.
 
 facetSort <- function(x, sort, decreasing) {
     if (!isTRUEorFALSE(decreasing)) {
@@ -557,6 +589,16 @@ facetSort <- function(x, sort, decreasing) {
     } else {
         stop("invalid facet sort specification")
     }
+}
+
+facetMinCount <- function(drop, ...) {
+    if (!isTRUEorFALSE(drop)) {
+        stop("'drop' must be TRUE or FALSE")
+    }
+    if (!drop && !missing(...)) {
+        stop("'drop' must be TRUE when statistics are requested")
+    }
+    if (drop) 1L else 0L
 }
 
 setGeneric("makeName", function(x) standardGeneric("makeName"))
@@ -616,24 +658,20 @@ cutLabelsToLucene <- function(x) {
   chartr("()", "{}", sub(",", " TO ", sub("-?Inf", "*", x)))
 }
 
-### FIXME: no counting of NAs when xtabs(exclude=NULL)
+### FIXME: no counting of NAs for date faceting
 ###        - could get closer with facet.range.other
 
-toSolrFacetBound <- function(x) {
-  if (is.numeric(x)) {
+checkSolrFacetBound <- function(x) {
+  if (is.numeric(x) || is(x, "POSIXt") || is(x, "Date")) {
     x
-  } else if (is(x, "POSIXt") || is(x, "Date")) {
-    toSolr(x, new("solr.DateField"))
   } else {
     stop("unsupported breaks type")
   }
 }
 
-toSolrFacetGap <- function(x) {
-  if (is.numeric(x)) {
+checkSolrFacetGap <- function(x) {
+  if (is.numeric(x) || is(x, "difftime")) {
     x
-  } else if (is(x, "difftime")) {
-    paste0("+", x, toupper(attr(x, "units")))
   } else {
     stop("unsupported breaks type")
   }
@@ -654,9 +692,9 @@ facet_cut <- function(x, breaks, include.lowest = FALSE, right = TRUE) {
     }
     list(type="range",
          field=var,
-         start=toSolrFacetBound(min(breaks)),
-         end=toSolrFacetBound(max(breaks)),
-         gap=toSolrFacetGap(gap),
+         start=checkSolrFacetBound(min(breaks)),
+         end=checkSolrFacetBound(max(breaks)),
+         gap=checkSolrFacetGap(gap),
          include=facet.include)
   }
   else {
@@ -676,15 +714,15 @@ mergeFacetParams <- function(x, params, terms, where, grouping, ...) {
     pterm <- params[[deparse(term)]]
     if (length(terms) > 1L) {
         if (is.null(pterm)) {
-            pterm <- facetParams(x, term, where, grouping)
+            pterm <- facetParams(x, stripI(term), where, grouping)
         }
         pterm$facet <- mergeFacetParams(x, pterm$facet, terms[-1L],
                                          where, grouping, ...)
     } else {
-        newfacet <- facetParams(x, term, where, grouping, ...)
+        newfacet <- facetParams(x, stripI(term), where, grouping, ...)
         subfacets <- pterm$facet[vapply(pterm$facet, is.list, logical(1L))]
         newfacet$facet <- structure(c(newfacet$facet, subfacets),
-                                     class="facetlist")
+                                    class="facetlist")
         newfacet$nfq <- sum(names(params(x)) == "fq")
         pterm <- structure(newfacet, class="facet")
     }
@@ -750,11 +788,14 @@ paramToCSV <- function(x) {
 ### process the parameters in one pass. Since rapply() is S3 based
 ### (only considers class attribute), and the different methods expect
 ### different arguments, it seems appropriate to use an S3 generic.
+### We ended up writing our own rapply2(), because we want to apply
+### the function to any node, not just the leaves.
 
 translateParam <- function(x, ...) UseMethod("translateParam")
 
 translateParam.TranslationRequest <- function(x, context, ...) {
-    eval(x, context)
+    ans <- eval(x, context)
+    if (identical(ans, solrNA)) NULL else ans
 }
 
 translateParam.facet <- function(x, fq, ...) {
@@ -769,11 +810,15 @@ translateParam.facet <- function(x, fq, ...) {
 }
 
 translateParam.facetlist <- function(x, ...) {
-    aux <- unlist(unname(lapply(x, function(xi) {
-                                    if (is(xi, "SolrAggregateCall"))
-                                        xi@aux
-                                })))
-    x[names(aux)] <- aux
+    ## This must be a well-known functional construct, does it have a name?
+    getChildren <- function(xi) {
+        child <- child(xi)
+        if (!is.null(child)) {
+            c(child, getChildren(child))
+        }
+    }
+    children <- unlist(unname(lapply(x, getChildren)))
+    x[vapply(children, hiddenName, character(1L))] <- children
     x
 }
 
@@ -821,12 +866,34 @@ translateParams <- function(p, core, nrows) {
 }
 
 setMethod("translate", c("SolrQuery", "missing"), function(x, target, core) {
-              params(x) <- translateParams(params(x), core, resultLength(core, x))
+              params(x) <- translateParams(params(x), core,
+                                           resultLength(core, x))
+              params(x)$fl <- Filter(Negate(is.null), params(x)$fl)
+              params(x)$sort <- Filter(Negate(is.null), params(x)$sort)
               x
           })
 
+solrFormat <- function(x, ...) UseMethod("solrFormat")
+
+solrFormat.POSIXt <- function(x, ...) {
+    toSolr(x, new("solr.DateField"))
+}
+
+solrFormat.Date <- function(x, ...) {
+    solrFormat(as.POSIXct(x), ...)
+}
+
+solrFormat.difftime <- function(x, ...) {
+    paste0("+", x, toupper(attr(x, "units")))
+}
+
 paramsAsCharacter <- function(p) {
     p <- rapply2(p, as.character, "SolrExpression", how="replace")
+    if (!is.null(p[["json"]]$facet)) {
+        p[["json"]]$facet <- rapply(p[["json"]]$facet, solrFormat,
+                                    c("POSIXt", "Date", "difftime"),
+                                    how="replace")
+    }
     p$sort <- paramToCSV(p$sort)
     p$fl <- paramToCSV(p$fl)
     if (!is.null(p[["json"]])) # partial match hits 'json.nl'
@@ -863,7 +930,8 @@ facetForShow <- function(x) {
 }
 
 facetsForShow <- function(x) {
-    unname(rapply2(x, facetForShow, "facet"))
+    c(unname(rapply2(x, facetForShow, "facet")),
+      names(x)[!vapply(x, is.list, logical(1L))])
 }
 
 showLine <- function(...) {

@@ -18,7 +18,9 @@ vpluck <- function(x, name, value, required=TRUE) {
   if (required) {
     vapply(x, `[[`, value, name)
   } else {
-    as.vector(pluck(x, name, value), mode=mode(value))
+    ans <- simplify2array(pluck(x, name, value), higher=FALSE)
+    mode(ans) <- mode(value)
+    ans
   }
 }
 
@@ -40,8 +42,6 @@ isSingleNumberOrNA <- function (x) {
     is.atomic(x) && length(x) == 1L && (is.numeric(x) || is.na(x))
 }
 
-### End S4Vectors copy
-
 recycleVector <- function(x, length.out)
 {
   if (length(x) == length.out) {
@@ -51,6 +51,12 @@ recycleVector <- function(x, length.out)
     ans[] <- x
     ans
   }
+}
+
+### End S4Vectors copy
+
+isNA <- function(x) {
+    is.vector(x) && length(x) == 1L && is.na(x)
 }
 
 ## uses c() to combine high-level classes like Date
@@ -153,6 +159,8 @@ normColIndex <- function(x, f) {
 ROWNAMES <- function (x) if (length(dim(x)) != 0L) rownames(x) else names(x)
 
 stripI <- function(x) {
+    if (is.list(x))
+        return(lapply(x, stripI))
     if (is.call(x) && x[[1L]] == quote(I))
         x[[2L]]
     else x
@@ -216,7 +224,7 @@ parseFormulaRHS <- function(x) {
     if (length(x) != 2L) {
         stop("formula must not have an LHS")
     }
-    lapply(attr(terms(x), "variables")[-1L], stripI)
+    as.list(attr(terms(x), "variables")[-1L])
 }
 
 rapply2 <- function(object, f, classes = "ANY", deflt = NULL,
@@ -233,7 +241,7 @@ rapply2 <- function(object, f, classes = "ANY", deflt = NULL,
         }
         if (any(vapply(classes, is, object=obj, FUN.VALUE=logical(1L)))) {
             f(obj, ...)
-        } else if (how == "list") {
+        } else if (how != "replace") {
             deflt
         } else {
             obj

@@ -72,7 +72,7 @@ setMethod("as.character", "TranslationRequest", function(x) as.character(x@src))
 ###
 
 preprocessExpression <- function(expr, env) {
-    expr <- eval(call("bquote", expr, env))
+    while(!identical(expr, expr <- eval(call("bquote", expr, env)))) { }
     callsToNames(expr, quote(.field), env)
 }
 

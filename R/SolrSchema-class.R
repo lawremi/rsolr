@@ -238,8 +238,7 @@ augment <- function(x, query) {
   fl <- params(query)$fl
   new.fl <- fl[nzchar(names(fl))]
   computed <- vapply(new.fl, function(fi) {
-                         is(fi, "TranslationRequest") &&
-                             !is(expr(fi@src), "Symbol")
+                         is(fi, "Expression") && !is(fi, "Symbol")
                      }, logical(1L))
   x <- augmentComputed(x, new.fl[computed])
   x <- augmentAliases(x, new.fl[!computed])

@@ -42,7 +42,7 @@ numFound <- function(x, query) {
 
 setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
   numFound <- numFound(x, query)
-  p <- prepareBoundsParams(params(query), numFound)
+  p <- translateBoundsParams(params(query), numFound)
   min(numFound, p$rows)
 })
 
@@ -323,7 +323,8 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
               responseType(expr) <- "list"
             expr <- translate(expr, core=envir)
             expected.type <- params(expr)$wt
-            response <- tryCatch(read(envir@uri$select, as.character(expr)),
+            query <- as.character(expr)
+            response <- tryCatch(read(envir@uri$select, query),
                                  error = SolrErrorHandler(envir, expr))
             response <- processSolrResponse(response, expected.type)
             convertSolrQueryResponse(response, envir, expr)

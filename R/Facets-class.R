@@ -54,7 +54,7 @@ setMethod("[[", c("Facets", "formula"),
               if (!missing(j) || length(list(...)) > 0L) {
                   warning("'j' and arguments in '...' are ignored")
               }
-              f <- parseFormulaRHS(which)
+              f <- parseFormulaRHS(i)
               x[[as.character(f)]]
           })
 
@@ -72,36 +72,45 @@ enumerateFacetPaths <- function(query, pnames=NULL) {
 }
 
 cutLabels <- function(query) {
-    levels(cut(integer(), seq(query$start, query$end, query$gap),
+    levels(cut(query$start, seq(query$start, query$end, query$gap),
                right=grepl("upper", query$include, fixed=TRUE),
                include.lowest=grepl("edge", query$include, fixed=TRUE)))
 }
 
-getBucketValues <- function(x) {
+getBucketValues <- function(x, useNA=FALSE) {
     if (length(x) == 0L) {
         factor()
     } else {
         guess <- x[[1L]]$val
-        vpluck(x, "val", guess)
+        ans <- vpluck(x, "val", guess)
+        if (useNA) {
+            ans <- c(ans, NA)
+        }
+        if (is.character(ans)) {
+            ans <- factor(ans, exclude=NULL)
+        }
+        ans
     }
 }
 
-getBucketStats <- function(x, names) {
-    if (length(x) == 0L) {
-        svalue <- list(numeric())
-    } else {
-        svalue <- x[[1L]][names]
-    }
-    mapply(vpluck, names, svalue, MoreArgs=list(x=x), SIMPLIFY=FALSE)
+getBucketStats <- function(x, proto) {
+    mapply(vpluck, names(proto), proto, MoreArgs=list(x=x), SIMPLIFY=FALSE)
+}
+
+getProtoStats <- function(exprs) {
+    default <- lapply(vapply(exprs, resultWidth, integer(1L)), numeric)
+    c(list(count = numeric(1L)), default)
 }
 
 ## My most complicated recursion ever!
 collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
     bucketed <- FALSE
+    dropEmptyBuckets <- query$mincount > 0L
     if (is.null(query$type)) {
         val <- NULL
+        dropEmptyBuckets <- TRUE
     } else if (query$type == "terms") {
-        val <- getBucketValues(facet$buckets)
+        val <- getBucketValues(facet$buckets, !is.null(facet$missing))
         bucketed <- TRUE
     } else if (query$type == "range") {
         val <- cutLabels(query)
@@ -114,18 +123,30 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         query <- query$facet
     }
     if (length(path) == 0L) {
-        snames <- names(query)[!vapply(query, is.list, logical(1L))]
-        snames <- c("count", snames) # count is implicit in query
+        isStat <- !vapply(query, is.list, logical(1L))
+        exprs <- query[isStat]
+        emptyBucket <- FALSE
         if (bucketed) {
-            stats <- getBucketStats(facet$buckets, snames)
+            buckets <- facet$buckets
+            if (!is.null(facet$missing)) {
+                buckets <- c(buckets, list(facet$missing))
+            }
+            stats <- getBucketStats(buckets, getProtoStats(exprs))
             nonscalar <- vapply(stats, is.matrix, logical(1L))
         } else {
-            stats <- facet[snames]
+            emptyBucket <- identical(facet$count, 0)
+            if (emptyBucket) {
+                stats <- getProtoStats(exprs)
+            } else {
+                stats <- facet[c("count", names(exprs))]
+            }
             nonscalar <- lengths(stats) > 1L
         }
         stats[nonscalar] <- lapply(stats[nonscalar], function(v) I(t(v)))
-        stats <- as.data.frame(stats)
-### FIXME: ensure that calls to Solr unique() yield integer
+        stats <- as.data.frame(stats, optional=TRUE)
+        if (emptyBucket && dropEmptyBuckets) {
+            stats <- stats[FALSE,,drop=FALSE]
+        }
         stats$count <- as.integer(stats$count)
     } else {
         step <- path[[1L]]
@@ -143,7 +164,7 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         }
     }
     if (!is.null(val)) {
-        stats <- cbind(val, stats)
+        stats <- cbind(rep(val, length=nrow(stats)), stats)
         if (length(path) > 1L) {
             perm <- c(seq_along(path)[-1L], 1L)
             dim <- vapply(stats[perm], nlevels, integer(1L))
@@ -171,12 +192,37 @@ collapseQueryFacets <- function(facets) {
     initialize(facets, lapply(facets, collapseQueryFacets))
 }
 
+
 postprocessStats <- function(facet, query) {
+    postprocessStat <- function(stat, expr, addChild = FALSE) {
+        if (is.null(expr@postprocess)) {
+            return(stat)
+        }
+        if (!is.null(child(expr))) {
+            childName <- hiddenName(child(expr))
+            childStat <- postprocessStat(facet@stats[[childName]],
+                                         query[[childName]],
+                                         addChild=TRUE)
+        } else {
+            childStat <- facet@stats$count
+        }
+        ans <- expr@postprocess(stat, childStat)
+        if (addChild) {
+            attr(ans, "child") <- childStat
+        } else {
+            attr(ans, "child") <- NULL # perhaps inherited from grandchild
+        }
+        ans
+    }
     exprs <- vapply(query, is, "SolrAggregateCall", FUN.VALUE=logical(1L))
-    pp <- Filter(Negate(is.null), lapply(query[exprs], slot, "postprocess"))
-    facet@stats[names(pp)] <- mapply(function(s, pp) pp(s, facet@stats),
-                                     facet@stats[names(pp)], pp, SIMPLIFY=FALSE)
     hidden <- startsWith(names(facet@stats), ".")
+    process <- intersect(names(query)[exprs], names(facet@stats)[!hidden])
+    facet@stats[process] <- mapply(postprocessStat,
+                                   facet@stats[process], query[process],
+                                   SIMPLIFY=FALSE)
+    facet@stats[] <- lapply(facet@stats, function(x) {
+                                if (is(x, "AsIs")) unclass(x) else x
+                            })
     facet@stats <- facet@stats[!hidden]
     qfacet <- pluck(query[names(facet)], "facet")
     initialize(facet, mapply(postprocessStats, facet, qfacet, SIMPLIFY=FALSE))
@@ -193,6 +239,9 @@ setMethod("as.table", "Facets", function(x) {
               df <- x@stats[1:countpos]
               count <- df$count
               groupings <- df[-countpos]
+              if (length(groupings) == 0L) {
+                  stop("no table for root facet")
+              }
               dn <- lapply(groupings, function(g) as.character(unique(g)))
               dim <- unname(lengths(dn))
               as.table(array(count, dim=dim, dimnames=dn))

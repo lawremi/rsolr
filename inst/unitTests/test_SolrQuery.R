@@ -203,6 +203,17 @@ testTransform <- function(sc, docs) {
     tform.docs[,"negPrice"] <- tform.docs[,"price"] * -1
     checkResponseEquals(read(sc, tform.query), tform.docs)
 
+    tform.query <- transform(query, naPrice = price * NA)
+    checkResponseEquals(read(sc, tform.query), docs)
+
+    tform.query <- transform(query, inStock2 = inStock & NA)
+    checkIdentical(read(sc, tform.query)[,"inStock2"],
+                   docs[,"inStock"] & NA)
+
+    tform.query <- transform(query, inStock2 = inStock | NA)
+    checkIdentical(read(sc, tform.query)[,"inStock2"],
+                   docs[,"inStock"] | NA)
+
     tform.query <- transform(query, price = price * -1)
     tform.docs <- docs
     tform.docs[,"price"] <- tform.docs[,"price"] * -1
@@ -258,6 +269,7 @@ testFacets <- function(sc, docs) {
 ### https://issues.apache.org/jira/browse/SOLR-7496
 ###    checkTable(~ price, c("2.0"=1L, "3.0"=1L, "4.0"=1L, "5.0"=1L))
     checkTable(~ price > 3, c("FALSE"=2L, "TRUE"=2L))
+    checkTable(~ price > 10, c("FALSE"=4L, "TRUE"=0L))
     checkTable(~ price > 3 & inStock, c("FALSE"=3L, "TRUE"=1L))
     checkTable(~ price > log2(8), c("FALSE"=2L, "TRUE"=2L))
     checkTable(~ cut(price, seq(1, 5, 2)), c("(1,3]"=2L, "(3,5]"=2L))
@@ -301,8 +313,8 @@ testFacets <- function(sc, docs) {
     df <- data.frame(id=as.character(1:6),
                      cat_s=c("A", "B", NA, "A", "B", "B"),
                      where_s=c("NY", "NJ", NA, "NJ", "NJ", "NY"),
-                     num_d=c(4, -9, NA, 2, 11, -5),
-                     num_i=c(2, -5, NA, 3, 7, -5),
+                     num_d=c(4, -9, NA, 2, NA, -5),
+                     num_i=c(NA, -5, NA, 3, 7, -5),
                      super_s=c("zodiac", "superman", NA, "spiderman", "batman",
                          "hulk"),
                      date_dt=c("2001-01-01T01:01:01Z", "2002-02-02T02:02:02Z",
@@ -312,61 +324,181 @@ testFacets <- function(sc, docs) {
                      sparse_s=c("one", NA, NA, NA, "two", NA),
                      multi_ss=I(list(NULL, c("a", "b"), NULL, "b", "a",
                          c("b", "a"))))
-    df$date_dt <- as.POSIXct(strptime(df$date_dt, "%Y-%m-%dT%H:%M:%SZ",
-                                      tz="UTC"))
+    parseSolrDate <- function(x) { # because we copy/paste from Solr tests
+        as.POSIXct(strptime(x, "%Y-%m-%dT%H:%M:%SZ", tz="UTC"))
+    }
+    df$date_dt <- parseSolrDate(df$date_dt)
     s[] <- df
 
-### CHECK: nested facets
-    checkTable(~ I(cat_s == "B") + I(where_s == "NJ"),
-               matrix(c(1L, 1L, 1L, 2L), 2,
-                      dimnames=rep(list(c("FALSE", "TRUE")), 2)))
-
-### CHECK: multiple nested facets
     query <- SolrQuery()
-    facet.query <- query
-    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NJ"), facet.query)
-    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NY"), facet.query)
-    fct <- facets(sc, facet.query)
     toTable <- function(tab) {
         class(tab) <- "table"
         attr(tab, "call") <- NULL
         tab
     }
+    checkTable2 <- function(formula, subset, ...) {
+        tab <- xtabs(formula, df, exclude=NULL, ...)
+        fct <- facets(sc, xtabs(formula, query, ...))[[formula]]
+        checkIdentical(as.table(fct), toTable(tab))
+    }
+
+### CHECK: missing
+    checkTable2(~ val_b, na.action=na.pass)
+
+### CHECK: nested facets
+    checkTable2(~ cat_s + I(where_s == "NJ"))
+    checkTable2(~ I(cat_s == "B") + I(where_s == "NJ"))
+
+### CHECK: multiple nested facets
+    facet.query <- query
+    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NJ"), facet.query)
+    facet.query <- xtabs(~ I(cat_s == "B") + I(where_s == "NY"), facet.query)
+    fct <- facets(sc, facet.query)
     tab <- xtabs(~ I(cat_s == "B") + I(where_s == "NJ"), df)
     checkIdentical(as.table(fct[[1L]][[1L]]), toTable(tab))
     tab <- xtabs(~ I(cat_s == "B") + I(where_s == "NY"), df)
     checkIdentical(as.table(fct[[1L]][[2L]]), toTable(tab))
 
+### CHECK: missing with stat
+    facet.query <- facet(query, ~ cat_s, sum(num_d), useNA=TRUE)
+    stats <- stats(facets(sc, facet.query)[[1L]])
+    stats$count <- NULL
+    dfna <- df
+    dfna$cat_s <- factor(df$cat_s, exclude=NULL)
+    agg <- aggregate(num_d ~ cat_s, dfna, sum, na.action=na.pass)
+    colnames(agg)[2L] <- "num_d.sum"
+    checkIdentical(stats, agg)
+
 ### CHECK: nested facet with stat
     facet.query <- query
     facet.query <- facet(facet.query, ~ I(cat_s == "B") + I(where_s == "NJ"),
                          sum(num_d))
-    stats <- facets(sc, facet.query)[[1L]][[1L]]@stats
+    stats <- stats(facets(sc, facet.query)[[1L]][[1L]])
     stats$count <- NULL
-    agg <- aggregate(num_d ~ I(cat_s == "B") + I(where_s == "NJ"), df, sum)
+    agg <- aggregate(num_d ~ I(cat_s == "B") + I(where_s == "NJ"), df, sum,
+                     na.action=na.pass)
     colnames(agg)[3L] <- "num_d.sum"
     agg[1:2] <- lapply(agg[1:2], unclass)
     checkIdentical(stats, agg)
-
+    
 ### CHECK: sort on stat
     facet.query <- facet(query, ~ cat_s, n1=sum(num_d), sort=~n1)
-    stats <- facets(sc, facet.query)[[1L]]@stats
+    stats <- stats(facets(sc, facet.query)[[1L]])
     stats$count <- NULL
-    agg <- aggregate(num_d ~ cat_s, df, sum)
+    agg <- aggregate(num_d ~ cat_s, df, sum, na.action=na.pass)
     colnames(agg)[2L] <- "n1"
-    agg <- agg[order(agg$n1),]
+    ## na.last=FALSE is a capitulation to Solr's failure to handle NAs well
+    agg <- agg[order(agg$n1, na.last=FALSE),]
     rownames(agg) <- NULL
     checkIdentical(stats, agg)
 
 ### CHECK: more stats
-    facet.query <- facet(query, ~ cat_s, min(num_d), max(num_d),
-                         lengthUnique(num_d), quantile(num_d), median(num_d),
-                         IQR(num_d), weighted.mean(num_d, abs(num_i)),
-                         range(num_d), mean(num_d), var(num_d), sd(num_d),
-                         any(val_b), all(val_b))
-    stats <- facets(sc, facet.query)[[1L]]@stats
+    checkStats <- function(na.rm, ...) {
+        if (!missing(...)) {
+            query <- subset(query, ...)
+            df <- subset(df, ...)
+        }
+        facet.query <- facet(query, ~ cat_s,
+                             min(num_d, na.rm=.(na.rm)),
+                             max(num_d, na.rm=.(na.rm)),
+                             lengthUnique(num_d, na.rm=.(na.rm)),
+                             quantile(num_d, na.rm=.(na.rm)),
+                             median(num_d, na.rm=.(na.rm)),
+                             IQR(num_d, na.rm=.(na.rm)),
+                             weighted.mean(num_d, abs(num_i), na.rm=.(na.rm)),
+                             range(num_d, na.rm=.(na.rm)),
+                             mean(num_d, na.rm=.(na.rm)),
+                             any(val_b, na.rm=.(na.rm)),
+                             all(val_b, na.rm=.(na.rm)))
+        stats <- stats(facets(sc, facet.query)[[1L]])
 
-### CHECK: mad()
-    facet.query <- facet(query, mad(num_d))
-    stats <- facets(sc, facet.query)@stats
+        quantile2 <- function(x, prob=seq(0, 1, 0.25), na.rm=FALSE) {
+            if (!na.rm & anyNA(x)) {
+                setNames(rep(NA, length(prob)), paste0(prob*100, "%"))
+            } else {
+                quantile(x, prob, na.rm=na.rm, names=TRUE, type=7)
+            }
+        }
+
+        IQR2 <- function (x, na.rm = FALSE, type = 7)
+            diff(quantile2(as.numeric(x), c(0.25, 0.75), na.rm = na.rm))
+
+        sdf <- by(df, df$cat_s, function(x) {
+                      with(x, data.frame(count=nrow(x),
+                                         num_d.min=min(num_d, na.rm=na.rm),
+                                         num_d.max=max(num_d, na.rm=na.rm),
+                                         num_d.lengthUnique=
+                                             lengthUnique(num_d, na.rm=na.rm),
+                                         num_d.quantile=
+                                             I(t(quantile2(num_d,
+                                                           na.rm=na.rm))),
+                                         num_d.median=
+                                             median(num_d, na.rm=na.rm),
+                                         num_d.IQR=IQR2(num_d, na.rm=na.rm),
+                                         num_d.weighted.mean=
+                                             weighted.mean(num_d, abs(num_i),
+                                                           na.rm=na.rm),
+                                         num_d.range=
+                                             I(t(range(num_d, na.rm=na.rm))),
+                                         num_d.mean=mean(num_d, na.rm=na.rm),
+                                         val_b.any=any(val_b, na.rm=na.rm),
+                                         val_b.all=all(val_b, na.rm=na.rm)))
+                  })
+        sdf <- cbind(cat_s=levels(factor(df$cat_s)), do.call(rbind, sdf))
+        rownames(sdf) <- NULL
+        colnames(sdf$num_d.range) <- c("min", "max")
+        show(stats)
+        show(sdf)
+        checkIdentical(stats, sdf)
+    }
+
+    checkStats(FALSE)
+    checkStats(TRUE)
+
+### CHECK: cut on dates
+    dateBreaks <- seq(parseSolrDate('2001-01-01T00:00:00Z'),
+                      parseSolrDate('2003-01-01T00:00:00Z'),
+                      by="year")
+    checkTable2(~ cut(date_dt, dateBreaks))
+
+### CHECK: cut with options
+    checkTable2(~ cut(num_d, seq(-5, 10, 5)))
+    checkTable2(~ cut(num_d, seq(-5, 10, 5), right=FALSE))
+    checkTable2(~ cut(num_d, seq(-5, 10, 5), include.lowest=TRUE))
+
+### CHECK: xtabs empty bucket
+    tab <- xtabs(~ cat_s, df, subset=cat_s=="A")
+    fct <- facets(sc, xtabs(~ cat_s, query, subset=cat_s=="A"))[[1L]]
+    checkIdentical(as.table(fct), toTable(tab))
+    
+### CHECK: stats on empty bucket
+    checkStats(FALSE, cat_s == "A")
+    checkStats(TRUE, cat_s == "A")
+    
+### CHECK: dropping empty facet queries
+    facet.query <- facet(query, ~ I(num_d > 100), sum(num_d))
+    agg <- aggregate(num_d ~ I(num_d > 100), df, sum, na.action=na.pass)
+    colnames(agg)[2L] <- "num_d.sum"
+    agg[1] <- lapply(agg[1], unclass)
+    stats <- stats(facets(sc, facet.query)[[1L]])
+    stats$count <- NULL
+    checkIdentical(stats, agg)
+    
+### CHECK: stats on entire dataset
+    facet.query <- facet(query, NULL, sum(num_d))
+    stats <- stats(facets(sc, facet.query))
+    agg <- data.frame(count = nrow(df), num_d.sum = sum(df$num_d))
+    checkIdentical(stats, agg)
+    facet.query <- facet(subset(query, cat_s == "C"), NULL, sum(num_d))
+    stats <- stats(facets(sc, facet.query))
+    agg <- data.frame(count = integer(), num_d.sum = numeric())
+    checkIdentical(stats, agg)
+    
+### CHECK: drop=FALSE not allowed when stats given
+    checkException(facet(query, ~ cat_s, sum(num_d), drop=FALSE))
+
+### CHECK: mad(), unfortunately na.rm=FALSE does not work yet (with NAs)
+    facet.query <- facet(query, NULL, mad(num_d, na.rm=TRUE))
+    stats <- stats(facets(sc, facet.query))
+    checkIdentical(stats$num_d.mad, mad(df$num_d, na.rm=TRUE))
 }

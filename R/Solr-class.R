@@ -231,14 +231,27 @@ setGeneric("aggregateByFormula",
 
 setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
 
-setMethod("aggregateByFormula", "Solr", function(formula, data, FUN, ...) {
-              if (!missing(FUN)) {
-                  query <- facet(query(x), FUN(group(data, formula), ...))
-              } else {
-                  query <- facet(query(x), ...)
+setMethod("aggregateByFormula", "Solr",
+          function(formula, data, FUN, ..., subset, na.action) {
+              na.action <- normNAAction(na.action)
+              useNA <- identical(na.action, na.pass)
+              if (!missing(subset)) {
+                  query(data) <- rsolr::subset(query, .(substitute(subset)))
               }
-              stats(facets(core(x), query)[[formula]])
-})
+              if (!missing(FUN)) {
+                  query <- facet(query(data), formula,
+                                 FUN(group(data, formula), ...), useNA=useNA)
+              } else {
+                  query <- facet(query(data), formula, useNA=useNA, ...)
+              }
+              fct <- facets(core(data), query)
+              if (!is.null(formula)) {
+                  fct <- fct[[formula]]
+              }
+              ans <- stats(fct)
+              ans$count <- NULL
+              ans
+          })
 
 setMethod("aggregate", "Solr", function(x, ...) {
               aggregateByFormula(NULL, x, ...)

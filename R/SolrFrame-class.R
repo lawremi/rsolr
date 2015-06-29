@@ -143,9 +143,9 @@ setMethod("eval", c("SolrExpression", "SolrFrame"),
 
 setMethod("eval", c("SolrAggregateCall", "SolrFrame"),
           function (expr, envir, enclos) {
-              df <- aggregate(envir, x = .(expr))
+              df <- aggregate(envir, y = .(expr))
               grouped <- length(df) > 1L
-              if (grouped) split(df$x, df[-length(df)]) else df$x
+              if (grouped) split(df$y, df[-length(df)]) else df$y
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
