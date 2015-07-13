@@ -63,7 +63,10 @@ setMethod("as.vector", "Promise",
 as.Date.Promise <- function(x) as.Date(fulfill(x))
 as.POSIXct.Promise <- function(x) as.POSIXct(fulfill(x))
 as.POSIXlt.Promise <- function(x) as.POSIXlt(fulfill(x))
-as.data.frame.Promise <- function(x) as.data.frame(fulfill(x))
+as.data.frame.Promise <- function(x, row.names = NULL, optional = FALSE, ...) {
+    as.data.frame(fulfill(x), row.names=row.names, optional=optional, ...)
+}
+
 as.list.Promise <- function(x) as.list(fulfill(x))
 
 setReplaceMethod("[", "Promise", function (x, i, j, ..., value) {

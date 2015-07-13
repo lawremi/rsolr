@@ -199,6 +199,10 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
 
 setMethod("[", "SolrList", .Solr_2DBracket)
 
+setMethod("unique", "SolrList", function (x, incomparables = FALSE) {
+              unid(as(callNextMethod(), "DocList"))
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###

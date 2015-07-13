@@ -50,24 +50,8 @@ setMethod("ids", "Solr", function(x) {
   else NULL
 })
 
-normFL <- function(fl) {
-  if (is.null(names(fl)))
-    fl
-  else {
-    fl[names(fl) != ""] <- names(fl)[names(fl) != ""]
-    unlist(fl, use.names=FALSE)
-  }
-}
-
-setMethod("fieldNames", "Solr", function(x, ...)
-{
-  fl <- normFL(params(query(x))$fl)
-  glob <- grepl("*", fl, fixed=TRUE)
-  if (any(glob)) {
-    fieldNames(core(x), patterns=fl, ...)
-  } else {
-    fl
-  }
+setMethod("fieldNames", "Solr", function(x, ...) {
+    fieldNames(core(x), query(x), ...)
 })
 
 setMethod("nfield", "Solr", function(x) {
@@ -108,6 +92,9 @@ setMethod("compatible", c("Solr", "Solr"), function(x, y) {
               params(query(x))$json$facet <- params(query(y))$json$facet
               identical(query(x), query(y)) && identical(core(x), core(y))
           })
+
+setGeneric("grouping", function(x, ...) standardGeneric("grouping"))
+setMethod("grouping", "Solr", function(x) NULL)
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -182,44 +169,32 @@ setMethod("sort", "Solr", function (x, decreasing = FALSE, ...) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Summarizing
 ###
-##
+
+mergeGrouping <- function(x, y) {
+    if (is.null(x)) return(y)
+    if (is.null(y)) return(x)
+    lhs <- if (length(y) == 3L) y[[2L]]
+    vars <- union(colnames(attr(terms(x), "factors")),
+                  colnames(attr(terms(y), "factors")))
+    as.formula(paste(lhs, "~", paste(vars, collapse="+")))
+}
 
 setMethod("xtabs", "Solr",
           function(formula, data,
                    subset, sparse = FALSE, 
                    na.action, exclude = NA,
                    drop.unused.levels = FALSE)
-          {
-            if (!all(names(match.call())[-1L] %in%
-                     c("formula", "data", "exclude"))) {
-              stop("all args but 'formula', 'data' and 'exclude' are ignored")
-            }
-            q <- facet(query(data), formula, useNA=is.null(exclude))
-            facet(core(data), q)[[1L]]
-          })
+              {
+                  core <- core(data)
+                  formula <- mergeGrouping(grouping(data), formula)
+                  data <- query(data)
+                  as.table(facets(core, callGeneric())[[formula]])
+              })
 
 ### TODO
-###     - the LHS could support "." to indicate all terms not on RHS,
+###     - the LHS could support "." to indicate all terms except the RHS,
 ###     - a named list of functions, all of which are applied, and their name
-###       serves as the postfix,
-###     - named, quoted arguments adding stats as columns,
-
-### How does aggregation work?
-###
-### It could split() itself by the formula, which yields a SplitSolr,
-### or a SplitSolrPromise if there is an LHS. When given a function,
-### we always have a Promise, and that Promise is passed to the
-### function. If we have expressions, those are passed directly (via
-### ...) to facet,SolrQuery. The query is evaluated, and the facet
-### result corresponding to the formula is extracted.
-
-### A serious issue is that the computation is taking place on the
-### entire dataset, even though it is conceptually happening
-### group-wise.  For example, length() on a SplitSolrPromise returns
-### the number of groups. This makes sense, but causes problems when
-### we try to fake looping in aggregate(). ndoc() will return the
-### equivalent of lengths(), which will work, but the strange behavior
-### of length() will confuse the user. We'll see how bad it is.
+###       serves as the postfix
 
 setMethod("aggregate", "formula", function(x, ...) {
   aggregateByFormula(x, ...)
@@ -231,22 +206,60 @@ setGeneric("aggregateByFormula",
 
 setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
 
+### NOTE: By default, this drops NAs, just like aggregate.formula,
+###       except aggregate.formula drops records with NAs in the
+###       response and factors, whereas we only drop those with NAs in
+###       the factors. This is consistent with aggregate.data.frame.
 setMethod("aggregateByFormula", "Solr",
-          function(formula, data, FUN, ..., subset, na.action) {
+          function(formula, data, FUN, ..., subset, na.action, simplify=TRUE) {
               na.action <- normNAAction(na.action)
               useNA <- identical(na.action, na.pass)
               if (!missing(subset)) {
                   query(data) <- rsolr::subset(query, .(substitute(subset)))
               }
-              if (!missing(FUN)) {
-                  query <- facet(query(data), formula,
-                                 FUN(group(data, formula), ...), useNA=useNA)
+              if (!isTRUEorFALSE(simplify)) {
+                  stop("'simplify' should be TRUE or FALSE")
+              }
+              functionalStyle <- !missing(FUN)
+              if (functionalStyle) {
+                  hasLHS <- length(formula) == 3L
+                  if (hasLHS) {
+                      response <- formula[[2L]]
+                      formula <- formula[-2L]
+                  }
+                  data <- group(as(data, "SolrFrame", strict=FALSE), formula)
+                  grouping <- grouping(data)
+                  if (hasLHS) {
+                      env <- environment(formula)
+                      arg <- eval(response, data, env)
+                      resultName <- deparse(response)
+                  } else {
+                      arg <- data
+                      resultName <- deparse(substitute(FUN))
+                  }
+                  result <- FUN(arg, ...)
+                  if (is(result, "SolrAggregatePromise")) {
+                      query <- facet(query(data), grouping, .(result),
+                                     useNA=useNA)
+                  } else {
+                      ans <- uniqueBy(data, NULL, useNA)
+                      if (is.data.frame(result)) {
+                          ans <- cbind(ans, result)
+                      } else {
+                          if (simplify) {
+                              result <- simplify2array(result)
+                          }
+                          ans[[resultName]] <- result
+                      }
+                      return(ans)
+                  }
               } else {
-                  query <- facet(query(data), formula, useNA=useNA, ...)
+                  grouping <- mergeGrouping(grouping(data), formula)
+                  query <- facet(query(data), grouping, useNA=useNA, ...)
               }
               fct <- facets(core(data), query)
-              if (!is.null(formula)) {
-                  fct <- fct[[formula]]
+              if (!is.null(grouping)) {
+                  fct <- fct[[grouping]]
               }
               ans <- stats(fct)
               ans$count <- NULL
@@ -257,22 +270,23 @@ setMethod("aggregate", "Solr", function(x, ...) {
               aggregateByFormula(NULL, x, ...)
           })
 
-uniqueBy <- function(x, by) {
-    ans <- subset(as.data.frame(xtabs(by, x, exclude=NULL)),
-                  Freq > 0L, select=-Freq)
-    ans <- ans[order(ans[[1L]]),,drop=FALSE]
-    rownames(ans) <- NULL
-    as(ans, "DocCollection")
+uniqueBy <- function(x, by, useNA=TRUE) {
+    by <- mergeGrouping(grouping(x), by)
+    facet.query <- facet(query(x), by, useNA=useNA)
+    subset(stats(facets(core(x), facet.query)[[by]]), select=-count)
 }
 
 setMethod("unique", "Solr", function (x, incomparables = FALSE) {
               if (!identical(incomparables, FALSE)) {
                   stop("'incomparables' not supported")
               }
-              f <- as.formula(paste("~",
-                                    paste(fieldNames(x, onlyIndexed=TRUE),
-                                          collapse="+")))
-              uniqueBy(x, f)
+              fields <- resolveFields(core(x), query(x))
+              if (!all(indexed(fields))) {
+                  stop("cannot compute unique values of unindexed field(s): ",
+                       paste0("'", names(fields)[!indexed], "'", collapse=", "))
+              }
+              grp <- as.formula(paste("~", paste(names(fields), collapse="+")))
+              uniqueBy(x, grp)
           })
 
 window.Solr <- function(x, ...) window(x, ...)
@@ -308,7 +322,7 @@ fillMissingFields <- function(x, fieldNames, schema) {
   modes <- fieldTypes(schema)[typeName(fields)]
   x[names(fields)] <- lapply(modes, fromSolr,
                              x=rep(NA, nrow(as.data.frame(x))))
-  x
+  x[fieldNames]
 }
 
 setMethod("as.data.frame", "Solr",
@@ -318,11 +332,10 @@ setMethod("as.data.frame", "Solr",
     stop("'optional' must be TRUE or FALSE")
   }
   df <- read(core(x), query(x), as="data.frame")
-  fn <- fieldNames(x, onlyStored=TRUE, includeStatic=fill)
   if (fill) {
+    fn <- fieldNames(x, onlyStored=TRUE, includeStatic=TRUE)
     df <- fillMissingFields(df, fn, schema(core(x)))
   }
-  df <- df[,intersect(fn, colnames(df)),drop=FALSE]
   if (!optional) {
     colnames(df) <- make.names(colnames(df), unique = TRUE)
   }
@@ -335,8 +348,9 @@ setMethod("as.data.frame", "Solr",
     if (is.null(row.names)) {
       row.names <- ids(x)
     }
+  } else if (!identical(row.names, FALSE)) {
+      rownames(df) <- row.names
   }
-  rownames(df) <- row.names
   df
 })
 

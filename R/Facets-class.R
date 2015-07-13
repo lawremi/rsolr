@@ -20,12 +20,15 @@ setClass("Facets", contains="list",
 ### Constructor (not for the user)
 ###
 
-Facets <- function(facets, query) {
+Facets <- function(facets, query, schema) {
     if (!is.list(facets)) {
         stop("'facets' must be a list of facet results")
     }
     if (!is.list(query)) {
         stop("'query' must be a list of JSON facet parameters")
+    }
+    if (!is(schema, "SolrSchema")) {
+        stop("'schema' must be a SolrSchema object")
     }
     paths <- enumerateFacetPaths(query)
     stats <- lapply(paths, collapseFacet, facet=facets, query=query)
@@ -34,7 +37,7 @@ Facets <- function(facets, query) {
         subfacets[[paths[[i]]]] <- new("Facets", stats=stats[[i]])
     }
     ans <- new("Facets", stats=collapseFacet(facets, query), subfacets)
-    postprocessStats(collapseQueryFacets(ans), query)
+    postprocessStats(collapseQueryFacets(ans), query, schema)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -128,7 +131,8 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         emptyBucket <- FALSE
         if (bucketed) {
             buckets <- facet$buckets
-            if (!is.null(facet$missing)) {
+            if (!is.null(facet$missing) &&
+                (!dropEmptyBuckets || facet$missing > 0L)) {
                 buckets <- c(buckets, list(facet$missing))
             }
             stats <- getBucketStats(buckets, getProtoStats(exprs))
@@ -151,25 +155,19 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
     } else {
         step <- path[[1L]]
         query <- query[[step]]
-        path <- path[-1L]
         if (bucketed) {
             buckets <- pluck(facet$buckets, step)
-            bstats <- lapply(buckets, collapseFacet, query, path, step)
+            bstats <- lapply(buckets, collapseFacet, query, path[-1L], step)
             stats <- do.call(rbind, bstats)
             if (length(bstats) > 0L) {
-                val <- rep(val, each=nrow(bstats[[1L]]))
+                val <- rep(val, vapply(bstats, nrow, integer(1L)))
             }
         } else {
-            stats <- collapseFacet(facet[[step]], query, path, step)
+            stats <- collapseFacet(facet[[step]], query, path[-1L], step)
         }
     }
     if (!is.null(val)) {
         stats <- cbind(rep(val, length=nrow(stats)), stats)
-        if (length(path) > 1L) {
-            perm <- c(seq_along(path)[-1L], 1L)
-            dim <- vapply(stats[perm], nlevels, integer(1L))
-            stats <- stats[aperm(array(seq_len(nrow(stats)), dim), perm),]
-        }
         colnames(stats)[1L] <- name
     }
     stats
@@ -193,7 +191,7 @@ collapseQueryFacets <- function(facets) {
 }
 
 
-postprocessStats <- function(facet, query) {
+postprocessStats <- function(facet, query, schema) {
     postprocessStat <- function(stat, expr, addChild = FALSE) {
         if (is.null(expr@postprocess)) {
             return(stat)
@@ -223,9 +221,13 @@ postprocessStats <- function(facet, query) {
     facet@stats[] <- lapply(facet@stats, function(x) {
                                 if (is(x, "AsIs")) unclass(x) else x
                             })
+    factors <- seq_len(match("count", names(facet@stats)) - 1L)
+    facet@stats[factors] <- convertCollection(facet@stats[factors], schema,
+                                              fromSolr)
     facet@stats <- facet@stats[!hidden]
     qfacet <- pluck(query[names(facet)], "facet")
-    initialize(facet, mapply(postprocessStats, facet, qfacet, SIMPLIFY=FALSE))
+    initialize(facet, mapply(postprocessStats, facet, qfacet, SIMPLIFY=FALSE,
+                             MoreArgs=list(schema)))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

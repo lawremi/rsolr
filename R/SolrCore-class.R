@@ -52,29 +52,58 @@ readLuke <- function(x) {
     processSolrResponse(read(x@uri$admin$luke, list(nTerms=0L, wt="json")))
 }
 
-globMatchMatrix <- function(x, patterns) {
-    vapply(glob2rx(patterns), grepl, logical(length(x)), x)
-}
-
-extractByPatterns <- function(x, patterns) {
-    m <- globMatchMatrix(x, patterns)
-    ord <- order(max.col(m, ties.method="first"))
-    x[ord][rowSums(m)[ord] > 0L]
-}
-
-orderFieldsBySchema <- function(x, schema) {
+sortFieldsBySchema <- function(x, schema) {
     schemaNames <- names(fields(schema))
-    order(max.col(globMatchMatrix(x, schemaNames), ties.method="first"))
+    x[order(max.col(globMatchMatrix(x, schemaNames), ties.method="first"))]
+}
+
+retrieveFieldNames <- function(x) {
+    ans <- tryCatch(names(readLuke(x)$fields),
+                    error = function(e) {
+                        warning("Luke request handler ",
+                                "unavailable --- ",
+                                "try 'includeStatic=TRUE'")
+                        character()
+                    })
+    internal <- grepl("^_|____", ans)
+    ans[!internal]
+}
+
+resolveFields <- function(x, query = NULL, ...) {
+    schema <- if (!is.null(query)) augment(schema(x), query) else schema(x)
+    fn <- resolveFieldNames(x, query, ...)
+    fields(schema)[fn]
+}
+
+sortFieldNames <- function(x, schema, query) {
+    x <- sortFieldsBySchema(x, schema)
+    if (!is.null(query)) {
+        x <- sortFieldsByQuery(x, query)
+    }
+    x
+}
+
+resolveFieldNames <- function(x, query = NULL, includeStatic = FALSE) {
+    if (!is.null(query)) {
+        isPattern <- flIsPattern(query)
+        if (!any(isPattern)) {
+            return(names(isPattern)) 
+        }
+    }
+    ans <- retrieveFieldNames(x)
+    if (includeStatic) {
+        f <- fields(schema(x))
+        ans <- union(ans, names(f)[!dynamic(f) & !hidden(f)])
+    }
+    sortFieldNames(ans, schema(x), query)
 }
 
 setMethod("fieldNames", "SolrCore",
-          function(x, patterns = NULL, onlyStored = FALSE, onlyIndexed = FALSE,
+          function(x, query = NULL, onlyStored = FALSE, onlyIndexed = FALSE,
                    includeStatic = FALSE)
               {
-                  if (!is.null(patterns) &&
-                      (!is.character(patterns) || any(is.na(patterns)))) {
-                      stop("if non-NULL, 'patterns' must be a ",
-                           "character vector without NAs")
+                  if (!is.null(query) && !is(query, "SolrQuery")) {
+                      stop("if non-NULL, 'query' must be a SolrQuery")
                   }
                   if (!isTRUEorFALSE(includeStatic)) {
                       stop("'includeStatic' must be TRUE or FALSE")
@@ -85,31 +114,16 @@ setMethod("fieldNames", "SolrCore",
                   if (!isTRUEorFALSE(onlyIndexed)) {
                       stop("'onlyIndexed' must be TRUE or FALSE")
                   }
-                  ans <- tryCatch(names(readLuke(x)$fields),
-                                  error = function(e) {
-                                      warning("Luke request handler ",
-                                              "unavailable --- ",
-                                              "consider 'includeStatic=TRUE'")
-                                      character()
-                                  })
-                  internal <- grepl("^_|____", ans)
-                  ans <- ans[!internal]
-                  if (includeStatic) {
-                      f <- fields(schema(x))
-                      ans <- union(ans, names(f)[!dynamic(f) & !hidden(f)])
-                  }
                   if (onlyStored || onlyIndexed) {
-                      f <- fields(schema(x), ans)
+                      f <- resolveFields(x, query, includeStatic)
                       keep <-
                           (if (onlyStored) stored(f) else TRUE) &
-                          (if (onlyIndexed) indexed(f) | docValues(f) else TRUE)
-                      ans <- ans[keep]
+                              (if (onlyIndexed) indexed(f) | docValues(f)
+                               else TRUE)
+                      names(f)[keep]
+                  } else {
+                      resolveFieldNames(x, query, includeStatic)
                   }
-                  ans <- ans[orderFieldsBySchema(ans, schema(x))]
-                  if (!is.null(patterns)) {
-                      ans <- extractByPatterns(ans, patterns)
-                  }
-                  ans
               })
 
 setGeneric("version", function(x) standardGeneric("version"))
@@ -322,11 +336,10 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
             if (is.null(responseType(expr)))
               responseType(expr) <- "list"
             expr <- translate(expr, core=envir)
-            expected.type <- params(expr)$wt
             query <- as.character(expr)
             response <- tryCatch(read(envir@uri$select, query),
                                  error = SolrErrorHandler(envir, expr))
-            response <- processSolrResponse(response, expected.type)
+            response <- processSolrResponse(response, params(expr)$wt)
             convertSolrQueryResponse(response, envir, expr)
           })
 
@@ -351,9 +364,14 @@ setGeneric("convertSolrQueryResponse",
            function(x, core, query) standardGeneric("convertSolrQueryResponse"),
            signature=c("x"))
 
-setMethod("convertSolrQueryResponse", "ANY", function(x, core, query) {
-              fromSolr(x, schema(core), query)
-          })
+convertSolrQueryResponse_default <- function(x, core, query) {
+    fromSolr(x, schema(core), query)
+}
+
+setMethod("convertSolrQueryResponse", "ANY", convertSolrQueryResponse_default)
+
+setMethod("convertSolrQueryResponse", "data.frame",
+          convertSolrQueryResponse_default)
 
 setMethod("convertSolrQueryResponse", "list", function(x, core, query) {
               ListSolrResult(x, core, query)

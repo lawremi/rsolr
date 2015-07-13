@@ -224,6 +224,7 @@ fromSolr_default <- function(x, type, query=NULL) {
   ans <- convertCollection(x, type, fromSolr)
   ans <- resolveIds(ans, type)
   ans <- resolveMeta(ans)
+  ans <- ans[,sortFieldNames(fieldNames(ans), type, query),drop=FALSE]
   ans
 }
 
@@ -261,7 +262,7 @@ augmentComputed <- function(x, fl) {
                              typeName="..computed..",
                              dynamic=FALSE,
                              multiValued=FALSE)
-  computed.type <- FieldTypeList(..computed.. = new("AnyField"))
+  computed.type <- FieldTypeList(..computed.. = new("solr.DoubleField"))
   fields(x) <- append(fields(x), computed.info)
   fieldTypes(x) <- append(fieldTypes(x), computed.type)
   x

@@ -194,6 +194,27 @@ PredicatedSolrSymbolPromise <- function(expr, context) {
 
 setMethod("length", "SolrPromise", function(x) nrow(context(x)))
 
+setGeneric("lengths", function (x, use.names = TRUE) standardGeneric("lengths"))
+
+setMethod("lengths", "SolrSymbolPromise", function(x, use.names = TRUE) {
+              if (is.null(grouping(context(x)))) {
+                  field <- fields(schema(context(x)), name(expr(x)))
+                  returnedAsList <- multiValued(field)
+                  if (!returnedAsList) {
+                      return(rep(1L, length(context(x))))
+                  }
+              }
+              callNextMethod()
+          })
+
+setMethod("lengths", "SolrPromise", function(x, use.names = TRUE) {
+              if (!is.null(grouping(context(x)))) {
+                  ndoc(context(x))
+              } else {
+                  lengths(as.list(x))
+              }
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Low-level conveniences for dealing with missing values (*eager*)
 ###
@@ -430,8 +451,12 @@ frangeCompare <- function(fun, x, y) {
     SolrLucenePromise(expr, context(promise))
 }
 
+reverseRelationalOp <- function(op) {
+    c(">"="<=", ">="="<", "<"=">=", "<="=">", "=="="==")[op]
+}
+
 reverseRelational <- function(call) {
-    call$fun <- c(">"="<=", ">="="<", "<"=">=", "<="=">", "=="="==")[call$fun]
+    call$fun <- reverseRelationalOp(call$fun)
     call[c("x", "y")] <- call[c("y", "x")]
     call
 }
@@ -743,6 +768,25 @@ setAs("PredicatedSolrSymbolPromise", "SolrFunctionPromise", function(from) {
           SolrSymbolPromise(expr(from)@subject, ctx)
       })
 
+as.data.frame.SolrPromise <- function(x, row.names = NULL, optional = FALSE,
+                                      ...,
+                                      nm = paste(deparse(substitute(x),
+                                          width.cutoff = 500L),
+                                          collapse = " "))
+{
+    as.data.frame(x, row.names=row.names, optional=optional, ..., nm=nm)
+}
+
+## mostly to ensure that multi-valued fields are not mistreated
+setMethod("as.data.frame", "SolrPromise",
+          function(x, row.names = NULL, optional = FALSE, ...,
+                   nm = paste(deparse(substitute(x), width.cutoff = 500L),
+                       collapse = " "))
+              {
+                  as.data.frame.vector(fulfill(x), row.names=row.names,
+                                       optional=optional, nm=nm, ...)
+              })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Solr Function utilities
 ###
@@ -787,15 +831,6 @@ solrCall <- function(fun, ...) {
 ### Simple example: any() sends sum() but then does > 0 on its value
 ### Complex example: weighted.mean sends sum(product(x, w)),
 ###                  augments it with sum(w), and later does val/sum(w).
-
-### TODO: think about supporting arbitrary transformations of
-### aggregation calls by embedding them into the "postprocess" hook.
-
-### What happens when there are no records in a bucket? Solr will omit
-### the statistics entirely.  The facet munging code will insert NAs
-### when statistics are missing, and postprocessing needs to catch NAs
-### (or count == 0) and convert the NA to something more reasonable,
-### if possible.
 
 setGeneric("hiddenName", function(x) standardGeneric("hiddenName"))
 
@@ -944,6 +979,7 @@ setMethod("quantile", "SolrPromise",
               probs <- probs * 100
               solrAggregate("percentile", x, na.rm, as.list(probs),
                             postprocess = function(percentile, count) {
+                                percentile <- as.matrix(percentile)
                                 colnames(percentile) <- paste0(probs, "%")
                                 percentile
                             })
@@ -995,17 +1031,10 @@ setGeneric("mad", function(x, center = median(x), constant = 1.4826,
            standardGeneric("mad"), signature=c("x", "center"))
 
 setMethod("mad", c("SolrPromise", "ANY"),
-          function (x, center = median(x), constant = 1.4826, na.rm = FALSE, 
-                    low = FALSE, high = FALSE) {
+          function (x, center = median(x, na.rm=na.rm), constant = 1.4826,
+                    na.rm = FALSE, low = FALSE, high = FALSE) {
               if (!identical(low, FALSE) || !identical(high, FALSE)) {
                   stop("'high' and 'low' must be FALSE")
-              }
-              if (na.rm) {
-### FIXME: stats::mad:center should default to median(x, na.rm=na.rm)
-                  .x <- x
-                  x <- x[complete.cases(x)]
-                  center
-                  x <- .x
               }
               ## FIXME: computing center requires an extra round trip...
               ## ... and breaks this for grouped data.
@@ -1091,6 +1120,14 @@ setMethod("tail", "SolrPromise", function (x, n = 6L, ...) {
               fulfill(x)
           })
 
+setGeneric("windows", function(x, ...) standardGeneric("windows"))
+
+setMethod("windows", "SolrPromise",
+          function(x, start = 1L, end = .Machine$integer.max) {
+              ctx <- transform(context(x), x = .(expr(x)))["x"]
+              windows(ctx, start=start, end=end)$x
+          })
+
 setMethod("unique", "SolrSymbolPromise", function (x, incomparables = FALSE) {
               unique(context(x)[expr(x)@name],
                      incomparables=incomparables)[[1L]]
@@ -1141,6 +1178,121 @@ setMethod("ftable", "SolrSymbolPromise",
                     col.vars = NULL) {
               ftable(table(..., exclude=exclude), row.vars=row.vars,
                      col.vars=col.vars)
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Lazy evaluation of aggregate manipulation
+###
+
+aggPostCall <- function(name, agg, ..., first = TRUE) {
+    pp <- expr(agg)@postprocess
+    if (is.null(pp)) {
+        pp <- function(x, len) x 
+    }
+    if (first) {
+        args <- list(body(pp), ...)
+    } else {
+        args <- list(..., body(pp))
+    }
+    body(pp) <- as.call(c(as.name(name), args))
+    expr(agg)@postprocess <- pp
+    agg
+}
+
+setMethod("Logic", c("logical", "SolrAggregatePromise"), function(e1, e2) {
+              aggPostCall(.Generic, e2, e1)
+          })
+
+setMethod("Logic", c("SolrAggregatePromise", "logical"), function(e1, e2) {
+              aggPostCall(.Generic, e1, e2)
+          })
+
+setMethod("Logic", c("SolrAggregatePromise", "SolrAggregatePromise"),
+          function(e1, e2) {
+              e1 <- as.logical(e1)
+              callGeneric()
+          })
+
+setMethod("!", "SolrAggregatePromise", function(x) {
+              aggPostCall("!", x)
+          })
+
+setMethod("is.na", "SolrAggregatePromise", function(x) {
+              aggPostCall("is.na", x)
+          })
+
+setMethod("Compare", c("numeric", "SolrAggregatePromise"), function(e1, e2) {
+              aggPostCall(.Generic, e2, e1, first=FALSE)
+          })
+
+setMethod("Compare", c("SolrAggregatePromise", "numeric"), function(e1, e2) {
+              aggPostCall(.Generic, e1, e2)
+          })
+
+setMethod("Compare", c("SolrAggregatePromise", "SolrAggregatePromise"),
+          function(e1, e2) {
+              e1 <- as.numeric(e1)
+              callGeneric()
+          })
+
+setMethod("Arith", c("numeric", "SolrAggregatePromise"), function(e1, e2) {
+              aggPostCall(.Generic, e2, e1, first=FALSE)
+          })
+
+setMethod("Arith", c("SolrAggregatePromise", "numeric"), function(e1, e2) {
+              aggPostCall(.Generic, e1, e2)
+          })
+
+setMethod("Arith", c("SolrAggregatePromise", "SolrAggregatePromise"),
+          function(e1, e2) {
+              e1 <- as.numeric(e1)
+              callGeneric()
+          })
+
+setMethod("Math", "SolrAggregatePromise", function(x) {
+              aggPostCall(.Generic, x)
+          })
+
+setMethod("round", "SolrAggregatePromise", function(x, digits = 0L) {
+              aggPostCall("round", x, digits)
+          })
+
+setMethod("ifelse",
+          c("SolrAggregatePromise", "ANY", "ANY"),
+          function(test, yes, no) {
+              aggPostCall("ifelse", test, yes, no)
+          })
+
+setMethod("pmax2", c("numeric", "SolrAggregatePromise"),
+          function(x, y, na.rm=FALSE) {
+              aggPostCall("pmax2", e2, e1, na.rm)
+          })
+
+setMethod("pmax2", c("SolrAggregatePromise", "numeric"),
+          function(x, y, na.rm=FALSE) {
+              aggPostCall("pmax2", e1, e2, na.rm)
+          })
+
+setMethod("pmax2", c("SolrAggregatePromise", "SolrAggregatePromise"),
+          function(x, y, na.rm=FALSE) {
+              e1 <- as.numeric(e1)
+              callGeneric()
+          })
+
+setMethod("pmin2", c("numeric", "SolrAggregatePromise"),
+          function(x, y, na.rm=FALSE) {
+              aggPostCall("pmax2", e2, e1, na.rm)
+          })
+
+setMethod("pmin2", c("SolrAggregatePromise", "numeric"),
+          function(x, y, na.rm=FALSE) {
+              aggPostCall("pmax2", e1, e2, na.rm)
+          })
+
+setMethod("pmin2", c("SolrAggregatePromise", "SolrAggregatePromise"),
+          function(x, y, na.rm=FALSE) {
+              e1 <- as.numeric(e1)
+              callGeneric()
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

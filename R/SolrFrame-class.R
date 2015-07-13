@@ -143,9 +143,7 @@ setMethod("eval", c("SolrExpression", "SolrFrame"),
 
 setMethod("eval", c("SolrAggregateCall", "SolrFrame"),
           function (expr, envir, enclos) {
-              df <- aggregate(envir, y = .(expr))
-              grouped <- length(df) > 1L
-              if (grouped) split(df$y, df[-length(df)]) else df$y
+              aggregate(envir, y = .(expr))$y
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -171,8 +169,8 @@ as.list.SolrFrame <- function(x, ...) {
     as.list(x, ...)
 }
 
-setMethod("as.list", "SolrFrame", function(x, lazy=FALSE, ...) {
-              lapply(fieldNames(x), `[[`, x=x, lazy=lazy, ...)
+setMethod("as.list", "SolrFrame", function(x, ...) {
+              lapply(fieldNames(x), `[[`, x=x, ...)
           })
 
 setAs("SolrFrame", "DocCollection",
@@ -182,15 +180,9 @@ setAs("SolrFrame", "DocCollection",
 ### Summarizing
 ###
 
-setGeneric("group", function(x, ...) standardGeneric("group"))
+setMethod("group", c("SolrFrame", "NULL"), function(x, by) x)
 
-setMethod("group", "SolrFrame", function(x, by) {
-              if (is.null(by)) {
-                  return(x)
-              }
-              if (!is(by, "formula")) {
-                  stop("'by' must be NULL or a formula")
-              }
+setMethod("group", c("SolrFrame", "formula"), function(x, by) {
               GroupedSolrFrame(x, by)
           })
 
@@ -202,17 +194,17 @@ setMethod("summary", "SolrFrame",
           function(object, maxsum = 7L,
                    digits = max(3L, getOption("digits") - 3L))
     {
-        types <- fieldTypes(schema(core(object)), fieldNames(object))
+        fn <- fieldNames(object)
+        types <- fieldTypes(schema(core(object)), fn)
         num <- vapply(types, is, logical(1L), "NumericField")
         p <- c(0.25, 0.5, 0.75)
         query <- query(object)
-        fn <- fieldNames(object)
         for (f in fn[num])
             query <- facet(query, NULL, min(.field(f)),
                            mean(.field(f)), quantile(.field(f), p),
                            max(.field(f)))
         query <- facet(query, fn[!num], limit=maxsum)
-        SolrSummary(facets(solr(x), query), fn, digits)
+        SolrSummary(facets(core(x), query), fn, digits)
     })
 
 

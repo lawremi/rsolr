@@ -139,7 +139,13 @@ setMethod("translate", c("SolrQueryTranslationSource", "Expression"),
           })
 
 setMethod("as.character", "SolrQueryTranslationSource",
-          function(x) deparse(expr(x)))
+          function(x) {
+              if (is.language(x)) {
+                  deparse(expr(x))
+              } else {
+                  as.character(expr(x))
+              }
+          })
 
 deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
@@ -182,20 +188,6 @@ setMethod("subset", "SolrQuery",
   }
   x
 })
-
-### This took some thought. The field restriction overrides the
-### previous 'fl' parameter, except where it was adding new fields
-### (computed or aliased). Those are kept iff they match the new
-### restriction. This treats the field restriction almost like a
-### "clip" in computer graphics. It can be reset. However, the
-### high-level API requires selections be made from the current clip.
-restrictToFields <- function(x, fields) {
-  fl <- params(x)$fl
-  names <- ifelse(nzchar(names(fl)), names(fl), NA_character_)
-  matches <- vapply(glob2rx(fields), grepl, logical(length(names)), names)
-  params(x)$fl <- c(fl[rowSums(matches) > 0L], fields)
-  x
-}
 
 transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
 
@@ -397,7 +389,7 @@ setMethod("group", c("SolrQuery", "formula"), function(x, by, ...) {
   if (length(exprs) > 1L) {
     stop("'by' must be a formula with a single term")
   }
-  group(x, exprs[[1L]], env=attr(by, ".Environment"), ...)
+  sort(group(x, exprs[[1L]], env=attr(by, ".Environment"), ...), by=by)
 })
 
 grouped <- function(x) identical(params(x)$group, "true")
@@ -623,7 +615,7 @@ setMethod("makeName", "SolrAggregateCall", function(x) {
               paste0(makeName(x@subject), ".", x@name)
           })
 
-setMethod("makeName", "SolrFunctionExpression", function(x) {
+setMethod("makeName", "SolrFunctionCall", function(x) {
               if (length(x@args) > 1L) {
                   x@args <- x@args[-1L]
                   suffix <- x
@@ -631,6 +623,10 @@ setMethod("makeName", "SolrFunctionExpression", function(x) {
                   suffix <- x@name
               }
               paste0(makeName(x@args[[1L]]), ".", suffix)
+          })
+
+setMethod("makeName", "SolrFunctionExpression", function(x) {
+              as.character(x@name)
           })
 
 imputeStatNames <- function(x) {
@@ -860,9 +856,9 @@ translateBoundsParams <- function(p, nrows) {
 translateParams <- function(p, core, nrows) {
     p <- translateBoundsParams(p, nrows)
 ### FIRST TIME EVER USING rapply()!!!! Unfortunately, had to write our own.
-    rapply2(p, translateParam,
-            c("TranslationRequest", "facet", "facetlist"),
-            context=core, fq=getFqTags(p), how="replace")
+    rreplace(p, translateParam,
+             c("TranslationRequest", "facet", "facetlist"),
+             context=core, fq=getFqTags(p))
 }
 
 setMethod("translate", c("SolrQuery", "missing"), function(x, target, core) {
@@ -888,7 +884,7 @@ solrFormat.difftime <- function(x, ...) {
 }
 
 paramsAsCharacter <- function(p) {
-    p <- rapply2(p, as.character, "SolrExpression", how="replace")
+    p <- rreplace(p, as.character, "SolrExpression")
     if (!is.null(p[["json"]]$facet)) {
         p[["json"]]$facet <- rapply(p[["json"]]$facet, solrFormat,
                                     c("POSIXt", "Date", "difftime"),
@@ -904,6 +900,62 @@ paramsAsCharacter <- function(p) {
 
 setMethod("as.character", "SolrQuery",
           function(x) paramsAsCharacter(params(x)))
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Utilities related to the 'fl' parameter
+###
+
+### This took some thought. The field restriction overrides the
+### previous 'fl' parameter, except where it was adding new fields
+### (computed or aliased). Those are kept iff they match the new
+### restriction. This treats the field restriction almost like a
+### "clip" in computer graphics. It can be reset. However, the
+### high-level API requires selections be made from the current clip.
+restrictToFields <- function(x, fields) {
+    fl <- params(x)$fl
+    names <- ifelse(nzchar(names(fl)), names(fl), NA_character_)
+    globs <- grepl("*", fields, fixed=TRUE)
+    exactMatch <- match(fields[!globs], names)
+    globMatchMatrix <- vapply(glob2rx(fields[globs]), grepl, names,
+                              FUN.VALUE=logical(length(names)))
+    globMatch <- which(rowSums(globMatchMatrix) > 0L)
+    params(x)$fl <- c(fl[sort(c(exactMatch, globMatch))],
+                      setdiff(fields, names[exactMatch]))
+    x
+}
+
+globMatchMatrix <- function(x, patterns) {
+    ans <- vapply(glob2rx(patterns), grepl, logical(length(x)), x)
+    if (is.vector(ans)) {
+        ans <- t(ans)
+    }
+    ans
+}
+
+flNames <- function(fl) {
+    if (is.null(names(fl))) {
+        as.character(fl)
+    } else {
+        ans <- names(fl)
+        ans[ans == ""] <- as.character(fl[ans == ""])
+        ans
+    }
+}
+
+flIsPattern <- function(query) {
+    fl <- params(query)$fl
+    setNames(grepl("*", fl, fixed=TRUE), flNames(fl))
+}
+
+sortFieldsByQuery <- function(x, query) {
+    isPattern <- flIsPattern(query)
+    patterns <- which(isPattern)
+    m <- globMatchMatrix(x, names(patterns))
+    patterns <- patterns[max.col(m, ties.method="first")]
+    matched <- rowSums(m) > 0L
+    aliases <- which(!isPattern)
+    unique(c(names(aliases), x[matched])[order(c(aliases, patterns[matched]))])
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show
@@ -930,7 +982,7 @@ facetForShow <- function(x) {
 }
 
 facetsForShow <- function(x) {
-    c(unname(rapply2(x, facetForShow, "facet")),
+    c(unname(vapply(x, facetForShow, character(1L))),
       names(x)[!vapply(x, is.list, logical(1L))])
 }
 

@@ -54,10 +54,10 @@ GroupedSolrFrame <- function(frame, grouping) {
 ### Accessors
 ###
 
-grouping <- function(x) x@grouping
+setMethod("grouping", "GroupedSolrFrame", function(x) x@grouping)
 
 setMethod("ndoc", "GroupedSolrFrame", function(x) {
-              xtabs(data=x)
+              as.integer(xtabs(NULL, x))
           })
 
 setMethod("rownames", "GroupedSolrFrame", function(x) {
@@ -115,7 +115,9 @@ setReplaceMethod("[", "GroupedSolrFrame", function(x, i, j, ..., value) {
 ###
 
 setMethod("[", "GroupedSolrFrame", function(x, i, j, ..., drop = TRUE) {
-              if (!missing(i) && !(is(i, "Promise") || is(i, "Expression"))) {
+              twoD <- (nargs() - !missing(drop)) > 2L
+              if (twoD && !missing(i) &&
+                  !(is(i, "Promise") || is(i, "Expression"))) {
                   if (is.list(i) && !is.null(names(i)) &&
                       !all(vapply(i, is.character, logical(1L)))) {
                       x <- x[names(i),]
@@ -124,7 +126,12 @@ setMethod("[", "GroupedSolrFrame", function(x, i, j, ..., drop = TRUE) {
                   }
                   i <- unlist(i, use.names=FALSE)
               }
-              callNextMethod()
+              if (twoD && missing(i) && !missing(j)) {
+                  ## FIXME: methods package bug
+                  callNextMethod(x, i=, j=j, drop=drop)
+              } else {
+                  callNextMethod()
+              }
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -132,13 +139,6 @@ setMethod("[", "GroupedSolrFrame", function(x, i, j, ..., drop = TRUE) {
 ###
 ### Any specified groupings are interacted with the current grouping.
 ###
-
-mergeGrouping <- function(x, y) {
-    lhs <- if (length(y) == 3L) y[[2L]]
-    vars <- union(colnames(attr(terms(x), "factors")),
-                  colnames(attr(terms(y), "factors")))
-    as.formula(paste(lhs, "~", paste(vars, collapse="+")))
-}
 
 setMethod("group", "GroupedSolrFrame", function(x, by) {
               if (is.null(by)) {
@@ -167,8 +167,6 @@ setMethod("tail", "GroupedSolrFrame", function (x, n = 6L, ...) {
               query(x) <- group(query(x), grouping(x))
               callNextMethod()
           })
-
-setGeneric("windows", function(x, ...) standardGeneric("windows"))
 
 setMethod("windows", "GroupedSolrFrame",
           function(x, start = 1L, end = .Machine$integer.max) {
@@ -205,25 +203,46 @@ setMethod("tails", "ANY", function (x, n = 6L) {
               windows(x, start = -n + 1L)
           })
 
+setMethod("unique", "GroupedSolrFrame", function (x, incomparables = FALSE) {
+              ans <- callNextMethod()
+              groupDf(ans, grouping(x), colnames(x))
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###
+
+groupDf <- function(df, grouping, fn) {
+    mf <- model.frame(grouping, df)
+    df <- df[fn]
+    columns <- lapply(df, split, mf)
+    ## firstColumn <- unname(split(df[[1L]], mf))
+    ## columns <- c(list(firstColumn), lapply(df[-1L], relist, firstColumn))
+    ## names(columns)[1L] <- fn[1L]
+    structure(columns, class="data.frame", row.names=seq_along(columns[[1L]]))
+}
 
 setMethod("as.data.frame", "GroupedSolrFrame",
           function(x, row.names = NULL, optional = FALSE, fill = TRUE) {
               fn <- colnames(x)
               if (length(fn) == 0L || grouped(query(x))) {
-                  return(as.data.frame(x, row.names=row.names,
-                                       optional=optional, fill=fill))
+                  return(callNextMethod())
               }
               x <- x[union(fn, all.vars(grouping(x)))]
 ### FIXME: if we had Solr sort, then CompressedList would be really fast
-              df <- as.data.frame(x, row.names=row.names,
-                                  optional=optional, fill=fill)
-              mf <- model.frame(grouping(x), df)
-              ans <- df[fn]
-              ans[1L] <- split(ans[[1L]], mf)
-              data.frame(ans[1L], lapply(ans[-1L], relist, ans[1L]))
+              df <- callNextMethod()
+              groupDf(df, grouping(x), fn)
+          })
+
+setGeneric("ungroup", function(x, ...) standardGeneric("ungroup"))
+
+setMethod("ungroup", "data.frame", function(x) {
+              x[] <- lapply(x, unlist, use.names=FALSE)
+              x
+          })
+
+setMethod("ungroup", "GroupedSolrFrame", function(x) {
+              as(x, "SolrFrame")
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

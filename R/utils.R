@@ -185,15 +185,22 @@ VariadicToBinary <- function(variadic, binary)
     variadic
 }
 
-callsToNames <- function(expr, fun, where = parent.frame()) {
-    unquote <- function(e) if (is.pairlist(e)) 
-                               as.pairlist(lapply(e, unquote))
-                           else if (length(e) <= 1L) 
-                               e
-                           else if (e[[1L]] == fun)
-                               as.name(eval(e[[2L]], where))
-                           else as.call(lapply(e, unquote))
-    unquote(expr)
+## bquote() loops over anything, even non-language objects, which breaks things
+
+substituteCalls <- function (expr, name, FUN) {
+    if (is.call(expr)) {
+        if (expr[[1L]] == as.name(name)) 
+            FUN(expr)
+        else as.call(lapply(expr, substituteCalls, name, FUN))
+    } else expr
+}
+
+bquote2 <- function (expr, where = parent.frame()) {
+    substituteCalls(expr, ".", function(e) eval(e[[2L]], where))
+}
+
+callsToNames <- function(expr, name, where = parent.frame()) {
+    substituteCalls(expr, name, function(e) as.name(eval(e[[2L]], where)))
 }
 
 list2LazyEnv <- function(x, enclos) {
@@ -227,28 +234,23 @@ parseFormulaRHS <- function(x) {
     as.list(attr(terms(x), "variables")[-1L])
 }
 
-rapply2 <- function(object, f, classes = "ANY", deflt = NULL,
-                    how = c("unlist", "replace", "list"), ...)
+rreplace <- function(object, f, classes = "ANY", ...)
 {
-    how <- match.arg(how)
     f <- match.fun(f)
     if (!is.character(classes) || any(is.na(classes))) {
         stop("'classes' should be character without NAs")
     }
-    .rapply2 <- function(obj) {
+    .rreplace <- function(obj) {
         if (is.recursive(obj)) {
-            obj[] <- lapply(obj, .rapply2)
+            obj[] <- lapply(obj, .rreplace)
         }
         if (any(vapply(classes, is, object=obj, FUN.VALUE=logical(1L)))) {
             f(obj, ...)
-        } else if (how != "replace") {
-            deflt
         } else {
             obj
         }
     }
-    ans <- .rapply2(object)
-    if (how == "unlist") unlist(ans) else ans
+    .rreplace(object)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

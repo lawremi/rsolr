@@ -67,12 +67,17 @@ setClass("TranslationRequest",
 
 setMethod("as.character", "TranslationRequest", function(x) as.character(x@src))
 
+setMethod("show", "TranslationRequest", function(object) {
+              cat("'", as.character(object@src), "' => '", class(object@target),
+                  "'\n", sep="")
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Utilities
 ###
 
 preprocessExpression <- function(expr, env) {
-    while(!identical(expr, expr <- eval(call("bquote", expr, env)))) { }
+    while(!identical(expr, expr <- bquote2(expr, env))) { }
     callsToNames(expr, quote(.field), env)
 }
 

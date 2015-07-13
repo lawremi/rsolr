@@ -51,7 +51,6 @@ test_SolrFrame_accessors <- function() {
   )
   docs <- as(as(docs, "DocCollection"), "DocDataFrame")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
-  docs[,"id"] <- as.character(docs[,"id"])
   ids(docs) <- docs[,"id"]
   s[,,insert=TRUE] <- docs
   
@@ -104,6 +103,18 @@ test_SolrFrame_accessors <- function() {
   checkDFResponseEquals(as.data.frame(stail), tail(allDocs, 2L))
 
 ### TODO: check that rename(), once fixed in Solr itself
-  
+
+### TODO: check unique,SolrFrame including a variable that does not
+###       exist in any records
+
+### TODO: checks on heads/tails  
+  sh <- ungroup(heads(group(s, ~ inStock), 2L))
+  sh$price_c <- NULL
+  correct.sh <- do.call(rbind, by(df, df$inStock, head, 2L))
+  correct.sh <- correct.sh[unique(c("inStock", colnames(correct.sh)))]
+  correct.sh$inStock <- as.factor(correct.sh$inStock)
+  rownames(correct.sh) <- NULL
+  checkIdentical(sh, correct.sh)
+
   solr$kill()
 }

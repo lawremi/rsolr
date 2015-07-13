@@ -53,6 +53,7 @@ test_SolrCore_accessors <- function() {
   docs <- as(docs, "DocCollection")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- docs[,"id"]
+  docs <- docs[,fieldNames(sc)]
 
   q <- SolrQuery(id %in% as.character(2:4))
   checkIdentical(ndoc(sc, q), 3L)

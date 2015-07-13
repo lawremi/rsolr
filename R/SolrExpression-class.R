@@ -790,6 +790,14 @@ setAs("ANY", "SolrFunctionExpression", function(from) {
 setAs("ANY", "SolrSymbol", function(from) SolrSymbol(from))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Show methods
+###
+
+setMethod("show", "SolrExpression", function(object) {
+              cat(as.character(object), "\n")
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Query parser utilities
 ###
 

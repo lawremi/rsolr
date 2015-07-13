@@ -10,10 +10,6 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
-library(rsolr)
-library(RUnit)
-options(verbose=TRUE)
-
 test_SolrQuery <- function() {
   solr <- rsolr:::TestSolr()
   s <- SolrList(solr$uri)
@@ -30,6 +26,7 @@ test_SolrQuery <- function() {
   docs <- as(docs, "DocCollection")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- as.character(rsolr:::pluck(docs, "id"))
+  docs <- docs[,fieldNames(s)]
 
   testSubset(s, docs)
   testBoundsRestriction(sc, docs)

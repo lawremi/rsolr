@@ -48,24 +48,13 @@ setAs("data.frame", "DocCollection", function(from) {
 })
 
 setAs("ANY", "DocList", function(from) {
-  new("DocList", lapply(from, as.list))
+  new("DocList", lapply(from, as, "list"))
 })
-
-as.data.frame.DocList <- function(from) {
-  df <- restfulr:::raggedListToDF(from)
-  rownames(df) <- ids(from)
-  df
-  ## allFields <- fieldNames(from)
-  ## proto <- setNames(as.list(rep(NA, length(allFields))), allFields)
-  ## do.call(rbind.data.frame, lapply(from, function(x) {
-  ##   proto[names(x)] <- x
-  ##   proto
-  ## }))
-}
 
 setAs("data.frame", "DocList", function(from) {
-  new("DocList", split(from, rownames(from)))
-})
+          l <- lapply(split(from, rownames(from)), as, "list")
+          new("DocList", lapply(l, setNames, colnames(from)))
+      })
 
 setAs("ANY", "DocDataFrame", function(from) {
   new("DocDataFrame", as.data.frame(from))
@@ -78,7 +67,11 @@ setAs("list", "DocDataFrame", function(from) {
 })
 
 setAs("DocDataFrame", "data.frame", function(from) {
-          S3Part(from, TRUE)
+          if (strict) {
+              S3Part(from, TRUE)
+          } else {
+              from
+          }
       })
 
 setAs("DocList", "data.frame", function(from) {
@@ -105,7 +98,7 @@ setMethod("as.data.frame", "DocList",
               }
               rownames(ans) <- row.names
               if (!optional) {
-                  names(ans) <- make.names(ans)
+                  names(ans) <- make.names(names(ans))
               }
               ans
           })
@@ -138,7 +131,7 @@ unid <- function(x) {
   x
 }
 
-setReplaceMethod("names", "DocCollection", function(x, value) {
+setReplaceMethod("names", "DocList", function(x, value) {
                      names(S3Part(x, TRUE)) <- value
                      x
                  })
@@ -293,6 +286,9 @@ setGeneric("convertFields",
            signature="x")
 
 setMethod("convertFields", "DocDataFrame", function(x, types, FUN) {
+  if (length(x) == 0L) {
+    return(x)
+  }
   initialize(x, as.data.frame(mapply(FUN, x, types, SIMPLIFY=FALSE),
                               optional=TRUE, stringsAsFactors=FALSE,
                               row.names=rownames(x)))

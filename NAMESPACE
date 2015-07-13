@@ -15,7 +15,8 @@ importFrom(stats, quantile)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,
-       query, core, params, "params<-", stats, defer, docs, pmin, pmax)
+       query, core, params, "params<-", stats, defer, docs, pmin, pmax,
+       lengths, ungroup)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               fieldNames, subset, xtabs, facets, transform, summary,
               head, tail, window, rev, aggregate, mean, sd, var, window, group,
@@ -29,9 +30,8 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
 S3method(as.data.frame, Solr)
-S3method(as.data.frame, DocList)
+S3method(as.data.frame, DocCollection)
 S3method(as.data.frame, FieldInfo)
-S3method(as.data.frame, DocList)
 S3method(as.data.frame, Solr)
 S3method(as.data.frame, SolrFrame)
 S3method(as.data.frame, Promise)

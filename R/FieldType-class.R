@@ -188,6 +188,10 @@ setClass("solr.ExternalFileField", contains="NumericField")
 
 setClass("AnyField", contains="FieldType")
 
+setClassUnion("FacetableField",
+              c("LogicalField", "CharacterField", "NumericField",
+                "IntegerField", "solr.DateField"))
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Resolution of type against a field definition
 ###

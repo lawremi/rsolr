@@ -40,6 +40,7 @@ ListSolrResult <- function(x, core, query) {
 }
 
 Grouping <- function(groups, schema) {
+    groups <- groups$groups
     names(groups) <- pluck(groups, "groupValue")
     groups <- pluck(pluck(groups, "doclist"), "docs")
     new("Grouping", groups=groups, schema=schema)
@@ -61,7 +62,8 @@ setMethod("ndoc", "ListSolrResult",
           function(x) as.integer(x$response$numFound))
 
 setMethod("facets", "ListSolrResult", function(x) {
-              Facets(as.list(x$facets), as.list(json(query(x))$facet))
+              Facets(as.list(x$facets), as.list(json(query(x))$facet),
+                     schema(core(x)))
           })
 
 setMethod("ngroup", "ListSolrResult", function(x) {
@@ -85,10 +87,17 @@ setAs("Grouping", "list", function(from) {
           lapply(from@groups, fromSolr, schema(from))
       })
 
+relist1 <- function(x, skeleton) { # non-recursive variant of relist
+    to <- cumsum(lengths(skeleton, use.names=FALSE))
+    from <- c(1L, head(to, -1L) + 1L)
+    mapply(function(from, to) x[from:to], from, to, SIMPLIFY=FALSE)
+}
+
 setAs("Grouping", "data.frame", function(from) {
           docs <- as(unlist(from@groups, recursive=FALSE), "DocList")
-          df <- fromSolr(as.data.frame(docs, ...), schema(from))
-          as.data.frame(lapply(df, relist, from@groups))
+          df <- fromSolr(as.data.frame(docs), schema(from))
+          df[] <- lapply(df, relist1, from@groups)
+          df
       })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

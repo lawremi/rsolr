@@ -11,10 +11,11 @@ test_SolrList_accessors <- function() {
   solr <- rsolr:::TestSolr()
   s <- SolrList(solr$uri)
 
-  checkEquals(SolrCore(solr$uri), core(s))
+  checkEquals(SolrCore(solr$uri), core(SolrList(solr$uri)))
   checkIdentical(SolrQuery(), query(s))
   
   doc <- list(id="1112211111", name="my name!")
+  s[] <- NULL
   s[[doc$id]] <- doc
   checkResponseIdentical(s[[doc$id]], doc)
   checkResponseIdentical(eval(call("$", s, as.name(doc$id))), doc)
@@ -32,6 +33,8 @@ test_SolrList_accessors <- function() {
   s[insert=TRUE] <- docs
 
   docs <- as(docs, "DocCollection")
+  docs <- docs[,fieldNames(s)]
+  
   checkIdentical(ids(s), c(docs[,"id"], doc$id))
   
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
@@ -51,6 +54,7 @@ test_SolrList_accessors <- function() {
   docs[,"id"] <- NULL
   s[insert=TRUE] <- docs
   docs[,"id"] <- ids(docs)
+  docs <- docs[,c("id", setdiff(fieldNames(docs), "id"))]
   checkResponseEquals(as.list(s), docs)
   s[] <- NULL
 
@@ -60,6 +64,7 @@ test_SolrList_accessors <- function() {
   s[ids,] <- docs
   ids(docs) <- ids
   docs[,"id"] <- ids(docs)
+  docs <- docs[,c("id", setdiff(fieldNames(docs), "id"))]
   checkResponseEquals(as.list(s), docs)
 
   s[,"price"] <- s[,"price"] + 1L
@@ -99,7 +104,6 @@ test_SolrList_accessors <- function() {
                    timestamp_dt=as.POSIXct(c(NA, d5$timestamp_dt), "UTC",
                      "1970-01-01"),
                    stringsAsFactors=FALSE)
-  rownames(df) <- df$id
   checkResponseEquals(as.data.frame(s), as(df, "DocDataFrame"), tolerance=1)
 
   l <- as.list(s)
@@ -116,7 +120,7 @@ test_SolrList_queries <- function() {
   docs <- list(
     list(id="2", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
     list(id="3", inStock=TRUE, price=4, timestamp_dt=Sys.time()),
-    list(id="4", inStock=TRUE, price=3, timestamp_dt=Sys.time()),
+    list(id="4", inStock=TRUE, price=2, timestamp_dt=Sys.time()),
     list(id="5", inStock=FALSE, price=5, timestamp_dt=Sys.time())
     )
   s[] <- docs
@@ -124,21 +128,23 @@ test_SolrList_queries <- function() {
   docs <- as(docs, "DocCollection")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
   ids(docs) <- as.character(rsolr:::pluck(docs, "id"))
+  docs <- docs[,fieldNames(s)]
 
   ## CHECK: subset() queries
   ss <- subset(s, id %in% 2:4)
   checkResponseEquals(as.list(ss), docs[1:3])
-### TODO: check 'select' interface
+  ss <- subset(s, id %in% 2:4, select=id:inStock)
+  checkResponseEquals(as.list(ss), docs[1:3,c("id","price","inStock")])
 
   ## CHECK: sort
   sorted <- sort(s, by = ~ price)
   checkResponseEquals(as.list(sorted), docs[c(1, 3, 2, 4)])
 
   sorted <- sort(s, by = ~ price, decreasing=TRUE)
-  checkResponseEquals(as.list(sorted), docs[c(4, 2, 3, 1)])
+  checkResponseEquals(as.list(sorted), docs[c(4, 2, 1, 3)])
 
   sorted <- sort(s, by = ~ I(price * -1))
-  checkResponseEquals(as.list(sorted), docs[c(4, 2, 3, 1)])
+  checkResponseEquals(as.list(sorted), docs[c(4, 2, 1, 3)])
   
   ## CHECK: transform
   tformed <- transform(s, negPrice = price * -1)
@@ -146,7 +152,12 @@ test_SolrList_queries <- function() {
   tform.docs[,"negPrice"] <- tform.docs[,"price"] * -1
   checkResponseEquals(as.list(tformed), tform.docs)
 
-  ## TODO: CHECK: unique()
+  ## CHECK: unique()
+### FIXME: Solr fails to facet on price_c, but does not throw error
+  uniqueFields <- c("inStock", "price", "timestamp_dt")
+  uniqueDocs <- docs[c(4,1,2),uniqueFields]
+  ids(uniqueDocs) <- NULL
+  checkResponseEquals(unique(s[,uniqueFields,drop=FALSE]), uniqueDocs)
   
   ## CHECK: facet
   checkFacet <- function(formula, counts, solr=s) {
@@ -168,79 +179,55 @@ test_SolrList_queries <- function() {
   sub <- subset(s, inStock)
   checkFacet(~ inStock, c("FALSE"=0L, "TRUE"=3L), sub)
 
-  ## CHECK: df upload and statistics
-  val_pi <- as.integer(c(23, 26, 38, 46, 55, 63, 77, 84, 92, 94))
-  price <- val_pi^2
-  df <- data.frame(id=as.character(seq_along(val_pi)),
-                   name=paste0("doc:", val_pi), val_pi,
-                   price, inStock=rep(c(TRUE, FALSE), length=length(val_pi)),
-                   stringsAsFactors=FALSE)
-  s[] <- df
-  sm <- summary(s, of="val_pi")
-  stats.df <- as.data.frame(stats(sm))
-  statsDf <- function(x, field=deparse(substitute(x))) {
-    data.frame(field, min=as.numeric(min(x)), max=as.numeric(max(x)),
-               sum=as.numeric(sum(x)), count=as.numeric(length(x)),
-               missing=as.numeric(sum(is.na(x))),
-               sumOfSquares=sum(x^2), mean=mean(x),
-               stddev=sd(x), row.names=field, stringsAsFactors=FALSE)
-  }
-  correct.stats.df <- statsDf(val_pi)  
-  checkIdentical(stats.df, correct.stats.df)
+  df <- S3Part(as.data.frame(docs), TRUE)
 
-  df$price[3] <- NA
-  s[] <- df
-
-  checkAggIdentical <- function(test, correct) {
-    correct[[1L]] <- as.factor(correct[[1L]])
-    checkIdentical(test, correct)
-  }
-  
+  ## functional usage
   sa <- aggregate(price ~ inStock, s, min)
-  correct.sa <- aggregate(price ~ inStock, df, min, na.action=na.pass)
-  checkAggIdentical(sa, correct.sa)
-
-  sa <- aggregate(price ~ inStock, s, min, na.rm=TRUE)
   correct.sa <- aggregate(price ~ inStock, df, min)
-  checkAggIdentical(sa, correct.sa)
-
-  sa <- aggregate(price ~ inStock, s, count)
-  correct.sa <- aggregate(price ~ inStock, df, length, na.action=na.pass)
-  correct.sa$price <- as.numeric(correct.sa$price)
-  checkAggIdentical(sa, correct.sa)
-  
-  sa <- aggregate(price ~ inStock, s, count, na.rm=TRUE)
-  correct.sa <- aggregate(price ~ inStock, df, length)
-  correct.sa$price <- as.numeric(correct.sa$price)
-  checkAggIdentical(sa, correct.sa)
-
-  sa <- aggregate(~ inStock, s, nrow)
-  correct.sa <- as.data.frame(xtabs(~ inStock, df))
-  correct.sa$Freq <- as.integer(correct.sa$Freq)
+  colnames(correct.sa)[2L] <- "price.min"
   checkIdentical(sa, correct.sa)
 
-  sa <- aggregate(price ~ inStock, s, var, na.rm=TRUE)
-  correct.sa <- aggregate(price ~ inStock, df, var)
-  correct.sa[[1L]] <- as.factor(correct.sa[[1L]])
-  checkEquals(sa, correct.sa)
+  ## functional usage with argument
+  sa <- aggregate(price ~ inStock, s, quantile, 0.25)
+  correct.sa <- aggregate(price ~ inStock, df, quantile, 0.25)
+  colnames(correct.sa)[2L] <- "price.percentile"
+  correct.sa$price.percentile <- cbind("25%"=correct.sa$price.percentile)
+  checkIdentical(sa, correct.sa)
 
-  sa <- aggregate(~ inStock, s, head, 2L)
-  sa$price_c <- NULL
-  correct.sa <- do.call(rbind, by(df, df$inStock, head, 2L))
-  correct.sa <- correct.sa[unique(c("inStock", colnames(correct.sa)))]
-  correct.sa$inStock <- as.factor(correct.sa$inStock)
-  rownames(correct.sa) <- NULL
-  checkAggIdentical(sa, correct.sa)
+  sa <- aggregate(~ inStock, s, ndoc)
+  correct.sa <- as.data.frame(xtabs(~ inStock, df), responseName="ndoc")
+  correct.sa$inStock <- as.logical(correct.sa$inStock)
+  checkIdentical(sa, correct.sa)
 
-  sa <- aggregate(price ~ inStock, s, head, 1L)
+  sa <- aggregate(~ inStock, s, function(df) {
+                      data.frame(num=lengths(df$price), sum=sum(df$price))
+                  })
+  userFun <- function(df) {
+      data.frame(num=length(df$price), sum=sum(df$price))
+  }
+  correct.sa <- data.frame(inStock=c(FALSE, TRUE),
+                           do.call(rbind, by(df, df$inStock, userFun)),
+                           row.names=NULL)
+  checkIdentical(sa, correct.sa)
+
+  sa <- aggregate(~ inStock, s, mean=sum(price)/lengths(price))
+  correct.sa <- aggregate(price ~ inStock, df, mean)
+  colnames(correct.sa)[2L] <- "mean"
+  checkIdentical(sa, correct.sa)
+
+  sa <- aggregate(price ~ inStock, s, heads, 1L)
   correct.sa <- aggregate(price ~ inStock, df, head, 1L)
-  checkAggIdentical(sa, correct.sa)
+  checkIdentical(sa, correct.sa)
+
+  sa <- aggregate(price ~ inStock, s, heads, 1L, simplify=FALSE)
+  correct.sa <- aggregate(price ~ inStock, df, head, 1L, simplify=FALSE)
+  names(correct.sa$price) <- NULL
+  checkIdentical(sa, correct.sa)
 
   sa <- aggregate(price ~ inStock, s, unique)
-  correct.sa <- subset(as.data.frame(xtabs(~ inStock + price, df)), Freq > 0L,
-                       select=-Freq)
-  correct.sa <- correct.sa[order(correct.sa[[1L]]),]
-  checkAggIdentical(sa, correct.sa)
+  correct.sa <- aggregate(price ~ inStock, df, unique)
+  names(correct.sa$price) <- NULL
+  checkIdentical(sa, correct.sa)
   
   solr$kill()
 }
