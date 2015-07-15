@@ -494,7 +494,7 @@ setMethod("facetParams", c("SolrQuery", "character"),
                              stats <- statsParams(x, grouping, ...)
                              list(type="terms", field=f,
                                   missing=useNA,
-                                  facet=stats, sort=sort,
+                                  facets=stats, sort=sort,
                                   limit=limit, mincount=mincount)
                          }, by[!aliased], groupings[!aliased],
                          SIMPLIFY=FALSE)
@@ -635,7 +635,14 @@ imputeStatNames <- function(x) {
     } else {
         names(x) == ""
     }
-    names(x)[needsName] <- lapply(x[needsName], makeName)
+    names(x)[needsName] <- vapply(x[needsName], makeName, character(1L))
+    x
+}
+
+ensureNamesForJSON <- function(x) {
+    if (is.null(names(x))) {
+        names(x) <- character(0L)
+    }
     x
 }
 
@@ -646,7 +653,7 @@ statsParams <- function(x, grouping, ..., .stats=list()) {
                        MoreArgs=list(x=x, target=SolrAggregateCall(),
                            grouping=grouping))
     requests <- imputeStatNames(requests)
-    c(requests, .stats)
+    ensureNamesForJSON(c(requests, .stats))
 }
 
 

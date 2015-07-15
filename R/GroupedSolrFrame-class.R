@@ -20,15 +20,17 @@
 
 ### That works "fine" (via multiple requests) for ungrouped data, but
 ### generating a separate summary for each group would just not
-### scale. Solr (and thus us) could support this by allowing an 'fl'
-### expression to refer to a statistic in the facets. That is a pretty
-### high bar though.
+### scale. Solr (and thus us) could support this by introducing a
+### stat() function that refers to a statistic in the facets. That is
+### a pretty high bar though.
 
 ### The closest we have right now requires modification of the Solr core:
 
-## df <- aggregate(foo ~ group, x, mean)
-## x[df$group,"foo.mean_d"] <- df["foo.mean"]
+## gx <- group(x, ~ group)
+## gx[,"foo.mean_d"] <- mean(gx$foo)
 ## transform(x, foo.norm=foo/foo.mean_d)
+
+### But an atomic update at least requires transmitting the IDs
 
 ### Of course, we could always just force...
 

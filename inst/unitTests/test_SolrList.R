@@ -154,11 +154,12 @@ test_SolrList_queries <- function() {
 
   ## CHECK: unique()
 ### FIXME: Solr fails to facet on price_c, but does not throw error
-  uniqueFields <- c("inStock", "price", "timestamp_dt")
+  uniqueFields <- c("inStock", "price", "timestamp_dt", "includes")
   uniqueDocs <- docs[c(4,1,2),uniqueFields]
+  uniqueDocs[,"includes"] <- NA_character_
   ids(uniqueDocs) <- NULL
   checkResponseEquals(unique(s[,uniqueFields,drop=FALSE]), uniqueDocs)
-  
+
   ## CHECK: facet
   checkFacet <- function(formula, counts, solr=s) {
     expr.lang <- attr(terms(formula), "variables")[[2]]

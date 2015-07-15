@@ -36,30 +36,31 @@ setMethod("facets", "SolrSummary", function(x) x@facets)
 ###
 
 transposeStats <- function(x) {
-    qtl <- x$quantile
-    colnames(qtl) <- c("1st qu.", "median", "3rd qu.")
+    qtl <- as.vector(x$quantile)
+    names(qtl) <- c("1st qu.", "median", "3rd qu.")
     x$quantile <- NULL
-    x <- cbind(qtl, quantile)
-    x <- x[c("min", "1st. qu.", "median", "mean", "3rd qu.", "max")]
-    data.frame(stat=colnames(x), value=unlist(x))
+    x <- c(x, qtl)
+    x <- x[c("min", "1st qu.", "median", "mean", "3rd qu.", "max", "NA's")]
+    data.frame(stat=names(x), value=unlist(x, use.names=FALSE))
 }
 
 formatColumnSummary <- function(x, maxlen, digits) {
-    length(x) <- maxlen
-    paste0(format(x[[1L]]), ":", format(x[[2L]], digits=digits), "  ")
+    ans <- paste0(format(x[[1L]]), ":", format(x[[2L]], digits=digits), "  ")
+    c(ans, rep("", maxlen - length(ans)))
 }
 
 setMethod("as.table", "SolrSummary", function(x) {
-              s <- stats(facets(object))
+              s <- stats(facets(x))
+              s$count <- NULL
               dotpos <- regexpr("\\.[^.]*$", colnames(s))
               statnames <- substring(colnames(s), dotpos+1L)
               varnames <- substring(colnames(s), 1L, dotpos-1L)
               colnames(s) <- statnames
               sv <- lapply(split(as.list(s), varnames), transposeStats)
-              tabs <- c(sv, lapply(facets(object), stats))[object@colnames]
+              tabs <- c(sv, lapply(facets(x), stats))[x@colnames]
               maxlen <- max(vapply(tabs, nrow, integer(1L)))
               m <- do.call(cbind,
-                           lapply(sms, formatColumnSummary, maxlen, x@digits))
+                           lapply(tabs, formatColumnSummary, maxlen, x@digits))
               as.table(m)
           })
 

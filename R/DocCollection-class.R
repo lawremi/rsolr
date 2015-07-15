@@ -56,6 +56,14 @@ setAs("data.frame", "DocList", function(from) {
           new("DocList", lapply(l, setNames, colnames(from)))
       })
 
+setAs("DocDataFrame", "list", function(from) {
+          if (strict) {
+              setNames(from@.Data, names(from))
+          } else {
+              from
+          }
+      })
+
 setAs("ANY", "DocDataFrame", function(from) {
   new("DocDataFrame", as.data.frame(from))
 })

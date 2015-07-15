@@ -85,6 +85,10 @@ undefer <- function(x) {
     x
 }
 
+deferred <- function(x) {
+    !is.null(symbolFactory(x))
+}
+
 setGeneric("compatible", function(x, y, ...) standardGeneric("compatible"))
 
 setMethod("compatible", c("Solr", "Solr"), function(x, y) {

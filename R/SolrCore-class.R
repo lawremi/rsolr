@@ -145,7 +145,8 @@ setMethod("updateParams", "ANY", function(x) {
 setMethod("updateParams", "data.frame", function(x) {
               splitFields <- names(x)[vapply(x, is.list, logical(1L))]
               splitParams <- rep("true", length(splitFields))
-              names(splitParams) <- paste0("f.", splitFields, ".split")
+              names(splitParams) <-
+                  rep(paste0("f.", splitFields, ".split"), length(splitFields))
               c(list(map="NA:"), splitParams)
           })
 
@@ -304,17 +305,16 @@ processSolrResponse <- function(response, type = "json") {
                         json="application/json",
                         csv="text/csv",
                         xml="application/xml")
-    media <- new(mediaType, response)
-    response <- as(media, mediaTarget(media))
+    response <- new(mediaType, response)
   }
-  response
+  as(response, mediaTarget(response))
 }
 
 ## Unfortunately Solr does not describe errors with CSV output (!)
 ## So we reissue the query with JSON when one occurs
 SolrErrorHandler <- function(core, query) {
   function(e) {
-    if (!is(e, "HTTPError")) {
+    if (!is(e, "Bad_Request")) {
       stop(e)
     }
     if (params(query)$wt == "json") {

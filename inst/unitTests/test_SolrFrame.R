@@ -15,12 +15,17 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
+library(rsolr)
+library(RUnit)
+options(verbose=TRUE)
+
 test_SolrFrame_accessors <- function() {
   solr <- rsolr:::TestSolr()
   s <- SolrFrame(solr$uri)
 
   checkEquals(SolrCore(solr$uri), core(s))
   checkIdentical(SolrQuery(), query(s))
+  s[] <- NULL
   checkIdentical(nrow(s), 0L)
   checkIdentical(rownames(s), character())
   checkIdentical(colnames(s), fieldNames(core(s), includeStatic=TRUE))
@@ -51,6 +56,7 @@ test_SolrFrame_accessors <- function() {
   )
   docs <- as(as(docs, "DocCollection"), "DocDataFrame")
   docs[,"timestamp_dt"] <- structure(docs[,"timestamp_dt"], tzone="UTC")
+  docs[,"id"] <- as.character(docs[,"id"])
   ids(docs) <- docs[,"id"]
   s[,,insert=TRUE] <- docs
   
@@ -74,11 +80,12 @@ test_SolrFrame_accessors <- function() {
   checkEquals(s[["timestamp_dt"]], allDocs$timestamp_dt, tolerance=1)
   s$price <- allDocs$price + 1L
   checkIdentical(s$price, allDocs$price + 1L)
-### TODO: check that s["price"] remains a data frame
+  checkTrue(is(s["price"], "SolrFrame"))
   s[,"price"] <- allDocs$price
   checkIdentical(s[,"price"], allDocs$price)
 
-### TODO: check that grob-based extraction gets the column order right
+  checkIdentical(colnames(as.data.frame(s[c("price", "i*")])),
+                 c("price", "id", "includes", "inStock"))
   
   allDocs2 <- within(allDocs, {
     price <- price+1L
@@ -102,19 +109,7 @@ test_SolrFrame_accessors <- function() {
   checkIdentical(nrow(stail), 2L)
   checkDFResponseEquals(as.data.frame(stail), tail(allDocs, 2L))
 
-### TODO: check that rename(), once fixed in Solr itself
-
-### TODO: check unique,SolrFrame including a variable that does not
-###       exist in any records
-
-### TODO: checks on heads/tails  
-  sh <- ungroup(heads(group(s, ~ inStock), 2L))
-  sh$price_c <- NULL
-  correct.sh <- do.call(rbind, by(df, df$inStock, head, 2L))
-  correct.sh <- correct.sh[unique(c("inStock", colnames(correct.sh)))]
-  correct.sh$inStock <- as.factor(correct.sh$inStock)
-  rownames(correct.sh) <- NULL
-  checkIdentical(sh, correct.sh)
+### TODO: check rename(), once fixed in Solr itself
 
   solr$kill()
 }

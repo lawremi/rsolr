@@ -35,6 +35,12 @@ setMethod("rownames", "SolrFrame", function(x) {
               ans
           })
 
+ROWNAMES <- function (x) if (length(dim(x)) != 0L) rownames(x) else names(x)
+
+setMethod("ROWNAMES", "SolrFrame", function(x) {
+              rownames(x)
+          })
+
 setMethod("dim", "SolrFrame", function(x) {
   c(nrow(x), ncol(x))
 })
@@ -170,7 +176,11 @@ as.list.SolrFrame <- function(x, ...) {
 }
 
 setMethod("as.list", "SolrFrame", function(x, ...) {
-              lapply(fieldNames(x), `[[`, x=x, ...)
+              if (deferred(x)) {
+                  lapply(fieldNames(x), function(nm) x[[nm]], ...)
+              } else {
+                  as(as.data.frame(x, ...), "list")
+              }
           })
 
 setAs("SolrFrame", "DocCollection",
@@ -199,12 +209,14 @@ setMethod("summary", "SolrFrame",
         num <- vapply(types, is, logical(1L), "NumericField")
         p <- c(0.25, 0.5, 0.75)
         query <- query(object)
+        `NA's` <- function(x) sum(is.na(x))
         for (f in fn[num])
-            query <- facet(query, NULL, min(.field(f)),
-                           mean(.field(f)), quantile(.field(f), p),
-                           max(.field(f)))
-        query <- facet(query, fn[!num], limit=maxsum)
-        SolrSummary(facets(core(x), query), fn, digits)
+            query <- facet(query, NULL, min(.field(f), na.rm=TRUE),
+                           mean(.field(f), na.rm=TRUE),
+                           quantile(.field(f), .(p), na.rm=TRUE),
+                           max(.field(f), na.rm=TRUE), `NA's`(.field(f)))
+        query <- facet(query, fn[!num], limit=maxsum, useNA=TRUE, drop=FALSE)
+        SolrSummary(facets(core(object), query), fn, digits)
     })
 
 

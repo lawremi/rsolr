@@ -156,8 +156,6 @@ normColIndex <- function(x, f) {
   f
 }
 
-ROWNAMES <- function (x) if (length(dim(x)) != 0L) rownames(x) else names(x)
-
 stripI <- function(x) {
     if (is.list(x))
         return(lapply(x, stripI))
