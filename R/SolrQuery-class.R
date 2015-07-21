@@ -80,11 +80,16 @@ setClass("SolrQuery",
 ### Constructor
 ###
 
-SolrQuery <- function(expr) {
+SolrQuery <- function(expr, requestHandler = getOption("rsolr.requestHandler"),
+                      ...)
+{
     ans <- new("SolrQuery")
     if (!missing(expr)) {
         ans <- eval(substitute(subset(ans, expr)), parent.frame())
     }
+    requestHandler(ans) <- requestHandler
+    args <- list(...)
+    params(ans)[names(args)] <- args
     ans
 }
 
@@ -140,7 +145,7 @@ setMethod("translate", c("SolrQueryTranslationSource", "Expression"),
 
 setMethod("as.character", "SolrQueryTranslationSource",
           function(x) {
-              if (is.language(x)) {
+              if (is.language(expr(x))) {
                   deparse(expr(x))
               } else {
                   as.character(expr(x))
@@ -743,6 +748,19 @@ faceted <- function(x) {
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Request handler
+###
+
+requestHandler <- function(x) params(x)$qt
+`requestHandler<-` <- function(x, value) {
+    if (!is.null(value) && !isSingleString(value)) {
+        stop("request handler must be a single string, or NULL")
+    }
+    params(x)$qt <- value
+    x
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Response format
 ###
 
@@ -890,13 +908,16 @@ solrFormat.difftime <- function(x, ...) {
     paste0("+", x, toupper(attr(x, "units")))
 }
 
-paramsAsCharacter <- function(p) {
-    p <- rreplace(p, as.character, "SolrExpression")
-    if (!is.null(p[["json"]]$facet)) {
-        p[["json"]]$facet <- rapply(p[["json"]]$facet, solrFormat,
-                                    c("POSIXt", "Date", "difftime"),
-                                    how="replace")
+solrFormat.default <- function(x, ...) {
+    if (is.numeric(x) || is.logical(x)) {
+        x
+    } else {
+        as.character(x)
     }
+}
+
+paramsAsCharacter <- function(p) {
+    p <- rapply(p, solrFormat, how="replace")
     p$sort <- paramToCSV(p$sort)
     p$fl <- paramToCSV(p$fl)
     if (!is.null(p[["json"]])) # partial match hits 'json.nl'
