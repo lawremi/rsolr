@@ -209,7 +209,7 @@ setMethod("lengths", "SolrSymbolPromise", function(x, use.names = TRUE) {
 
 setMethod("lengths", "SolrPromise", function(x, use.names = TRUE) {
               if (!is.null(grouping(context(x)))) {
-                  ndoc(context(x))
+                  ndoc(x)
               } else {
                   lengths(as.list(x))
               }
@@ -438,7 +438,7 @@ frangeCompare <- function(fun, x, y) {
     }
     if (is.numeric(x)) {
         call <- reverseRelational(list(fun=fun, x=x, y=y))
-        return(do.call(frangeRelational, call))
+        return(do.call(frangeCompare, call))
     }
     promise <- x
     num <- y
@@ -471,7 +471,7 @@ luceneCompare <- function(fun, x, y) {
 
     if (is(y, "SolrSymbolPromise")) {
         call <- reverseRelational(list(fun=fun, x=x, y=y))
-        return(do.call(luceneRelational, call))
+        return(do.call(luceneCompare, call))
     }
 
     if (isNA(y)) {
@@ -638,6 +638,7 @@ setMethod("rescale", "SolrPromise", function(x, min, max) {
 setMethod("ifelse",
           c("SolrPromise", "ANY", "ANY"),
           function(test, yes, no) {
+### FIXME: we could check for a constant TRUE/FALSE in 'test' and skip the check
               solrCall("if", test, yes, no)
           })
 
@@ -703,10 +704,11 @@ setMethods("pmin2",
 exists <- function(x) {
     missables <- missables(x)
     if (length(missables) == 0L) {
-        TRUE
+        expr <- TRUE
     } else {
-        SolrFunctionPromise(noneMissing(missables), context(x))
+        expr <- noneMissing(missables)
     }
+    SolrFunctionPromise(expr, context(x))
 }
 
 setMethod("complete.cases", "SolrFunctionPromise", function(...) {
@@ -884,7 +886,7 @@ setMethod("Summary", "SolrPromise",
               } else if (.Generic == "all") {
                   .na.rm <- na.rm
                   na.rm <- TRUE
-                  child <- sum(exists(x))
+                  child <- if (length(missables(x)) > 0L) sum(exists(x))
                   postprocess <- function(sum, countExists) {
                       count <- attr(countExists, "child")
                       ifelse(sum < countExists, FALSE,
@@ -905,7 +907,9 @@ setMethod("mean", "SolrPromise", function(x, trim = 0, na.rm=FALSE) {
                   stop("'na.rm' must be TRUE or FALSE")
               }
               if (na.rm) {
-                  solrAggregate("sum", x, na.rm=TRUE, child=sum(exists(x)),
+### FIXME: can exists() be made smarter?
+                  child <- if (length(missables(x)) > 0L) sum(exists(x))
+                  solrAggregate("sum", x, na.rm=TRUE, child=child,
                                 postprocess=function(sum, count) {
                                     sum / count
                                 })
@@ -935,20 +939,20 @@ setMethod("sd", "SolrPromise", function(x, na.rm=FALSE) {
               solrAggregate("stdev", x, na.rm=FALSE)
           })
 
-setGeneric("lengthUnique", function(x, ...) standardGeneric("lengthUnique"))
-setMethod("lengthUnique", "ANY", function(x, na.rm = FALSE) {
+setGeneric("nunique", function(x, ...) standardGeneric("nunique"))
+setMethod("nunique", "ANY", function(x, na.rm = FALSE) {
               if (na.rm) {
                   length(setdiff(x, NA))
               } else {
                   length(unique(x))
               }
           })
-setMethod("lengthUnique", "factor", function(x, na.rm = FALSE) {
+setMethod("nunique", "factor", function(x, na.rm = FALSE) {
               nlevels(x) + if (na.rm) 0L else anyNA(x)
           })
 
 ## for lists (multivalued fields) this is effectively called on unlist(x)
-setMethod("lengthUnique", "SolrPromise",
+setMethod("nunique", "SolrPromise",
           function(x, na.rm=FALSE, approximate=FALSE) {
               if (!isTRUEorFALSE(na.rm)) {
                   stop("'na.rm' must be TRUE or FALSE")
@@ -1012,9 +1016,6 @@ setMethod("weighted.mean", c("SolrPromise", "SolrPromise"),
                             })
           })
 
-setGeneric("IQR", function(x, na.rm=FALSE, type = 7) standardGeneric("IQR"),
-           signature="x")
-
 setMethod("IQR", "SolrPromise",
           function(x, na.rm=FALSE, type = 7) {
               if (!missing(type)) {
@@ -1050,6 +1051,11 @@ setMethod("mad", c("SolrPromise", "ANY"),
 
 setMethod("anyNA", "SolrPromise", function(x) {
               any(is.na(x), na.rm=TRUE)
+          })
+
+setMethod("ndoc", "SolrPromise", function(x) {
+### In a package full of hacks, this is one of the best
+              SolrAggregatePromise(SolrAggregateCall("sum", 1L), context(x))
           })
 
 solrAggregate <- function(fun, x, na.rm, params = list(), child = NULL,
@@ -1265,33 +1271,33 @@ setMethod("ifelse",
 
 setMethod("pmax2", c("numeric", "SolrAggregatePromise"),
           function(x, y, na.rm=FALSE) {
-              aggPostCall("pmax2", e2, e1, na.rm)
+              aggPostCall("pmax2", y, x, na.rm)
           })
 
 setMethod("pmax2", c("SolrAggregatePromise", "numeric"),
           function(x, y, na.rm=FALSE) {
-              aggPostCall("pmax2", e1, e2, na.rm)
+              aggPostCall("pmax2", x, y, na.rm)
           })
 
 setMethod("pmax2", c("SolrAggregatePromise", "SolrAggregatePromise"),
           function(x, y, na.rm=FALSE) {
-              e1 <- as.numeric(e1)
+              x <- as.numeric(x)
               callGeneric()
           })
 
 setMethod("pmin2", c("numeric", "SolrAggregatePromise"),
           function(x, y, na.rm=FALSE) {
-              aggPostCall("pmax2", e2, e1, na.rm)
+              aggPostCall("pmax2", y, x, na.rm)
           })
 
 setMethod("pmin2", c("SolrAggregatePromise", "numeric"),
           function(x, y, na.rm=FALSE) {
-              aggPostCall("pmax2", e1, e2, na.rm)
+              aggPostCall("pmax2", x, y, na.rm)
           })
 
 setMethod("pmin2", c("SolrAggregatePromise", "SolrAggregatePromise"),
           function(x, y, na.rm=FALSE) {
-              e1 <- as.numeric(e1)
+              x <- as.numeric(x)
               callGeneric()
           })
 

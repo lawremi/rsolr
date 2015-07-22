@@ -32,6 +32,9 @@ populateSolrHome <- function(customSchema=NULL) {
       corePath <- file.path(solr.home, "cores", name(customSchema))
       file.rename(sampleCorePath, corePath)
       saveXML(customSchema, file.path(corePath, "conf", "schema.xml"))
+      writeLines(paste0("name=", name(customSchema)),
+                 file.path(corePath, "core.properties"))
+      unlink(file.path(corePath, "data"), recursive=TRUE)
   }
   solr.home
 }
@@ -46,7 +49,7 @@ getLogConfFile <- function() {
 }
 
 buildCommandLine <- function() {
-  paste("cd", dirname(getStartJar()), "; java",
+  paste("cd", dirname(getStartJar()), "; java -Xmx4096M",
         paste0("-Dsolr.solr.home=", getSolrHome()),
         paste0("-DSTOP.PORT=", 8079L),
         paste0("-DSTOP.KEY=", "rsolr"),

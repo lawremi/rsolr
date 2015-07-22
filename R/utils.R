@@ -2,7 +2,7 @@
 ### Utilities
 ### -------------------------------------------------------------------------
 
-csv <- function(x) {
+csv <-function(x) {
   paste(x, collapse = ",")
 }
 
@@ -18,7 +18,11 @@ vpluck <- function(x, name, value, required=TRUE) {
   if (required) {
     vapply(x, `[[`, value, name)
   } else {
-    ans <- simplify2array(pluck(x, name, value), higher=FALSE)
+    if (length(x) > 0L) {
+        ans <- simplify2array(pluck(x, name, value), higher=FALSE)
+    } else {
+        ans <- list()
+    }
     mode(ans) <- mode(value)
     ans
   }

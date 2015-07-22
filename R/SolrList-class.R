@@ -17,7 +17,7 @@ setClass("SolrList", contains="Solr")
 }
 
 SolrList <- function(uri, ...) {
-  .SolrList(SolrCore(uri, ...))
+  .SolrList(SolrCore(uri), SolrQuery(...))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -79,6 +79,9 @@ setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
       fieldNames(value) <- j
     }
     if (!missing(i)) {
+      if (is(i, "Promise")) {
+        i <- ids(x[i])
+      }
       if (length(i) == 0L) {
         return(x)
       }

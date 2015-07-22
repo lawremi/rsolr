@@ -21,12 +21,14 @@
   to data analysis, with the aim of implementing many of the
   fundamental data munging operations. Those operations are listed in
   the table below, along with how we have mapped those operations to
-  existing and well-known functions in the base R API. When called on
-  =rsolr= data structures, those functions should behave analogously
-  to the existing implementations for =data.frame=. Note that more
-  complex operations, such as joining and reshaping tables, are best
-  left to more sophisticated frameworks. After all, Solr is a search
-  engine. Give it a break.
+  existing and well-known functions in the base R API, with some
+  important extensions. When called on =rsolr= data structures, those
+  functions should behave analogously to the existing implementations
+  for =data.frame=. Note that more complex operations, such as joining
+  and reshaping tables, are best left to more sophisticated
+  frameworks, and we encourage others to implement our extended base R
+  API on top of such systems. After all, Solr is a search engine. Give
+  it a break.
 
   | Operation      | R function  |
   |----------------+-------------|
@@ -184,18 +186,51 @@
    is also possible:
    #+begin_src R
 ### FIXME: broken in current Solr CSV writer
-   rename(sr, tail_num = "tailnum")
+### rename(sr, tail_num = "tailnum")
    #+end_src
    
 ** Transformation
    To compute new columns from existing ones, we can, as usual, call
    the =transform= function:
    #+begin_src R
-     transform(sr,
-               gain = arr_delay - dep_delay,
-               speed = distance / air_time * 60)
+     sr2 <- transform(sr,
+                      gain = arr_delay - dep_delay,
+                      speed = distance / air_time * 60)
+     sr2[c("gain", "speed")]
    #+end_src
    
+*** Advanced note
+    The =transform= function essentially quotes and evaluates its
+    arguments in the given frame, and then adds the results as columns
+    in the return value. Direct evaluation affords more flexibility,
+    such as constructing a table with only the newly computed
+    columns. By default, evaluation is completely eager --- each
+    referenced column is downloaded in its entirety. But we can make
+    the computation lazier by calling =defer= prior to the evaluation
+    via =with=:
+    #+begin_src R
+      with(defer(sr), data.frame(gain = head(arr_delay - dep_delay),
+                                 speed = head(distance / air_time * 60)))
+    #+end_src
+    Note that this approach, even though it is partially deferred, is
+    potentially less efficient than =transform= two reasons:
+    1. It makes two requests to the database, one for each column,
+    2. The two result columns are downloaded eagerly, since the result
+       must be a =data.frame= (and thus practicalities required us to
+       take the =head= of each promised column prior to constructing
+       the data frame).
+    
+    We can work around the second limitation by using a more general
+    form of data frame, the /DataFrame/ object from S4Vectors:
+    #+begin_src R
+      with(defer(sr),
+           S4Vectors::DataFrame(gain = arr_delay - dep_delay,
+                                speed = distance / air_time * 60))
+    #+end_src
+    Note that we did not need to take the =head= of the individual
+    columns, since /DataFrame/ does not require the data to be stored
+    in-memory as a base R vector.
+    
 ** Summarization
    Data summarization is about reducing large, complex data to
    smaller, simpler data that we can understand.
@@ -207,16 +242,19 @@
    2. Summarize each group to a single value,
    3. Combine the summaries.
 
-   Solr supports the following types of data aggregation:
-   * Mean,
-   * Min/max,
-   * Variance and standard deviation,
-   * Sum,
-   * Count (tabulation).
-   Notably missing is the median, but we should expect that soon, as
-   Solr is evolving very quickly in this area. One obstacle is likely
-   that the median is notoriously difficult to distribute.
-
+   Solr natively supports the following types of data aggregation:
+   * =mean=,
+   * =min=, =max=,
+   * =median=, =quantile=,
+   * =var=, =sd= (/not yet working with rsolr, as Solr is evolving/),
+   * =sum=,
+   * count (=table=),
+   * counting of unique values (for which we introduce =nunique=).
+   
+   The rsolr package combines and modifies these operations to support
+   high-level summaries corresponding to the R functions =any=, =all=,
+   =range=, =weighted.mean=, =IQR=, =mad=, etc.
+   
    A prerequisite of aggregation is finding the distinct field
    combinations that correspond to each correspond to a group. Those
    combinations themselves constitute a useful summary, and we can
@@ -228,3 +266,31 @@
    
    Solr also supports extracting the top or bottom N documents, after
    ranking by some field, optionally by group.
+
+   The convenient, top-level function for aggregating data is
+   =aggregate=. To compute a global aggregation,
+   we just specify the computation as an expression (via a named
+   argument, mimicking =transform=):
+   #+begin_src R
+   aggregate(sr, delay = mean(dep_delay, na.rm=TRUE))
+   #+end_src
+   It is also possible to specify a function (as the =FUN= argument),
+   which would be passed the entire frame.
+
+   As with =stats::aggregate=, we can pass a grouping as a formula:
+   #+begin_src R
+     delay <- aggregate(~ tailnum, sr,
+                        count = TRUE,
+                        dist = mean(distance, na.rm=TRUE),
+                        delay = mean(arr_delay, na.rm=TRUE))
+     delay <- subset(delay, count > 20 & dist < 2000)
+   #+end_src
+   The special =count= argument is a convenience for the common case
+   of computing the number of documents in each group.
+
+   Here is an example of using =nunique= and =ndoc=:
+   #+begin_src R
+     head(aggregate(~ dest, sr,
+                    nplanes = nunique(tailnum),
+                    nflights = ndoc(tailnum)))
+   #+end_src

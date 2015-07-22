@@ -100,6 +100,19 @@ setMethod("compatible", c("Solr", "Solr"), function(x, y) {
 setGeneric("grouping", function(x, ...) standardGeneric("grouping"))
 setMethod("grouping", "Solr", function(x) NULL)
 
+setMethod("rename", "Solr", function(x, ...) {
+              map <- c(...)
+              if (!is.character(map) || any(is.na(map))) {
+                  stop("arguments in '...' must be character and not NA")
+              }
+              badOldNames <- setdiff(map, names(x))
+              if (length(badOldNames))
+                  stop("Some 'from' names in value not found on 'x': ",
+                       paste(badOldNames, collapse = ", "))
+              query(x) <- rename(query(x), map)
+              x
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
@@ -215,7 +228,8 @@ setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
 ###       response and factors, whereas we only drop those with NAs in
 ###       the factors. This is consistent with aggregate.data.frame.
 setMethod("aggregateByFormula", "Solr",
-          function(formula, data, FUN, ..., subset, na.action, simplify=TRUE) {
+          function(formula, data, FUN, ..., subset, na.action, simplify = TRUE,
+                   count = FALSE) {
               na.action <- normNAAction(na.action)
               useNA <- identical(na.action, na.pass)
               if (!missing(subset)) {
@@ -223,6 +237,9 @@ setMethod("aggregateByFormula", "Solr",
               }
               if (!isTRUEorFALSE(simplify)) {
                   stop("'simplify' should be TRUE or FALSE")
+              }
+              if (!isTRUEorFALSE(count)) {
+                  stop("'count' should be TRUE or FALSE")
               }
               functionalStyle <- !missing(FUN)
               if (functionalStyle) {
@@ -246,7 +263,7 @@ setMethod("aggregateByFormula", "Solr",
                       query <- facet(query(data), grouping, .(result),
                                      useNA=useNA)
                   } else {
-                      ans <- uniqueBy(data, NULL, useNA)
+                      ans <- uniqueBy(data, NULL, useNA, count)
                       if (is.data.frame(result)) {
                           ans <- cbind(ans, result)
                       } else {
@@ -266,7 +283,9 @@ setMethod("aggregateByFormula", "Solr",
                   fct <- fct[[grouping]]
               }
               ans <- stats(fct)
-              ans$count <- NULL
+              if (!count) {
+                  ans$count <- NULL
+              }
               ans
           })
 
@@ -274,10 +293,14 @@ setMethod("aggregate", "Solr", function(x, ...) {
               aggregateByFormula(NULL, x, ...)
           })
 
-uniqueBy <- function(x, by, useNA=TRUE) {
+uniqueBy <- function(x, by, useNA = TRUE, count = FALSE) {
     by <- mergeGrouping(grouping(x), by)
     facet.query <- facet(query(x), by, useNA=useNA)
-    subset(stats(facets(core(x), facet.query)[[by]]), select=-count)
+    ans <- stats(facets(core(x), facet.query)[[by]])
+    if (!count) {
+        ans$count <- NULL
+    }
+    ans
 }
 
 setMethod("unique", "Solr", function (x, incomparables = FALSE) {
@@ -377,16 +400,6 @@ setAs("Solr", "environment", function(from) list2LazyEnv(from))
 ###
 
 setMethod("show", "Solr", function(object) {
-  cat(class(object), " (", ndoc(object), "x", nfield(object), ")\n", sep="")
-  cat("core: '", name(core(object)), "'\n", sep="")
-  query <- as.character(query(object))
-  defaults <- as.character(SolrQuery())
-  drop <- which(defaults[names(query)] == query)
-  if (length(drop) > 0L) {
-    query <- query[names(query) %in% names(query)[-drop]]
-  }
-  labeled.query <- if (length(query) > 0L) {
-    paste0(names(query), "='", query, "'")
-  } else character()
-  cat(BiocGenerics:::labeledLine("query", labeled.query))
-})
+              cat("'", name(core(object)), "' (",
+                  ndoc(object), "x", nfield(object), ")\n", sep="")
+          })

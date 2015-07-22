@@ -6,7 +6,7 @@ importFrom(graph, graphNEL, edges)
 importClassesFrom(graph, graph)
 importFrom(rjson, fromJSON, toJSON)
 importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
-           xmlValue, getNodeSet)
+           xmlValue, getNodeSet, getEncoding)
 #importClassesFrom(XML, XMLDocument, XMLNode)
 importFrom(parallel, mcparallel)
 importFrom(tools, pskill)
@@ -26,7 +26,8 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               grepl, grep, Arith, "-", Math, round, rescale, ifelse, pmin2,
               pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
-              facet, ngroup, complete.cases, as.table, lengthUnique)
+              facet, ngroup, complete.cases, as.table, nunique, translate,
+              grouping)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
 
 S3method(as.data.frame, Solr)
@@ -62,3 +63,4 @@ S3method(cut, SolrPromise)
 S3method(solrFormat, POSIXt)
 S3method(solrFormat, Date)
 S3method(solrFormat, difftime)
+S3method(solrFormat, default)

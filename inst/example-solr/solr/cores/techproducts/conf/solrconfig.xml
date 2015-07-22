@@ -362,21 +362,22 @@
          If the updateLog is enabled, then it's highly recommended to
          have some sort of hard autoCommit to limit the log size.
       -->
+     <!--
      <autoCommit> 
        <maxTime>${solr.autoCommit.maxTime:15000}</maxTime> 
        <openSearcher>false</openSearcher> 
      </autoCommit>
-
+     -->
     <!-- softAutoCommit is like autoCommit except it causes a
          'soft' commit which only ensures that changes are visible
          but does not ensure that data is synced to disk.  This is
          faster and more near-realtime friendly than a hard commit.
       -->
-
+    <!--
      <autoSoftCommit> 
        <maxTime>${solr.autoSoftCommit.maxTime:-1}</maxTime> 
      </autoSoftCommit>
-
+     -->
     <!-- Update Related Event Listeners
          
          Various IndexWriter related events can trigger Listeners to
@@ -614,41 +615,6 @@
      -->
    <queryResultMaxDocsCached>200</queryResultMaxDocsCached>
 
-   <!-- Query Related Event Listeners
-
-        Various IndexSearcher related events can trigger Listeners to
-        take actions.
-
-        newSearcher - fired whenever a new searcher is being prepared
-        and there is a current searcher handling requests (aka
-        registered).  It can be used to prime certain caches to
-        prevent long request times for certain requests.
-
-        firstSearcher - fired whenever a new searcher is being
-        prepared but there is no current registered searcher to handle
-        requests or to gain autowarming data from.
-
-        
-     -->
-    <!-- QuerySenderListener takes an array of NamedList and executes a
-         local query request for each NamedList in sequence. 
-      -->
-    <listener event="newSearcher" class="solr.QuerySenderListener">
-      <arr name="queries">
-        <!--
-           <lst><str name="q">solr</str><str name="sort">price asc</str></lst>
-           <lst><str name="q">rocks</str><str name="sort">weight asc</str></lst>
-          -->
-      </arr>
-    </listener>
-    <listener event="firstSearcher" class="solr.QuerySenderListener">
-      <arr name="queries">
-        <lst>
-          <str name="q">static firstSearcher warming in solrconfig.xml</str>
-        </lst>
-      </arr>
-    </listener>
-
     <!-- Use Cold Searcher
 
          If a search request comes in and there is no current
@@ -734,7 +700,7 @@
          The options below instruct Solr not to output any HTTP Caching
          related headers
       -->
-    <httpCaching never304="true" />
+    <!-- <httpCaching never304="true" /> -->
     <!-- If you include a <cacheControl> directive, it will be used to
          generate a Cache-Control header (as well as an Expires header
          if the value contains "max-age=")
@@ -774,12 +740,10 @@
          (lastModifiedFrom and etagSeed are both ignored if you use
          the never304="true" option)
       -->
-    <!--
        <httpCaching lastModifiedFrom="openTime"
                     etagSeed="Solr">
          <cacheControl>max-age=30, public</cacheControl> 
        </httpCaching>
-      -->
   </requestDispatcher>
 
   <!-- Request Handlers 
@@ -1012,23 +976,8 @@
        <str name="f.content.hl.fragsize">200</str>
        <str name="f.content.hl.alternateField">content</str>
        <str name="f.content.hl.maxAlternateFieldLength">750</str>
+   </lst>
 
-       <!-- Spell checking defaults -->
-       <str name="spellcheck">on</str>
-       <str name="spellcheck.extendedResults">false</str>       
-       <str name="spellcheck.count">5</str>
-       <str name="spellcheck.alternativeTermCount">2</str>
-       <str name="spellcheck.maxResultsForSuggest">5</str>       
-       <str name="spellcheck.collate">true</str>
-       <str name="spellcheck.collateExtendedResults">true</str>  
-       <str name="spellcheck.maxCollationTries">5</str>
-       <str name="spellcheck.maxCollations">3</str>           
-     </lst>
-
-     <!-- append spellchecking to our list of components -->
-     <arr name="last-components">
-       <str>spellcheck</str>
-     </arr>
   </requestHandler>
 
 
@@ -1249,163 +1198,6 @@
        
      -->
   
-   <!-- Spell Check
-
-        The spell check component can return a list of alternative spelling
-        suggestions.  
-
-        http://wiki.apache.org/solr/SpellCheckComponent
-     -->
-  <searchComponent name="spellcheck" class="solr.SpellCheckComponent">
-
-    <str name="queryAnalyzerFieldType">text_general</str>
-
-    <!-- Multiple "Spell Checkers" can be declared and used by this
-         component
-      -->
-
-    <!-- a spellchecker built from a field of the main index -->
-    <lst name="spellchecker">
-      <str name="name">default</str>
-      <str name="field">text</str>
-      <str name="classname">solr.DirectSolrSpellChecker</str>
-      <!-- the spellcheck distance measure used, the default is the internal levenshtein -->
-      <str name="distanceMeasure">internal</str>
-      <!-- minimum accuracy needed to be considered a valid spellcheck suggestion -->
-      <float name="accuracy">0.5</float>
-      <!-- the maximum #edits we consider when enumerating terms: can be 1 or 2 -->
-      <int name="maxEdits">2</int>
-      <!-- the minimum shared prefix when enumerating terms -->
-      <int name="minPrefix">1</int>
-      <!-- maximum number of inspections per result. -->
-      <int name="maxInspections">5</int>
-      <!-- minimum length of a query term to be considered for correction -->
-      <int name="minQueryLength">4</int>
-      <!-- maximum threshold of documents a query term can appear to be considered for correction -->
-      <float name="maxQueryFrequency">0.01</float>
-      <!-- uncomment this to require suggestions to occur in 1% of the documents
-      	<float name="thresholdTokenFrequency">.01</float>
-      -->
-    </lst>
-    
-    <!-- a spellchecker that can break or combine words.  See "/spell" handler below for usage -->
-    <lst name="spellchecker">
-      <str name="name">wordbreak</str>
-      <str name="classname">solr.WordBreakSolrSpellChecker</str>      
-      <str name="field">name</str>
-      <str name="combineWords">true</str>
-      <str name="breakWords">true</str>
-      <int name="maxChanges">10</int>
-    </lst>
-
-    <!-- a spellchecker that uses a different distance measure -->
-    <!--
-       <lst name="spellchecker">
-         <str name="name">jarowinkler</str>
-         <str name="field">spell</str>
-         <str name="classname">solr.DirectSolrSpellChecker</str>
-         <str name="distanceMeasure">
-           org.apache.lucene.search.spell.JaroWinklerDistance
-         </str>
-       </lst>
-     -->
-
-    <!-- a spellchecker that use an alternate comparator 
-
-         comparatorClass be one of:
-          1. score (default)
-          2. freq (Frequency first, then score)
-          3. A fully qualified class name
-      -->
-    <!--
-       <lst name="spellchecker">
-         <str name="name">freq</str>
-         <str name="field">lowerfilt</str>
-         <str name="classname">solr.DirectSolrSpellChecker</str>
-         <str name="comparatorClass">freq</str>
-      -->
-
-    <!-- A spellchecker that reads the list of words from a file -->
-    <!--
-       <lst name="spellchecker">
-         <str name="classname">solr.FileBasedSpellChecker</str>
-         <str name="name">file</str>
-         <str name="sourceLocation">spellings.txt</str>
-         <str name="characterEncoding">UTF-8</str>
-         <str name="spellcheckIndexDir">spellcheckerFile</str>
-       </lst>
-      -->
-  </searchComponent>
-  
-  <!-- A request handler for demonstrating the spellcheck component.  
-
-       NOTE: This is purely as an example.  The whole purpose of the
-       SpellCheckComponent is to hook it into the request handler that
-       handles your normal user queries so that a separate request is
-       not needed to get suggestions.
-
-       IN OTHER WORDS, THERE IS REALLY GOOD CHANCE THE SETUP BELOW IS
-       NOT WHAT YOU WANT FOR YOUR PRODUCTION SYSTEM!
-       
-       See http://wiki.apache.org/solr/SpellCheckComponent for details
-       on the request parameters.
-    -->
-  <requestHandler name="/spell" class="solr.SearchHandler" startup="lazy">
-    <lst name="defaults">
-      <!-- Solr will use suggestions from both the 'default' spellchecker
-           and from the 'wordbreak' spellchecker and combine them.
-           collations (re-written queries) can include a combination of
-           corrections from both spellcheckers -->
-      <str name="spellcheck.dictionary">default</str>
-      <str name="spellcheck.dictionary">wordbreak</str>
-      <str name="spellcheck">on</str>
-      <str name="spellcheck.extendedResults">true</str>       
-      <str name="spellcheck.count">10</str>
-      <str name="spellcheck.alternativeTermCount">5</str>
-      <str name="spellcheck.maxResultsForSuggest">5</str>       
-      <str name="spellcheck.collate">true</str>
-      <str name="spellcheck.collateExtendedResults">true</str>  
-      <str name="spellcheck.maxCollationTries">10</str>
-      <str name="spellcheck.maxCollations">5</str>         
-    </lst>
-    <arr name="last-components">
-      <str>spellcheck</str>
-    </arr>
-  </requestHandler>
-
-  <!-- The SuggestComponent in Solr provides users with automatic suggestions for query terms. 
-       You can use this to implement a powerful auto-suggest feature in your search application.
-       As with the rest of this solrconfig.xml file, the configuration of this component is purely
-       an example that applies specifically to this configset and example documents. 
-       
-       More information about this component and other configuration options are described in the
-       "Suggester" section of the reference guide available at 
-       http://archive.apache.org/dist/lucene/solr/ref-guide
-    -->
-  <searchComponent name="suggest" class="solr.SuggestComponent">
-    <lst name="suggester">
-      <str name="name">mySuggester</str>
-      <str name="lookupImpl">FuzzyLookupFactory</str>      
-      <str name="dictionaryImpl">DocumentDictionaryFactory</str>
-      <str name="field">cat</str>
-      <str name="weightField">price</str>
-      <str name="suggestAnalyzerFieldType">string</str>
-      <str name="buildOnStartup">false</str>
-    </lst>
-  </searchComponent>
-
-  <requestHandler name="/suggest" class="solr.SearchHandler" 
-                  startup="lazy" >
-    <lst name="defaults">
-      <str name="suggest">true</str>
-      <str name="suggest.count">10</str>
-    </lst>
-    <arr name="components">
-      <str>suggest</str>
-    </arr>
-  </requestHandler>
-
-
   <!-- Term Vector Component
 
        http://wiki.apache.org/solr/TermVectorComponent
@@ -1547,30 +1339,6 @@
     </arr>
   </requestHandler>
 
-
-  <!-- Query Elevation Component
-
-       http://wiki.apache.org/solr/QueryElevationComponent
-
-       a search component that enables you to configure the top
-       results for a given query regardless of the normal lucene
-       scoring.
-    -->
-  <searchComponent name="elevator" class="solr.QueryElevationComponent" >
-    <!-- pick a fieldType to analyze queries -->
-    <str name="queryFieldType">string</str>
-    <str name="config-file">elevate.xml</str>
-  </searchComponent>
-
-  <!-- A request handler for demonstrating the elevator component -->
-  <requestHandler name="/elevate" class="solr.SearchHandler" startup="lazy">
-    <lst name="defaults">
-      <str name="echoParams">explicit</str>
-    </lst>
-    <arr name="last-components">
-      <str>elevator</str>
-    </arr>
-  </requestHandler>
 
   <!-- Highlighting Component
 

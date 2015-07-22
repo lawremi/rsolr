@@ -216,8 +216,11 @@ setMethod("toUpdate", "list", function(x, schema, atomic=FALSE, ...) {
 })
 
 isSimpleQuery <- function(x) {
-  params(x)$fq <- NULL
-  identical(x, SolrQuery())
+    length(params(x)$fq) <= 1L &&
+        {
+            params(x)$fq <- NULL
+            identical(x, SolrQuery())
+        }
 }
 
 setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
@@ -225,16 +228,18 @@ setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
     warning("delete() cannot handle 'which' more complex than ",
             "'subset(SolrQuery(), [expr])'")
   }
-  query <- eval(params(which)$fq, x)
+  query <- eval(which, x)$fq
   if (is.null(query)) {
     query <- params(which)$q
   }
-  invisible(update(x, I(list(delete=list(query=as.character(query))))))
+  invisible(update(x, I(list(delete=list(query=as.character(query)))), ...))
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### READ
 ###
+
+setMethod("docs", "SolrCore", function(x, ...) read(x, ...))
 
 setMethod("read", "SolrCore",
           function(x, query=SolrQuery(), as=c("list", "data.frame"))
@@ -271,7 +276,7 @@ readVersion <- function(uri) {
   as.package_version(tryCatch({
       readSystem(uri)$lucene$"solr-spec-version"
   }, error = function(e) {
-      stop("Failed to retrieve version, assuming 4.x")
+      warning("Failed to retrieve version, assuming 4.x")
       "4.x"
   }))
 }
@@ -305,9 +310,10 @@ processSolrResponse <- function(response, type = "json") {
                         json="application/json",
                         csv="text/csv",
                         xml="application/xml")
-    response <- new(mediaType, response)
+    media <- new(mediaType, response)
+    response <- as(media, mediaTarget(media))
   }
-  as(response, mediaTarget(response))
+  response
 }
 
 ## Unfortunately Solr does not describe errors with CSV output (!)
@@ -336,6 +342,7 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
             if (is.null(responseType(expr)))
               responseType(expr) <- "list"
             expr <- translate(expr, core=envir)
+            params(expr)$qt <- envir@qt
             query <- as.character(expr)
             response <- tryCatch(read(envir@uri$select, query),
                                  error = SolrErrorHandler(envir, expr))

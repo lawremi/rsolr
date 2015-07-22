@@ -141,7 +141,7 @@ setMethod("as.data.frame", "FieldInfo",
 setAs("FieldInfo", "data.frame",
       function(from) as.data.frame(from, optional=TRUE))
 
-as.list.FieldInfo <- function(x) {
+as.list.FieldInfo <- function(x, ...) {
   lapply(seq_len(length(x)), function(i) {
     x[i]
   })

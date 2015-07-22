@@ -16,7 +16,7 @@ setClass("SolrFrame", contains=c("Solr", "Context"))
 }
 
 SolrFrame <- function(uri, ...) {
-  .SolrFrame(SolrCore(uri, ...))
+  .SolrFrame(SolrCore(uri), SolrQuery(...))
 }
 
 setMethod("dimnames", "SolrFrame", function(x) {
@@ -72,19 +72,6 @@ setMethod("names", "SolrFrame", function(x) {
 setMethod("fieldNames", "SolrFrame", function(x, includeStatic=TRUE, ...) {
   callNextMethod(x, includeStatic=includeStatic, ...)
 })
-
-setMethod("rename", "Solr", function(x, ...) {
-              map <- c(...)
-              if (!is.character(map) || any(is.na(map))) {
-                  stop("arguments in '...' must be character and not NA")
-              }
-              badOldNames <- setdiff(map, names(x))
-              if (length(badOldNames))
-                  stop("Some 'from' names in value not found on 'x': ",
-                       paste(badOldNames, collapse = ", "))
-              query(x) <- rename(query(x), map)
-              x
-          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
@@ -144,12 +131,20 @@ setMethod("[", "SolrFrame", function(x, i, j, ..., drop = TRUE) {
 
 setMethod("eval", c("SolrExpression", "SolrFrame"),
           function (expr, envir, enclos) {
-              undefer(transform(envir, x = .(expr)))$x
+              if (deferred(envir)) {
+                  SolrFunctionPromise(expr, envir)
+              } else {
+                  transform(envir, x = .(expr))$x
+              }
           })
 
 setMethod("eval", c("SolrAggregateCall", "SolrFrame"),
           function (expr, envir, enclos) {
-              aggregate(envir, y = .(expr))$y
+              if (deferred(envir)) {
+                  SolrAggregatePromise(expr, envir)
+              } else {
+                  aggregate(envir, y = .(expr))$y
+              }
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -161,7 +156,7 @@ setAs("Solr", "SolrFrame", function(from) {
 })
 
 as.data.frame.SolrFrame <- function(x, row.names = NULL, optional = FALSE,
-                                    fill = TRUE)
+                                    fill = TRUE, ...)
 {
   as.data.frame(x, row.names=row.names, optional=optional, fill=fill)
 }
@@ -219,6 +214,9 @@ setMethod("summary", "SolrFrame",
         SolrSummary(facets(core(object), query), fn, digits)
     })
 
+setMethod("unique", "SolrFrame", function (x, incomparables = FALSE) {
+              as(callNextMethod(), "DocDataFrame")
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

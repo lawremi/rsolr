@@ -91,7 +91,7 @@ setAs("DocList", "DocDataFrame", function(from) {
       })
 
 as.data.frame.DocCollection <-
-    function (x, row.names = NULL, optional = FALSE) {
+    function (x, row.names = NULL, optional = FALSE, ...) {
         as.data.frame(x, row.names=row.names, optional=optional)
     }
 

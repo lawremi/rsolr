@@ -64,7 +64,7 @@ setMethod("ndoc", "GroupedSolrFrame", function(x) {
 
 setMethod("rownames", "GroupedSolrFrame", function(x) {
               x <- x[all.vars(grouping(x))]
-              groups <- as.data.frame(as(x, "SolrFrame", strict=TRUE))
+              groups <- unique(as(x, "SolrFrame", strict=TRUE))
               do.call(paste, c(groups, sep="."))
           })
 
@@ -81,7 +81,7 @@ setReplaceMethod("[", "GroupedSolrFrame", function(x, i, j, ..., value) {
                          if (all(lengths(v) == 1L)) {
                              rep(unlist(v, use.names=FALSE), nd)
                          } else {
-                             needrep <- lengths(sv) != nd
+                             needrep <- lengths(v) != nd
                              v[needrep] <- mapply(rep, v[needrep],
                                                   length.out=nd[needrep],
                                                   SIMPLIFY=FALSE)
@@ -104,12 +104,12 @@ setReplaceMethod("[", "GroupedSolrFrame", function(x, i, j, ..., value) {
                          if (is.list(i) && !is.null(names(i)) &&
                              !all(vapply(i, is.character, logical(1L)))) {
                              x <- x[names(i),]
-                         } else if (!is.list(i)) {
+                         } else if (!is.list(i) && !is(i, "Promise")) {
                              i <- ids(x)[i]
                          }
-                         i <- unlist(i, use.names=FALSE)
+                         i <- ungroup(i)
                      }
-                     callNextMethod()
+                     group(callNextMethod(), grouping(x))
                  })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -126,7 +126,7 @@ setMethod("[", "GroupedSolrFrame", function(x, i, j, ..., drop = TRUE) {
                   } else if (!is.list(i)) {
                       i <- ids(x)[i]
                   }
-                  i <- unlist(i, use.names=FALSE)
+                  i <- ungroup(i)
               }
               if (twoD && missing(i) && !missing(j)) {
                   ## FIXME: methods package bug
@@ -243,8 +243,22 @@ setMethod("ungroup", "data.frame", function(x) {
               x
           })
 
+setMethod("ungroup", "ANY", function(x) {
+              unlist(x, recursive=FALSE, use.names=FALSE)
+          })
+
 setMethod("ungroup", "GroupedSolrFrame", function(x) {
               as(x, "SolrFrame")
+          })
+
+setMethod("ungroup", "SolrFrame", function(x) {
+              x
+          })
+
+setMethod("unlist", "SolrPromise",
+          function(x, recursive = TRUE, use.names = TRUE) {
+              context(x) <- ungroup(context(x))
+              x
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

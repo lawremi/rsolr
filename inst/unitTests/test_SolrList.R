@@ -8,7 +8,7 @@ checkResponseEquals <- function(response, input, tolerance=1) {
 }
 
 test_SolrList_accessors <- function() {
-  solr <- rsolr:::TestSolr()
+  solr <- TestSolr()
   s <- SolrList(solr$uri)
 
   checkEquals(SolrCore(solr$uri), core(SolrList(solr$uri)))
