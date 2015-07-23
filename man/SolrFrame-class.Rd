@@ -127,7 +127,9 @@
   requires a unique key in the schema) or a
   \code{\linkS4class{SolrPromise}}/\code{\linkS4class{SolrExpression}},
   but note that if it evaluates to NAs, the corresponding rows are
-  excluded from the result, as with \code{subset}.
+  excluded from the result, as with \code{subset}. Using a
+  \code{SolrPromise} or \code{SolrExpression} is recommended, as
+  filtering happens at the database.
   
   A special feature of \code{SolrFrame}, vs. an ordinary data frame, is
   that it can be \code{group}ed into a
@@ -239,6 +241,11 @@
     \item{}{\code{defer(x)}: Returns a \code{SolrFrame} that yields
       \code{\linkS4class{SolrPromise}} objects instead of vectors
       whenever a field is retrieved
+    }
+    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+      search using the query string \code{q}. The main difference to
+      filtering is that (by default) Solr will order the result by
+      score, i.e., how well each document matches the query.
     }
   }
 }

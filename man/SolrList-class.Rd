@@ -15,6 +15,10 @@
 % Summarizing
 \alias{unique,SolrList-method}
 
+% Searching
+\alias{searchDocs}
+\alias{searchDocs,Solr}
+
 % Constructor:
 \alias{SolrList}
 
@@ -66,7 +70,9 @@
   requires a unique key in the schema) or a
   \code{\linkS4class{SolrPromise}}/\code{\linkS4class{SolrExpression}},
   but note that if it evaluates to NAs, the corresponding rows are
-  excluded from the result, as with \code{subset}.
+  excluded from the result, as with \code{subset}. Using a
+  \code{SolrPromise} or \code{SolrExpression} is recommended, as
+  filtering happens at the database.
   
   A \code{SolrList} can be made lazy by calling \code{defer} on a
   \code{SolrList}, so that all column retrieval, e.g., via \code{[},
@@ -127,6 +133,11 @@
     \item{}{\code{defer(x)}: Returns a \code{SolrList} that yields
       \code{\linkS4class{SolrPromise}} objects instead of vectors
       whenever a field is retrieved
+    }
+    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+      search using the query string \code{q}. The main difference to
+      filtering is that (by default) Solr will order the result by
+      score, i.e., how well each document matches the query.
     }
   }
 }

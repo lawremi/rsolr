@@ -84,6 +84,26 @@
   }
 }
 
+\section{Querying}{
+  \describe{
+    \item{}{\code{subset(x, subset, select, fields, select.from =
+        character())}: Behaves like the base \code{\link{subset}}, with
+      some extensions. The \code{fields} argument is exclusive with
+      \code{select}, and should be a character vector of field names,
+      potentially with wildcards. The \code{select.from} argument
+      gives the names that are filtered by \code{select}, since
+      \code{SolrQuery} is not associated with any \code{SolrCore}, and
+      thus does not know the field set (in the future, we might use
+      laziness to avoid this problem).
+    }
+    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+      search using the query string \code{q}. The main difference to
+      filtering (\code{subset}) is that (by default) Solr will order the
+      result by score, i.e., how well each document matches the query.
+    }
+  }
+}
+
 \section{Constructor}{
   \describe{
     \item{}{

@@ -140,7 +140,8 @@ computedFieldPromise <- function(solr, name) {
 }
 
 SolrSymbolPromise <- function(expr, context) {
-    missable(expr) <- !required(fields(schema(core(context)))[name(expr)])
+    missable(expr) <- name(expr) != "score" &&
+        !required(fields(schema(core(context)))[name(expr)])
     new("SolrSymbolPromise", expr=expr, context=context)
 }
 

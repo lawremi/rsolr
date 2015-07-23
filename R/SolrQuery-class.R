@@ -194,6 +194,19 @@ setMethod("subset", "SolrQuery",
   x
 })
 
+setGeneric("searchDocs", function(x, q, ...) standardGeneric("searchDocs"))
+
+setMethod("searchDocs", c("SolrQuery", "ANY"), function(x, q) {
+              q <- as.character(q)
+              stopifnot(isSingleString(q))
+              params(x)$q <- q
+              sort(x, by=~score, decreasing=TRUE)
+          })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Output manipulation
+###
+
 transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
 
 setMethod("transform", "SolrQuery", function (`_data`, ...) {
@@ -238,7 +251,8 @@ solrNegInf <- SolrFunctionCall("div", list(-1, 0))
 ### unless the schema is configured to sort NAs specially.
 isCharacterSymbol <- function(expr, core) {
     if (is(expr, "SolrSymbol")) {
-        !is(fieldTypes(schema(core), name(expr))[[1L]], "CharacterField")
+        name(expr) != "score" &&
+            !is(fieldTypes(schema(core), name(expr))[[1L]], "CharacterField")
     } else {
         FALSE
     }

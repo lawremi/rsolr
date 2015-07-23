@@ -160,6 +160,11 @@ setMethod("within", "Solr", function (data, expr, ...) {
               data
           })
 
+setMethod("searchDocs", c("Solr", "ANY"), function(x, q) {
+              query(x) <- searchDocs(query(x), q)
+              x
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Transforming
 ###

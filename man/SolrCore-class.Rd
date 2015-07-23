@@ -174,6 +174,8 @@
 \author{ Michael Lawrence }
 
 \seealso{
+  \code{\linkS4class{SolrFrame}}, the typical way to interact with a
+  Solr core.
 }
 
 \examples{

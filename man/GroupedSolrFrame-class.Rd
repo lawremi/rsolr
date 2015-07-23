@@ -28,7 +28,7 @@
 
 % Coercion:
 \alias{as.data.frame,GroupedSolrFrame-method}
-\alias{coerce,Solr,data.frame-method}
+\alias{coerce,GroupedSolrFrame,data.frame-method}
 
 % Show:
 \alias{show,GroupedSolrFrame-method}
@@ -48,6 +48,11 @@
   usage is to construct a \code{GroupedSolrFrame} by calling
   \code{group} on a \code{SolrFrame}, and then to extract columns (as
   promises) and aggregate them (by e.g. calling \code{mean}).
+
+  Functions that group the data, such as \code{group} and
+  \code{aggregate}, simply add to the existing grouping. To clear the
+  grouping, call \code{ungroup} or just coerce to a \code{SolrFrame} or
+  \code{SolrList}.
 }
 
 \section{Accessors}{
@@ -93,93 +98,10 @@
   be seen as an extension of the data frame API.
 
   \describe{
-    \item{}{\code{aggregate(x, data, FUN, ..., subset, na.action,
-        simplify = TRUE, count = FALSE)}: If \code{x} is a formula,
-        aggregates \code{data}, grouping by \code{x}, by either applying
-        \code{FUN}, or evaluating an aggregating expression in \dots, on
-        each group. If \code{count} is \code{TRUE}, a \dQuote{count}
-        column is added with the number of elements in each group. The
-        rest of the arguments behave like those for the base
-        \code{\link{aggregate}}.
-
-        There are two main modes: aggregating with \code{FUN}, or, as an
-        extension to the base \code{aggregate}, aggregating with
-        expressions in \code{\dots}, similar to the interface for
-        \code{transform}. If \code{FUN} is specified, then behavior is
-        much like the original, except one can omit the LHS on the
-        formula, in which case the entire frame is passed to
-        \code{FUN}. In the second mode, there is a column in the result
-        for each argument in \dots, and there must not be an LHS on the
-        formula.
-
-        See the documentation for the underlying \code{\link{facet}}
-        function for details on what is supported on the formula RHS.
-
-        For global aggregation, simply pass the \code{GroupedSolrFrame} as
-        \code{x}, in which case the \code{data} argument does not exist.
-
-        Note that the function or expressions are only
-        \emph{conceptually} evaluated on each group. In reality, the
-        computations occur on grouped columns/promises, which are
-        modeled as lists. Thus, there is potential for conflict, in
-        particular with \code{length}, which return the number of
-        groups, instead of operating group-wise. One should use the
-        abstraction \code{ndoc} instead of \code{length}, since
-        \code{ndoc} always returns document counts, and thus will return
-        the size of each group.
-    }
-    \item{}{\code{rename(x, ...)}: Renames the columns of \code{x},
-      where the names and character values of \dots indicates the
-      mapping (\code{newname = oldname}). 
-    }
-    \item{}{\code{group(x, by)}: Returns a
-      \code{\linkS4class{GroupedGroupedSolrFrame}} that is grouped by the
-      factors in \code{by}, typically a formula.
-    }
-    \item{}{\code{defer(x)}: Returns a \code{GroupedSolrFrame} that yields
-      \code{\linkS4class{SolrPromise}} objects instead of vectors
-      whenever a field is retrieved
-    }
-  }
-}
-
-\section{Constructor}{
-  \describe{
-    \item{}{
-      \code{GroupedSolrFrame(uri, ...)}:
-      Constructs a new \code{GroupedSolrFrame} instance, representing a Solr
-      core located at \code{uri}, which should be a string or a
-      \code{\link[restfulr]{RestUri}} object. If a string, then the
-      \dots are passed to the \code{RestUri} constructor.
-    }
-  }
-}
-
-
-\section{Evaluation}{
-  \describe{
-    \item{}{
-      \code{eval(expr, envir, enclos)}: Evaluates \code{expr} in the
-      \code{GroupedSolrFrame} \code{envir}, using \code{enclos} as the
-      enclosing environment. The \code{expr} can be an R language object
-      or a \code{SolrExpression}, either of which are lazily evaluated
-      if \code{defer} has been called on \code{envir}.
-    }
-  }
-}
-
-\section{Coercion}{
-  \describe{
-    \item{}{
-      \code{as.data.frame(x, row.names=NULL, optional=FALSE, fill=TRUE)}:
-      Downloads the data into an actual data.frame, specifically an
-      instance of \code{\linkS4class{DocDataFrame}}. If \code{fill} is
-      FALSE, only the fields represented in at least one document are
-      added as columns. 
-    }
-    \item{}{
-      \code{as.list(x)}: Essentially \code{as.list(as.data.frame(x))},
-      except returns a list of promises if \code{x} is deferred.
+    \item{}{\code{heads(x, n)}, \code{tails(x, n)}, \code{windows(x,
+      start, end)}: Perform \code{head}, \code{tail} or \code{window} on
+      each group separately, returning a data.frame with grouped (list)
+      columns.
     }
   }
 }

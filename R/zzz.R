@@ -1,3 +1,5 @@
+globalVariables(c(".", ".field"))
+
 .onLoad <- function(libname, pkgname) {
   populate_XDG_DATA_HOME()
 }
