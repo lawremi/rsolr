@@ -342,7 +342,6 @@ setMethod("eval", c("SolrQuery", "SolrCore"),
             if (is.null(responseType(expr)))
               responseType(expr) <- "list"
             expr <- translate(expr, core=envir)
-            params(expr)$qt <- envir@qt
             query <- as.character(expr)
             response <- tryCatch(read(envir@uri$select, query),
                                  error = SolrErrorHandler(envir, expr))
