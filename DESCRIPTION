@@ -18,7 +18,7 @@ Imports:
     XML
 Depends:
     R (>= 3.2.0),
-    BiocGenerics (>= 0.13.3),
+    BiocGenerics (>= 0.15.1),
     methods
 Collate:
     utils.R
