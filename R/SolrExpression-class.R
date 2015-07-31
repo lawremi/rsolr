@@ -263,8 +263,9 @@ SolrSortExpression <- function(decreasing) {
     new("SolrSortExpression", decreasing=decreasing)
 }
 
-setMethod("symbolFactory", "SolrExpression", function(x) SolrSymbol)
-setMethod("symbolFactory", "SolrQParserExpression",
+setGeneric("SymbolFactory", function(x, ...) standardGeneric("SymbolFactory"))
+setMethod("SymbolFactory", "SolrExpression", function(x) SolrSymbol)
+setMethod("SymbolFactory", "SolrQParserExpression",
           function(x) SolrLuceneSymbol)
 
 SolrSymbol <- new("SymbolFactory", function(name) {

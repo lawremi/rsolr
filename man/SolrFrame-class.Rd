@@ -22,35 +22,44 @@
 \alias{fieldNames}
 \alias{fieldNames,SolrFrame-method}
 \alias{fieldNames,Solr-method}
-\alias{[<-,SolrFrame-method}
+\alias{[<-,SolrFrame,ANY,ANY,ANY-method}
 \alias{[[<-,SolrFrame-method}
 \alias{[,SolrFrame-method}
-\alias{[[,SolrFrame-method}
+\alias{[[,SolrFrame,ANY-method}
 \alias{$,Solr-method}
 \alias{$<-,Solr-method}
 \alias{ndoc,Solr-method}
 \alias{nfield,Solr-method}
 \alias{core}
+\alias{query}
+\alias{facets,SolrSummary-method}
+\alias{grouping,Solr-method}
+\alias{ids,Solr-method}
 
 % Constructor:
 \alias{SolrFrame}
 
 % Manipulation:
+\alias{rename}
 \alias{rename,Solr-class}
 \alias{subset,Solr-method}
 \alias{transform,Solr-method}
 \alias{sort,Solr-method}
 \alias{xtabs,Solr-method}
 \alias{aggregate,formula-method}
+\alias{unique,SolrFrame-method}
 \alias{aggregate,Solr-method}
 \alias{sort,Solr-method}
 \alias{summary,SolrFrame-method}
 \alias{unique,Solr-method}
 \alias{head,Solr-method}
 \alias{tail,Solr-method}
+\alias{window,Solr-method}
 \alias{group}
 \alias{group,SolrFrame,NULL-method}
 \alias{group,SolrFrame,formula-method}
+\alias{ungroup,SolrFrame-method}
+\alias{rename,Solr-method}
 
 % Evaluation:
 \alias{eval,SolrExpression,SolrFrame-method}
@@ -62,6 +71,8 @@
 % Laziness:
 \alias{defer}
 \alias{defer,Solr-method}
+\alias{symbolFactory,Solr-method}
+\alias{symbolFactory<-,Solr-method}
 
 % Coercion:
 \alias{as.data.frame.Solr}
@@ -70,6 +81,12 @@
 \alias{as.list,Solr-method}
 \alias{as.list.Solr}
 \alias{coerce,Solr,environment-method}
+\alias{as.data.frame,SolrFrame-method}
+\alias{as.list,SolrFrame-method}
+\alias{as.table,SolrSummary-method}
+
+% Search:
+\alias{searchDocs,Solr-method}
 
 % Show:
 \alias{show,SolrFrame-method}
@@ -78,7 +95,8 @@
 \description{
   The \code{SolrFrame} object makes Solr data accessible through a
   data.frame-like interface. This is the typical way an R user accesses
-  data from a Solr core.
+  data from a Solr core. Much of its methods are shared with
+  \code{SolrList}, which has very similar behavior.
 }
 
 \details{
@@ -236,7 +254,11 @@
     }
     \item{}{\code{group(x, by)}: Returns a
       \code{\linkS4class{GroupedSolrFrame}} that is grouped by the
-      factors in \code{by}, typically a formula.
+      factors in \code{by}, typically a formula. To get back to
+      \code{x}, call \code{ungroup(x)}.
+    }
+    \item{}{\code{grouping(x)}: Just returns \code{NULL}, since a
+      \code{SolrFrame} is not grouped (unless extended to be groupable).
     }
     \item{}{\code{defer(x)}: Returns a \code{SolrFrame} that yields
       \code{\linkS4class{SolrPromise}} objects instead of vectors
@@ -300,14 +322,14 @@
 \examples{
      library(nycflights13)
      schema <- deriveSolrSchema(flights)
-     solr <- rsolr:::TestSolr(schema)
+     solr <- TestSolr(schema)
      sr <- SolrFrame(solr$uri)
      sr[] <- flights
      dim(sr)
      head(sr)
      subset(sr, month == 1 & day == 1)
-     ## see the vignette for more
      solr$kill()
+     ## see the vignette for more
 }
 
 \keyword{methods}

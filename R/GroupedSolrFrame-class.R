@@ -72,6 +72,10 @@ setMethod("nrow", "GroupedSolrFrame", function(x) {
               length(ndoc(x))
           })
 
+setMethod("ngroup", "GroupedSolrFrame", function(x) {
+              nrow(x)
+          })
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###
@@ -215,9 +219,10 @@ setMethod("unique", "GroupedSolrFrame", function (x, incomparables = FALSE) {
 ###
 
 groupDf <- function(df, grouping, fn) {
+    df <- do.call(data.frame, df)
     mf <- model.frame(grouping, df)
     df <- df[fn]
-    columns <- lapply(df, split, mf)
+    columns <- lapply(df, function(x) unname(split(x)), mf)
     ## firstColumn <- unname(split(df[[1L]], mf))
     ## columns <- c(list(firstColumn), lapply(df[-1L], relist, firstColumn))
     ## names(columns)[1L] <- fn[1L]

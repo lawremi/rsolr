@@ -102,6 +102,9 @@ setMethod("fieldNames", "SolrCore",
           function(x, query = NULL, onlyStored = FALSE, onlyIndexed = FALSE,
                    includeStatic = FALSE)
               {
+                  if (is.character(query)) {
+                      query <- subset(SolrQuery(), fields=query)
+                  }
                   if (!is.null(query) && !is(query, "SolrQuery")) {
                       stop("if non-NULL, 'query' must be a SolrQuery")
                   }
@@ -228,7 +231,7 @@ setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
     warning("delete() cannot handle 'which' more complex than ",
             "'subset(SolrQuery(), [expr])'")
   }
-  query <- eval(which, x)$fq
+  query <- params(eval(which, x))$fq
   if (is.null(query)) {
     query <- params(which)$q
   }
@@ -276,8 +279,8 @@ readVersion <- function(uri) {
   as.package_version(tryCatch({
       readSystem(uri)$lucene$"solr-spec-version"
   }, error = function(e) {
-      warning("Failed to retrieve version, assuming 4.x")
-      "4.x"
+      warning("Failed to retrieve version, assuming 5.0")
+      "5.0"
   }))
 }
 

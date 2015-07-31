@@ -14,7 +14,7 @@ setClass("SimpleExpression",
          validity=function(object) {
            if (!isSingleString(object@expr)) {
              "'expr' must be a single, non-NA string"
-           }
+g           }
          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -48,7 +48,7 @@ setMethod("translate", c("ANY", "Expression"),
               if (is(x, class(target))) {
                   return(x)
               }
-              symbolFactory(context) <- symbolFactory(target, ...)
+              symbolFactory(context) <- SymbolFactory(target, ...)
               translation <- eval(x, context)
               if (is(translation, "Promise")) {
                   if (!compatible(context(translation), frame(context))) {

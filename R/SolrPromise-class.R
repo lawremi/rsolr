@@ -1028,11 +1028,7 @@ setMethod("IQR", "SolrPromise",
                             })
           })
 
-setGeneric("mad", function(x, center = median(x), constant = 1.4826,
-                           na.rm = FALSE, low = FALSE, high = FALSE)
-           standardGeneric("mad"), signature=c("x", "center"))
-
-setMethod("mad", c("SolrPromise", "ANY"),
+setMethod("mad", "SolrPromise",
           function (x, center = median(x, na.rm=na.rm), constant = 1.4826,
                     na.rm = FALSE, low = FALSE, high = FALSE) {
               if (!identical(low, FALSE) || !identical(high, FALSE)) {
@@ -1056,7 +1052,10 @@ setMethod("anyNA", "SolrPromise", function(x) {
 
 setMethod("ndoc", "SolrPromise", function(x) {
 ### In a package full of hacks, this is one of the best
-              SolrAggregatePromise(SolrAggregateCall("sum", 1L), context(x))
+              call <- SolrAggregateCall("sum", 1L,
+                                        postprocess=function(stat, count)
+                                            as.integer(stat))
+              SolrAggregatePromise(call, context(x))
           })
 
 solrAggregate <- function(fun, x, na.rm, params = list(), child = NULL,
@@ -1131,6 +1130,9 @@ setGeneric("windows", function(x, ...) standardGeneric("windows"))
 
 setMethod("windows", "SolrPromise",
           function(x, start = 1L, end = .Machine$integer.max) {
+              if (is.null(grouping(context(x)))) {
+                  stop("context(x) is not grouped")
+              }
               ctx <- transform(context(x), x = .(expr(x)))["x"]
               windows(ctx, start=start, end=end)$x
           })

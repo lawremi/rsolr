@@ -12,7 +12,7 @@
 \alias{SolrQuery}
 
 % Restriction and manipulation:
-\alias{rename,SolrQuery-class}
+\alias{rename,SolrQuery-method}
 \alias{subset,SolrQuery-method}
 \alias{transform,SolrQuery-method}
 \alias{sort,SolrQuery-method}
@@ -32,12 +32,14 @@
 \alias{facet}
 \alias{facet,SolrQuery,NULL-method}
 
-
 % Grouping:
 \alias{group,SolrQuery,language-method}
 \alias{group,SolrQuery,name-method}
 \alias{group,SolrQuery,character-method}
 \alias{group,SolrQuery,formula-method}
+
+% Searching:
+\alias{searchDocs,SolrQuery-method}
 
 % Coercion:
 \alias{as.character.SolrQuery}
@@ -45,6 +47,7 @@
 \alias{translate,SolrQueryTranslationSource,Expression-method}
 \alias{translate,SolrQueryTranslationSource,SolrQParserExpression-method}
 \alias{translate,SolrQueryTranslationSource,SolrSortExpression-method}
+\alias{translate,SolrQuery,missing-method}
 \alias{as.character,SolrQueryTranslationSource-method}
 
 % Show:

@@ -11,6 +11,8 @@
 \alias{fieldTypes}
 \alias{fieldTypes,SolrSchema-method}
 \alias{copyFields}
+\alias{name}
+\alias{name,ANY-method}
 
 % Generation:
 \alias{deriveSolrSchema}
@@ -35,6 +37,9 @@
 
 \section{Accessors}{
   \describe{
+    \item{}{
+      \code{name(x)}: Gets the name of the schema/dataset.
+    }
     \item{}{
       \code{uniqueKey(x)}: Gets the field that serves as the unique key,
       i.e., the document identifier.

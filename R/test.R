@@ -25,6 +25,7 @@ getSolrHome <- function() {
 
 populateSolrHome <- function(customSchema=NULL) {
   solr.home <- getSolrHome()
+  unlink(solr.home, recursive=TRUE)  
   file.copy(system.file("example-solr", "solr", package="rsolr"),
             dirname(solr.home), recursive=TRUE)
   if (!is.null(customSchema)) {
@@ -68,8 +69,8 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
               methods = list(
                 start = function() {
                   if (.self$isRunning()) {
-                    warning("server already running (port is open)")
-                    return()
+                    warning("server already running (port is open); killing it")
+                    .self$kill()
                   }
                   solr.home <- populateSolrHome(.self$customSchema)
                   cmd <- buildCommandLine()

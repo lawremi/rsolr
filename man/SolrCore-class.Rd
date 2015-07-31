@@ -20,11 +20,16 @@
 \alias{docs,SolrCore-method}
 \alias{read,SolrCore-method}
 
+% Evaluation
+\alias{eval,SolrQuery,SolrCore-method}
+\alias{eval,TranslationRequest,SolrCore-method}
+
 % Summarizing:
 \alias{facets}
 \alias{facets,SolrCore-method}
 \alias{groupings}
 \alias{groupings,SolrCore-method}
+\alias{ngroup,SolrCore-method}
 
 % Updating:
 \alias{update,SolrCore-method}
@@ -66,7 +71,8 @@
     \item{}{\code{fieldNames(x, query = NULL, onlyStored = FALSE,
         onlyIndexed = FALSE, includeStatic = FALSE)}: Gets the field
       names, given any restriction and/or transformation in
-      \code{query}. The \code{onlyIndexed} and \code{onlyStored}
+      \code{query}, which is a \code{SolrQuery} or a character vector of
+      field patterns. The \code{onlyIndexed} and \code{onlyStored}
       arguments restrict the fields to those indexed and stored,
       respectively (see \code{\linkS4class{FieldInfo}} for more
       details). Setting \code{includeStatic} to \code{TRUE} ensures
@@ -116,6 +122,10 @@
       Gets the list of \code{\linkS4class{Grouping}} objects as requested by
       the grouped query \code{by}. The \dots are passed
       down to \code{groupings} on \code{\linkS4class{ListSolrResult}}.
+    }
+    \item{}{
+      \code{ngroup(x)}: Gets the number of groupings that would be
+      returned by \code{groupings}.
     }
   }
 }
@@ -179,7 +189,7 @@
 }
 
 \examples{
-     solr <- rsolr:::TestSolr(schema)
+     solr <- TestSolr()
      sc <- SolrCore(solr$uri)
      name(sc)
      ndoc(sc)
@@ -194,7 +204,7 @@
      )
      update(sc, docs)
 
-     q <- SolrQuery(id %in% as.character(2:4))
+     q <- SolrQuery(id \%in\% as.character(2:4))
      read(sc, q)
 
      solr$kill()

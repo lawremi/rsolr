@@ -10,22 +10,28 @@
 \alias{ndoc,GroupedSolrFrame-method}
 \alias{rownames,GroupedSolrFrame-method}
 \alias{nrow,GroupedSolrFrame-method}
-\alias{[<-,GroupedSolrFrame-method}
+\alias{[<-,GroupedSolrFrame,ANY,ANY,ANY-method}
 \alias{[,GroupedSolrFrame-method}
+\alias{ngroup}
+\alias{ngroup,GroupedSolrFrame-method}
 
 % Manipulation:
 \alias{group,GroupedSolrFrame,ANY-method}
 \alias{ungroup}
 \alias{ungroup,GroupedSolrFrame-method}
 \alias{ungroup,data.frame-method}
+\alias{ungroup,ANY-method}
 \alias{window,GroupedSolrFrame-method}
 \alias{head,GroupedSolrFrame-method}
 \alias{tail,GroupedSolrFrame-method}
+\alias{windows}
 \alias{windows,GroupedSolrFrame-method}
-\alias{heads,GroupedSolrFrame-method}
-\alias{tails,GroupedSolrFrame-method}
+\alias{heads}
+\alias{heads,ANY-method}
+\alias{tails}
+\alias{tails,ANY-method}
 \alias{unique,GroupedSolrFrame-method}
-
+  
 % Coercion:
 \alias{as.data.frame,GroupedSolrFrame-method}
 \alias{coerce,GroupedSolrFrame,data.frame-method}
@@ -102,6 +108,9 @@
       start, end)}: Perform \code{head}, \code{tail} or \code{window} on
       each group separately, returning a data.frame with grouped (list)
       columns.
+    }
+    \item{}{\code{ngroup(x)}: The number of groups, i.e., the number of
+      rows.
     }
   }
 }

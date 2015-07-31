@@ -8,14 +8,15 @@ checkResponseEquals <- function(response, input, tolerance=1) {
 }
 
 test_SolrCore_accessors <- function() {
-  solr <- rsolr:::TestSolr()
+  solr <- TestSolr()
   sc <- SolrCore(solr$uri)
   checkIdentical(name(sc), "example")
   checkIdentical(ndoc(sc), 32L)
   checkIdentical(uniqueKey(schema(sc)), "id")
-  checkIdentical(version(sc), package_version("5.1.0"))
+  checkIdentical(version(sc), package_version("5.3.0"))
 
   delete(sc)
+  purgeCache(sc)
   checkIdentical(ndoc(sc), 0L)
   
   doc <- list(id="1112211111", name="my name!")
@@ -75,6 +76,7 @@ test_SolrCore_accessors <- function() {
   update(sc, docs)
   docs[,"id"] <- ids(docs)
   purgeCache(sc)
+  docs <- docs[,fieldNames(sc)]
   checkResponseEquals(read(sc), docs)
 
   del <- c(del, list(doc))

@@ -76,7 +76,7 @@ setReplaceMethod("symbolFactory", "Solr", function(x, value) {
 setGeneric("defer", function(x, ...) standardGeneric("defer"))
 
 setMethod("defer", "Solr", function(x) {
-              symbolFactory(x) <- symbolFactory(SolrFunctionExpression())
+              symbolFactory(x) <- SymbolFactory(SolrFunctionExpression())
               x
           })
 

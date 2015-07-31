@@ -7,10 +7,11 @@
 % Accessors:
 \alias{length,SolrList-method}
 \alias{names,SolrList-method}
-\alias{[<-,SolrList-method}
-\alias{[[<-,SolrList-method}
+\alias{[<-,SolrList,ANY,ANY,ANY-method}
+\alias{[[,SolrList,ANY-method}
 \alias{[,SolrList-method}
 \alias{[[,SolrList-method}
+\alias{[[<-,SolrList-method}
 
 % Summarizing
 \alias{unique,SolrList-method}
@@ -190,15 +191,17 @@
 }
 
 \examples{
-     library(nycflights13)
-     schema <- deriveSolrSchema(flights)
-     solr <- rsolr:::TestSolr(schema)
+     solr <- TestSolr()
+     solr$kill()
+     solr <- TestSolr()
      sr <- SolrList(solr$uri)
-     sr[] <- flights
      length(sr)
      head(sr)
-     subset(sr, month == 1 & day == 1)
-     ## see the vignette for more
+     sr[["GB18030TEST"]]
+     # Solr tends to crash for some reason running this inside R CMD check
+     \dontrun{ 
+     as.list(subset(sr, price > 100))[,"price"]
+     }
      solr$kill()
 }
 

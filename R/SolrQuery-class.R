@@ -80,8 +80,7 @@ setClass("SolrQuery",
 ### Constructor
 ###
 
-SolrQuery <- function(expr, requestHandler = getOption("rsolr.requestHandler"),
-                      ...)
+SolrQuery <- function(expr, requestHandler = NULL, ...)
 {
     ans <- new("SolrQuery")
     if (!missing(expr)) {

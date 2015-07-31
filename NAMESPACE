@@ -16,7 +16,8 @@ importFrom(stats, quantile)
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,
        query, core, params, "params<-", stats, defer, docs, pmin, pmax,
-       lengths, ungroup)
+       lengths, ungroup, dynamic, multiValued, typeName, indexed, stored,
+       required, docValues, Promise)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               fieldNames, subset, xtabs, facets, transform, summary,
               head, tail, window, rev, aggregate, mean, sd, var, window, group,
@@ -27,8 +28,16 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
               facet, ngroup, complete.cases, as.table, nunique, translate,
-              grouping, searchDocs)
-exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore)
+              grouping, searchDocs, symbolFactory, "symbolFactory<-")
+exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore,
+              ListSolrResult, SolrResult, Grouping, Facets, SolrSchema,
+              FieldInfo, Promise, SimplePromise, SolrPromise, SolrLucenePromise,
+              SolrFunctionPromise, SolrAggregatePromise, SolrSymbolPromise,
+              SolrLuceneSymbolPromise, PredicatedSolrSymbolPromise,
+              DocCollection, DocList, DocDataFrame, Expression,
+              SimpleExpression, Symbol, SimpleSymbol, SymbolFactory,
+              TranslationRequest, FieldType, FieldTypeList, GroupedSolrFrame,
+              SymbolFactory, SolrReducePromise, Context)
 
 S3method(as.data.frame, Solr)
 S3method(as.data.frame, DocCollection)
