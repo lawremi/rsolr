@@ -231,7 +231,8 @@ setMethod("delete", "SolrCore", function(x, which = SolrQuery(), ...) {
     warning("delete() cannot handle 'which' more complex than ",
             "'subset(SolrQuery(), [expr])'")
   }
-  query <- params(eval(which, x))$fq
+  which <- translate(which, core=x)
+  query <- params(which)$fq
   if (is.null(query)) {
     query <- params(which)$q
   }
