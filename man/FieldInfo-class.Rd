@@ -15,6 +15,7 @@
 \alias{length,FieldInfo-method}
 \alias{names,FieldInfo-method}
 \alias{names<-,FieldInfo,ANY-method}
+\alias{\%in\%,character,FieldInfo-method}
 
 % Restriction and manipulation:
 \alias{[,FieldInfo-method}
@@ -84,6 +85,15 @@
       stored in a columnar format that accelerates Solr function calls
       (\code{transform}) and faceting (\code{aggregate}).
     }
+  }
+}
+
+\section{Utilities}{
+  \describe{
+    \code{x \%in\% table}: Returns whether each field name in \code{x}
+    matches a field defined in \code{table}, a \code{FieldInfo}
+    object. This convenience is particularly needed when the schema
+    contains dynamic fields.
   }
 }
 
