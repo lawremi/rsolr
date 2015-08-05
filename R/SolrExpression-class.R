@@ -764,6 +764,10 @@ setAs("logical", "SolrLuceneExpression", function(from) {
           }
       })
 
+setAs("logical", "SolrExpression", function(from) {
+          as(from, "SolrLuceneExpression")
+      })
+
 setAs("ANY", "SolrQParserExpression", function(from) {
           LuceneQParserExpression(from)
       })

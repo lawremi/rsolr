@@ -179,7 +179,8 @@ setMethod("staticFieldNames", "SolrSchema", function(x, include.hidden = FALSE) 
 convertCollection <- function(x, type, FUN) {
   x <- as(x, "DocCollection")
   fields <- fieldNames(x)
-  convertFields(x, setNames(fieldTypes(type, fields), fields), FUN)
+  types <- fieldTypes(type, fields)
+  convertFields(x, setNames(types, fields), FUN)
 }
 
 resolveUniqueKey <- function(x, type) {
@@ -252,14 +253,22 @@ augmentAliases <- function(x, fl) {
   x
 }
 
+augmentToInclude <- function(x, fields) {
+    existing <- fields %in% fields(x)
+    augmentComputed(x, fields[!existing])
+}
+
 augmentComputed <- function(x, fl) {
   if (length(fl) == 0L) {
     return(x)
   }
-  computed.info <- FieldInfo(name=names(fl),
+  if (is.list(fl)) {
+    fl <- names(fl)
+  }
+  computed.info <- FieldInfo(name=fl,
                              typeName="..computed..",
                              stored=TRUE)
-  computed.type <- FieldTypeList(..computed.. = new("solr.DoubleField"))
+  computed.type <- FieldTypeList(..computed.. = new("AnyField"))
   fields(x) <- append(fields(x), computed.info)
   fieldTypes(x) <- append(fieldTypes(x), computed.type)
   x

@@ -28,16 +28,16 @@ test_SolrQuery <- function() {
   ids(docs) <- as.character(rsolr:::pluck(docs, "id"))
   docs <- docs[,fieldNames(s)]
 
-  testSubset(s, docs)
-  testBoundsRestriction(sc, docs)
-  testSort(sc, docs)
-  testTransform(sc, docs)
-  testFacets(sc, docs)
+  .testSubset(s, docs)
+  .testBoundsRestriction(sc, docs)
+  .testSort(sc, docs)
+  .testTransform(sc, docs)
+  .testFacets(s, docs)
   
   solr$kill()
 }
 
-testSubset <- function(s, docs) {
+.testSubset <- function(s, docs) {
     query <- SolrQuery()
     sc <- core(s)
     subset.query <- subset(query, id %in% 3:5)
@@ -120,7 +120,7 @@ testSubset <- function(s, docs) {
     s[] <- docs
 }
 
-testBoundsRestriction <- function(sc, docs) {
+.testBoundsRestriction <- function(sc, docs) {
     query <- SolrQuery()
     head.query <- head(query, 2L)
     checkResponseEquals(read(sc, head.query), head(docs, 2L))
@@ -152,9 +152,8 @@ testBoundsRestriction <- function(sc, docs) {
     checkResponseEquals(read(sc, restricted.query), tail(head(docs, 2L), 1L))
 }
 
-testSort <- function(s, docs) {
+.testSort <- function(sc, docs) {
     query <- SolrQuery()
-    sc <- core(s)
     sorted.query <- sort(query, by = ~ price)
     checkResponseEquals(read(sc, sorted.query), docs[c(1, 3, 2, 4)])
     sorted.query <- sort(query, by = ~ price, decreasing=TRUE)
@@ -169,7 +168,7 @@ testSort <- function(s, docs) {
     checkResponseEquals(read(sc, sorted.query), rev(docs))
 }
 
-testTransform <- function(sc, docs) {
+.testTransform <- function(sc, docs) {
     query <- SolrQuery()
 
     tform.query <- transform(query, stocked=inStock)
@@ -246,7 +245,8 @@ testTransform <- function(sc, docs) {
                    as.integer(tform.docs[,"bins"]))
 }
 
-testFacets <- function(sc, docs) {
+.testFacets <- function(s, docs) {
+    sc <- core(s)
     checkTable <- function(formula, counts, query = SolrQuery())
         {
             vars <- as.list(attr(terms(formula), "variables"))[-1L]
@@ -320,7 +320,8 @@ testFacets <- function(sc, docs) {
                      val_b=c(TRUE, FALSE, NA, NA, NA, NA),
                      sparse_s=c("one", NA, NA, NA, "two", NA),
                      multi_ss=I(list(NULL, c("a", "b"), NULL, "b", "a",
-                         c("b", "a"))))
+                         c("b", "a"))),
+                     stringsAsFactors=FALSE)
     parseSolrDate <- function(x) { # because we copy/paste from Solr tests
         as.POSIXct(strptime(x, "%Y-%m-%dT%H:%M:%SZ", tz="UTC"))
     }
@@ -363,6 +364,7 @@ testFacets <- function(sc, docs) {
     dfna <- df
     dfna$cat_s <- factor(df$cat_s, exclude=NULL)
     agg <- aggregate(num_d ~ cat_s, dfna, sum, na.action=na.pass)
+    agg$cat_s <- as.character(agg$cat_s)
     colnames(agg)[2L] <- "num_d.sum"
     checkIdentical(stats, agg)
 
@@ -398,7 +400,7 @@ testFacets <- function(sc, docs) {
         facet.query <- facet(query, ~ cat_s,
                              min(num_d, na.rm=.(na.rm)),
                              max(num_d, na.rm=.(na.rm)),
-                             lengthUnique(num_d, na.rm=.(na.rm)),
+                             nunique(num_d, na.rm=.(na.rm)),
                              quantile(num_d, na.rm=.(na.rm)),
                              median(num_d, na.rm=.(na.rm)),
                              IQR(num_d, na.rm=.(na.rm)),
@@ -424,8 +426,8 @@ testFacets <- function(sc, docs) {
                       with(x, data.frame(count=nrow(x),
                                          num_d.min=min(num_d, na.rm=na.rm),
                                          num_d.max=max(num_d, na.rm=na.rm),
-                                         num_d.lengthUnique=
-                                             lengthUnique(num_d, na.rm=na.rm),
+                                         num_d.nunique=
+                                             nunique(num_d, na.rm=na.rm),
                                          num_d.quantile=
                                              I(t(quantile2(num_d,
                                                            na.rm=na.rm))),
@@ -442,10 +444,11 @@ testFacets <- function(sc, docs) {
                                          val_b.all=all(val_b, na.rm=na.rm)))
                   })
         sdf <- cbind(cat_s=levels(factor(df$cat_s)), do.call(rbind, sdf))
+        sdf$cat_s <- as.character(sdf$cat_s)
         rownames(sdf) <- NULL
         colnames(sdf$num_d.range) <- c("min", "max")
-        show(stats)
-        show(sdf)
+        str(stats)
+        str(sdf)
         checkIdentical(stats, sdf)
     }
 
@@ -464,7 +467,8 @@ testFacets <- function(sc, docs) {
     checkTable2(~ cut(num_d, seq(-5, 10, 5), include.lowest=TRUE))
 
 ### CHECK: xtabs empty bucket
-    tab <- xtabs(~ cat_s, df, subset=cat_s=="A")
+    dff <- transform(df, cat_s = as.factor(cat_s))
+    tab <- xtabs(~ cat_s, dff, subset=cat_s=="A")
     fct <- facets(sc, xtabs(~ cat_s, query, subset=cat_s=="A"))[[1L]]
     checkIdentical(as.table(fct), toTable(tab))
     

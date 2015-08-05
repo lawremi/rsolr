@@ -255,6 +255,14 @@ rreplace <- function(object, f, classes = "ANY", ...)
     .rreplace(object)
 }
 
+globMatchMatrix <- function(patterns, x) {
+    ans <- vapply(glob2rx(patterns), grepl, x, FUN.VALUE=logical(length(x)))
+    if (is.vector(ans)) {
+        ans <- t(ans)
+    }
+    ans
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Pretty printing stolen^B^B adapted from S4Vectors
 ###

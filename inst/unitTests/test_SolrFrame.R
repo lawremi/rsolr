@@ -15,10 +15,6 @@ checkResponseEquals <- function(response, input, tolerance=1) {
   checkEquals(unmeta(response), input, tolerance=tolerance)
 }
 
-library(rsolr)
-library(RUnit)
-options(verbose=TRUE)
-
 test_SolrFrame_accessors <- function() {
   solr <- rsolr:::TestSolr()
   s <- SolrFrame(solr$uri)

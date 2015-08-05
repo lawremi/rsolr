@@ -222,6 +222,7 @@ postprocessStats <- function(facet, query, schema) {
                                 if (is(x, "AsIs")) unclass(x) else x
                             })
     factors <- seq_len(match("count", names(facet@stats)) - 1L)
+    schema <- augmentToInclude(schema, names(facet@stats)[tail(factors, 1L)])
     facet@stats[factors] <- convertCollection(facet@stats[factors], schema,
                                               fromSolr)
     facet@stats <- facet@stats[!hidden]

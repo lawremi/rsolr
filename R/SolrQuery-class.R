@@ -436,10 +436,7 @@ setMethod("xtabs", "SolrQuery",
           function(formula, data,
                    subset, sparse = FALSE, 
                    na.action, exclude = NULL,
-                   drop.unused.levels = TRUE) {
-              if (!isTRUE(drop.unused.levels)) {
-                  stop("'drop.unused.levels' must be TRUE")
-              }
+                   drop.unused.levels = FALSE) {
               if (!identical(sparse, FALSE)) {
                   stop("'sparse' must be FALSE")
               }
@@ -452,7 +449,7 @@ setMethod("xtabs", "SolrQuery",
               if (!missing(subset)) {
                   data <- rsolr::subset(data, .(substitute(subset)))
               }
-              facet(data, formula, useNA=useNA, drop=FALSE)
+              facet(data, formula, useNA=useNA, drop=drop.unused.levels)
           })
 
 setGeneric("facet", function(x, by = NULL, ...) standardGeneric("facet"))
@@ -965,14 +962,6 @@ restrictToFields <- function(x, fields) {
     x
 }
 
-globMatchMatrix <- function(x, patterns) {
-    ans <- vapply(glob2rx(patterns), grepl, logical(length(x)), x)
-    if (is.vector(ans)) {
-        ans <- t(ans)
-    }
-    ans
-}
-
 flNames <- function(fl) {
     if (is.null(names(fl))) {
         as.character(fl)
@@ -991,7 +980,7 @@ flIsPattern <- function(query) {
 sortFieldsByQuery <- function(x, query) {
     isPattern <- flIsPattern(query)
     patterns <- which(isPattern)
-    m <- globMatchMatrix(x, names(patterns))
+    m <- globMatchMatrix(names(patterns), x)
     patterns <- patterns[max.col(m, ties.method="first")]
     matched <- rowSums(m) > 0L
     aliases <- which(!isPattern)

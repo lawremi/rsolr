@@ -54,7 +54,7 @@ readLuke <- function(x) {
 
 sortFieldsBySchema <- function(x, schema) {
     schemaNames <- names(fields(schema))
-    x[order(max.col(globMatchMatrix(x, schemaNames), ties.method="first"))]
+    x[order(max.col(globMatchMatrix(schemaNames, x), ties.method="first"))]
 }
 
 retrieveFieldNames <- function(x) {

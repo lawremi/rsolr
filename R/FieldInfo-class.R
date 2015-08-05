@@ -164,12 +164,7 @@ setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
                   return(static.fields)
               }
               dyn.fields <- field[dynamic(field)]
-              rx <- glob2rx(names(dyn.fields))
-              hits <- vapply(rx, grepl, dyn.x,
-                             FUN.VALUE=logical(length(dyn.x)))
-              if (!is.matrix(hits)) {
-                  hits <- t(hits)
-              }
+              hits <- globMatchMatrix(names(dyn.fields), dyn.x)
               nohits <- rowSums(hits) == 0L
               if (any(nohits)) {
                   stop("field(s) ",
@@ -181,6 +176,15 @@ setMethod("resolve", c("character", "FieldInfo"), function(x, field) {
               dyn.fields@name <- dyn.x
               ans <- append(static.fields, dyn.fields)
               ans[match(x, names(ans))]
+          })
+
+setMethod("%in%", c("character", "FieldInfo"), function(x, table) {
+              ans <- x %in% names(table)
+              if (!all(ans)) {
+                  hits <- globMatchMatrix(names(table)[dynamic(table)], x[!ans])
+                  ans[!ans] <- rowSums(hits) > 0L
+              }
+              ans
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
