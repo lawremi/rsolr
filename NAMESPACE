@@ -12,6 +12,9 @@ importFrom(parallel, mcparallel)
 importFrom(tools, pskill, file_path_sans_ext, file_ext)
 importFrom(utils, stack)
 importFrom(stats, quantile)
+importFrom(S4Vectors, isSingleString, isSingleNumber, isTRUEorFALSE,
+           isSingleNumberOrNA, recycleIntegerArg, recycleCharacterArg,
+           recycleLogicalArg)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,

@@ -813,7 +813,7 @@ responseType <- function(x) {
 
 paramToCSV <- function(x) {
     if (!is.null(names(x)))
-        x <- BiocGenerics:::qualifyByName(x, ":")
+        x <- S4Vectors:::.qualifyByName(x, ":")
     if (length(x) > 0L)
         paste(x, collapse=",")
     else x

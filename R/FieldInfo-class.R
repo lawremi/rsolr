@@ -91,13 +91,13 @@ FieldInfo <- function(name, typeName, dynamic=FALSE, multiValued=FALSE,
   len <- length(name)
   new("FieldInfo",
       name=name,
-      typeName=recycleVector(typeName, len),
-      dynamic=recycleVector(dynamic, len),
-      multiValued=recycleVector(multiValued, len),
-      required=recycleVector(required, len),
-      indexed=recycleVector(indexed, len),
-      stored=recycleVector(stored, len),
-      docValues=recycleVector(docValues, len))
+      typeName=recycleCharacterArg(typeName, "typeName", len),
+      dynamic=recycleLogicalArg(dynamic, "dynamic", len),
+      multiValued=recycleLogicalArg(multiValued, "multiValued", len),
+      required=recycleLogicalArg(required, "required", len),
+      indexed=recycleLogicalArg(indexed, "indexed", len),
+      stored=recycleLogicalArg(stored, "stored", len),
+      docValues=recycleLogicalArg(docValues, "docValues", len))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -28,37 +28,6 @@ vpluck <- function(x, name, value, required=TRUE) {
   }
 }
 
-### Copied from S4Vectors -- shouldn't we just depend on it?
-
-isSingleString <- function(x) {
-  is.character(x) && length(x) == 1L && !is.na(x)
-}
-
-isSingleNumber <- function(x) {
-  is.numeric(x) && length(x) == 1L && !is.na(x)
-}
-
-isTRUEorFALSE <- function(x) {
-  identical(x, TRUE) || identical(x, FALSE)
-}
-
-isSingleNumberOrNA <- function (x) {
-    is.atomic(x) && length(x) == 1L && (is.numeric(x) || is.na(x))
-}
-
-recycleVector <- function(x, length.out)
-{
-  if (length(x) == length.out) {
-    x
-  } else {
-    ans <- vector(storage.mode(x), length.out)
-    ans[] <- x
-    ans
-  }
-}
-
-### End S4Vectors copy
-
 isNA <- function(x) {
     is.vector(x) && length(x) == 1L && is.na(x)
 }

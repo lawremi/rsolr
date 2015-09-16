@@ -64,11 +64,7 @@ downloadSolr <- function() {
 }
 
 unpack <- function(file, exdir) {
-    if (file_ext(file) == "zip") {
-        unzip(file, exdir=exdir)
-    } else {
-        untar(file, exdir=exdir)
-    }
+    unzip(file, exdir=exdir)
 }
 
 maybeInstallSolr <- function() {
@@ -124,7 +120,9 @@ runSolr <- function() {
     config <- getUndertowConfig()
     configPath <- tempfile("example-solr", fileext=".conf")
     writeLines(toHOCON(toJSON(config)), configPath)
-    system(paste(file.path(getSolrPath(), "bin", "solr-undertow"), configPath),
+    bin <- file.path(getSolrPath(), "bin", "solr-undertow")
+    Sys.chmod(bin, "0755")
+    system(paste(bin, configPath),
            wait=FALSE, ignore.stdout=!isTRUE(getOption("verbose")))
 }
 

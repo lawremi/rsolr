@@ -447,8 +447,8 @@ test_SolrQuery <- function() {
         sdf$cat_s <- as.character(sdf$cat_s)
         rownames(sdf) <- NULL
         colnames(sdf$num_d.range) <- c("min", "max")
-        str(stats)
-        str(sdf)
+        ## str(stats)
+        ## str(sdf)
         checkIdentical(stats, sdf)
     }
 

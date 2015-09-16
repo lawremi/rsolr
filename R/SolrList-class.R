@@ -94,8 +94,10 @@ setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
       if (any(is.na(i))) {
         stop("'i' resolves to one or more NAs")
       }
-      if (ndoc(value) < length(i))
-        value <- value[recycleVector(seq_len(NROW(value)), length(i)),]
+      if (ndoc(value) < length(i)) {
+          ind <- recycleIntegerArg(seq_len(NROW(value)), "value", length(i))
+          value <- value[ind,]
+      }
       ids(value) <- i
     }
     core <- update(core(x), value, atomic=atomic, ...)
