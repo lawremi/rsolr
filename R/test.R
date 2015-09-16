@@ -22,6 +22,10 @@ portIsOpen <- function(x) {
   else TRUE
 }
 
+solrIsReady <- function(uri) {
+    !is(try(read(uri), silent=TRUE), "try-error")
+}
+
 getSolrHome <- function() {
   file.path(tempdir(), "solr")
 }
@@ -146,7 +150,13 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                   runSolr()
                   port <- uriPort(.self$uri)
                   while(!portIsOpen(port)) {
-                    Sys.sleep(0.1)
+                      Sys.sleep(0.1)
+                  }
+                  if (isTRUE(getOption("verbose"))) {
+                      message("Port ", port, " is open, pinging Solr service")
+                  }
+                  while(!solrIsReady(.self$uri)) {
+                      Sys.sleep(0.1)
                   }
                   Sys.sleep(2) # a bit more time to let it start
                   message("Solr started at: ", .self$uri)
