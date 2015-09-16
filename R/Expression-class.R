@@ -14,7 +14,7 @@ setClass("SimpleExpression",
          validity=function(object) {
            if (!isSingleString(object@expr)) {
              "'expr' must be a single, non-NA string"
-g           }
+           }
          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
