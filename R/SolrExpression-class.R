@@ -835,5 +835,6 @@ supportedSolrQParsers <- function() {
 ### Global Solr NA hack
 ###
 
-solrNA <- callQuery(SolrLuceneProhibit(SolrLuceneTerm("*", I("*"))))
+solrQueryNA <- SolrLuceneProhibit(SolrLuceneTerm("*", I("*")))
+solrNA <- callQuery(solrQueryNA)
 

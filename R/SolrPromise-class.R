@@ -16,10 +16,21 @@
 ### Other things to add:
 ### Transform:
 ###  cut() using nested map() calls, or defer and wait for table()=>facets
-### 
-### rank(na.last='keep', ties.method='first') and xtfrm() using ord().
-### - need to somehow convert NA/null to 0, -1 to NA, and add 1 (for rank).
+###  rank(na.last='keep', ties.method='first') and xtfrm() using ord().
+###  - Need to somehow convert NA/null to 0, -1 to NA, and add 1 (for rank).
+### Reduction:
+###   cov() could do sum(x*y - mean(x)*mean(y)) / (n-1L)
+###   cor() could do cov(x, y) / (sd(x)*sd(y))
+###    - It would be nice if sd() worked first.
+###   split() would just split the underlying Solr, similar for unlist()
+###    - Should support formulas
+###   tapply() and by(), via split() and as.table()
 ###
+### Stuff that would be tough to support:
+### - diff(): no intrinsic order (sort not withstanding)
+### - Matrix functions
+### - String functions
+### - Join operations (cbind, rbind, merge, append)
 
 ### All translations follow this basic strategy:
 
@@ -465,6 +476,15 @@ reverseRelational <- function(call) {
 ### NOTE: '==' will *search* text fields, not look for an exact match.
 ###       String and other fields behave as expected.
 
+luceneCompareExpr <- function(fun, x, y) {
+    switch(fun,
+           "==" = SolrLuceneTerm(expr(x), y),
+           ">"  = SolrLuceneRangeTerm(expr(x), y, I("*"), FALSE, TRUE),
+           ">=" = SolrLuceneRangeTerm(expr(x), y, I("*"), TRUE, TRUE),
+           "<"  = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, FALSE),
+           "<=" = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, TRUE))
+}
+
 luceneCompare <- function(fun, x, y) {
     if (fun == "!=") {
         return(!(x == y))
@@ -476,15 +496,11 @@ luceneCompare <- function(fun, x, y) {
     }
 
     if (isNA(y)) {
-        return(NA)
+        expr <- solrQueryNA
+    } else {
+        expr <- luceneCompareExpr(fun, x, y)
     }
     
-    expr <- switch(fun,
-                   "==" = SolrLuceneTerm(expr(x), y),
-                   ">"  = SolrLuceneRangeTerm(expr(x), y, I("*"), FALSE, TRUE),
-                   ">=" = SolrLuceneRangeTerm(expr(x), y, I("*"), TRUE, TRUE),
-                   "<"  = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, FALSE),
-                   "<=" = SolrLuceneRangeTerm(expr(x), I("*"), y, TRUE, TRUE))
     ctx <- resolveContext(x, y)
     SolrLucenePromise(expr, ctx)
 }
@@ -573,6 +589,9 @@ map <- function(x, min, max, target, value) {
     solrCall("map", x, min, max, target, value)
 }
 
+### FIXME: We are forcing on cummax, cummin, cumprod, cumsum, log2, *gamma.
+###        The lack of 'gamma' means we also force on factorial().
+
 setMethod("Math", "SolrPromise", function(x) {
               fun <- switch(.Generic,
                             abs = "abs",
@@ -616,11 +635,12 @@ setMethod("Math", "SolrPromise", function(x) {
               prom
           })
 
+setMethod("signif", "SolrPromise", function(x, digits = 6L) {
+              round(x, digits - floor(log10(x)+1L))
+          })
+
 setMethod("round", "SolrPromise", function(x, digits = 0L) {
-              if (!identical(digits, 0L)) {
-                  stop("'digits' must be 0")
-              }
-              solrCall("rint", x)
+              solrCall("rint", x * 10^digits) / 10^digits
           })
 
 setGeneric("rescale", function(x, ...) standardGeneric("rescale"))
