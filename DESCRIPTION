@@ -13,7 +13,7 @@ Description: A comprehensive R API for querying Apache Solr databases.
              the data are required. 
 License: file GNE_LICENSE
 Imports:
-    restfulr,
+    restfulr (>=0.0.2),
     graph,
     S4Vectors (>=0.7.18),
     rjson,
