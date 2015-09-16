@@ -190,11 +190,16 @@
     }
     \item{}{
       \code{fieldNames(x, includeStatic=TRUE, ...)}: Gets the name of
-      each field represented by any document in the Solr core, , with
+      each field represented by any document in the Solr core, with
       \dots being passed down to \code{fieldNames} on
-      \code{\linkS4class{SolrCore}}. If \code{includeStatic} is
+      \code{\linkS4class{SolrCore}}. Fields must be indexed to be
+      reported, with the exception that when \code{includeStatic} is
       \code{TRUE}, we ensure all static (non-dynamic) fields are present
-      in the return value.
+      in the return value. Names are returned in an order consistent
+      with the order in the schema. Note that two different
+      \dQuote{instances} of the same dynamic field do not have a
+      specified order in the schema, so we use the index order
+      (lexicographical) for those cases.
     }
     \item{}{
       \code{core(x)}: Gets the \code{SolrCore} wrapped by \code{x}

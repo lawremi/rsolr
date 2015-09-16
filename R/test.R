@@ -1,3 +1,6 @@
+.undertowVersion <- "1.5.0-RC1"
+.solrVersion <- "5.3.0"
+
 .test <- function() {
   BiocGenerics:::testPackage("rsolr")
 }
@@ -23,10 +26,14 @@ getSolrHome <- function() {
   file.path(tempdir(), "solr")
 }
 
+getSolrLogs <- function() {
+    file.path(tempdir(), "solr-logs")
+}
+
 populateSolrHome <- function(customSchema=NULL) {
   solr.home <- getSolrHome()
   unlink(solr.home, recursive=TRUE)  
-  file.copy(system.file("example-solr", "solr", package="rsolr"),
+  file.copy(system.file("solr", package="rsolr"),
             dirname(solr.home), recursive=TRUE)
   if (!is.null(customSchema)) {
       sampleCorePath <- file.path(solr.home, "cores", "techproducts")
@@ -40,22 +47,85 @@ populateSolrHome <- function(customSchema=NULL) {
   solr.home
 }
 
-getStartJar <- function() {
-  system.file("example-solr", "start.jar", package="rsolr")
+getDownloadURL <- function() {
+    paste0("https://github.com/bremeld/solr-undertow/releases/download/",
+           "v", .undertowVersion, "/solr-undertow-", .undertowVersion,
+           "-with-solr-", .solrVersion, ".zip")
 }
 
-getLogConfFile <- function() {
-    system.file("example-solr", "resources", "log4j.properties",
-                package="rsolr")
+downloadSolr <- function() {
+    url <- getDownloadURL()
+    dest <- tempfile()
+### FIXME: drop curl method with R 3.2.2
+    if (download.file(url, dest, method="curl", extra='-L') != 0L) {
+        stop("download of Solr (undertow) failed")
+    }
+    dest
 }
 
-buildCommandLine <- function() {
-  paste("cd", dirname(getStartJar()), "; java -Xmx4096M",
-        paste0("-Dsolr.solr.home=", getSolrHome()),
-        paste0("-DSTOP.PORT=", 8079L),
-        paste0("-DSTOP.KEY=", "rsolr"),
-        paste0("-Dlog4j.configuration=file://", getLogConfFile()),
-        "-jar", basename(getStartJar()), "--module=http")
+unpack <- function(file, exdir) {
+    if (file_ext(file) == "zip") {
+        unzip(file, exdir=exdir)
+    } else {
+        untar(file, exdir=exdir)
+    }
+}
+
+maybeInstallSolr <- function() {
+    message("Install solr?")
+    res <- readline("y/n: ")
+    if (res == "y") {
+        installSolr()
+    } else {
+        stop("Please install Solr to run tests/examples")
+    }
+}
+
+installSolr <- function() {
+    message("Solr installation not found, installing...")
+    file <- downloadSolr()
+    unpack(file, getInstallPath())
+}
+
+getSolrPath <- function() {
+    subdir <- file_path_sans_ext(basename(getDownloadURL()))
+    file.path(getInstallPath(), subdir)
+}
+
+getInstallPath <- function() {
+    path.expand(file.path(Sys.getenv("XDG_DATA_HOME", "~/.local/share"),
+                          "rsolr"))
+}
+
+solrIsInstalled <- function() {
+     file.exists(getSolrPath())
+}
+
+getUndertowConfig <- function() {
+    list(solr.undertow=
+             list(solrHome=getSolrHome(),
+                  solrLogs=getSolrLogs(),
+                  tempDir=tempdir(),
+                  solrVersion=.solrVersion,
+                  solrWarFile=file.path(getSolrPath(), "example", "solr-wars",
+                      paste0("solr-", .solrVersion, ".zip")),
+                  shutdown=list(password="rsolr", gracefulDelay="0s")))
+}
+
+toHOCON <- function(x) {
+    gsub("\"([A-z.]+)\":", "\\1:", x)
+}
+
+runSolr <- function() {
+    if (!solrIsInstalled()) {
+        message("Solr not found")
+        maybeInstallSolr()
+    }
+    config <- getUndertowConfig()
+    configPath <- tempfile("example-solr", fileext=".conf")
+    writeLines(toHOCON(toJSON(config)), configPath)
+    system(paste(file.path(getSolrPath(), "bin", "solr-undertow"), configPath),
+           wait=FALSE, ignore.stdout=!isTRUE(getOption("verbose")))
 }
 
 setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
@@ -72,9 +142,10 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                     warning("server already running (port is open); killing it")
                     .self$kill()
                   }
-                  solr.home <- populateSolrHome(.self$customSchema)
-                  cmd <- buildCommandLine()
-                  system(paste(cmd, "&"))
+                  populateSolrHome(.self$customSchema)
+                  message("Starting Solr...")
+                  message("Use options(verbose=TRUE) to diagnose any problems.")
+                  runSolr()
                   port <- uriPort(.self$uri)
                   while(!portIsOpen(port)) {
                     Sys.sleep(0.1)
@@ -85,7 +156,7 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                 kill = function() {
                   if (.self$isRunning()) {
                     unlink(getSolrHome(), recursive=TRUE)
-                    system(paste(buildCommandLine(), "--stop"))
+                    read(RestUri("http://localhost:9983"), password="rsolr")
                   } else {
                     warning("Test solr not running")
                   }

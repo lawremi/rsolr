@@ -9,7 +9,7 @@ importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
            xmlValue, getNodeSet, getEncoding)
 #importClassesFrom(XML, XMLDocument, XMLNode)
 importFrom(parallel, mcparallel)
-importFrom(tools, pskill)
+importFrom(tools, pskill, file_path_sans_ext, file_ext)
 importFrom(utils, stack)
 importFrom(stats, quantile)
 

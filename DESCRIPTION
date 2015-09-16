@@ -1,15 +1,16 @@
 Package: rsolr
 Type: Package
 Title: R to Solr interface
-Version: 0.0.2
+Version: 0.0.3
 Author: Michael Lawrence, Jan Vogel
 Maintainer: Michael Lawrence <michafla@gene.com>
-Description: An R API for querying Apache Solr databases.  Each Solr
-             core is represented by an object with an interface
-             resembling that of a data frame. Queries are processed
+Description: A comprehensive R API for querying Apache Solr databases.
+             A Solr core is represented as a data frame or list that
+             supports Solr-side filtering, sorting,
+             transformation and aggregation, all through the familiar
+             base R API. Queries are processed
              lazily, i.e., a query is only sent to the database when
-             the data are required; otherwise, only the query is
-             updated. Query results are cached.
+             the data are required. 
 License: file GNE_LICENSE
 Imports:
     restfulr,
