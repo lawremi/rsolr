@@ -15,7 +15,7 @@ License: file GNE_LICENSE
 Imports:
     restfulr,
     graph,
-    S4Vectors,
+    S4Vectors (>=0.7.18),
     rjson,
     XML
 Depends:
