@@ -80,6 +80,10 @@ setReplaceMethod("[", "Promise", function (x, i, j, ..., value) {
                      callGeneric()
                  })
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Show
+###
+
 ## makes Promises mostly invisible to the user
 setMethod("show", "Promise", function(object) {
               show(fulfill(object))

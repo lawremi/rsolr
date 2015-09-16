@@ -128,6 +128,10 @@ json <- function(x) {
 
 setClassUnion("formulaORNULL", c("formula", "NULL"))
 
+### DOCDB: DocDbQueryTranslationSource does not track a grouping. That
+### state should be on SolrQuery, and the DocDbFrame method should
+### yield a GroupedSolrFrame if necessary.
+
 setClass("SolrQueryTranslationSource",
          representation(expr="ANY",
                         query="SolrQuery",
