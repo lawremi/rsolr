@@ -106,6 +106,4 @@ test_SolrFrame_accessors <- function() {
   checkDFResponseEquals(as.data.frame(stail), tail(allDocs, 2L))
 
 ### TODO: check rename(), once fixed in Solr itself
-
-  solr$kill()
 }

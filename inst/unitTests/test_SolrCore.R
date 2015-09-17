@@ -83,6 +83,4 @@ test_SolrCore_accessors <- function() {
   update(sc, del)
   purgeCache(sc)
   checkResponseEquals(read(sc), c(dc, docs["5"]))
-
-  solr$kill()
 }

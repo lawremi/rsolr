@@ -11,7 +11,7 @@ checkResponseEquals <- function(response, input, tolerance=1) {
 }
 
 test_SolrQuery <- function() {
-  solr <- rsolr:::TestSolr()
+  solr <- TestSolr()
   s <- SolrList(solr$uri)
   sc <- core(s)
 
@@ -33,8 +33,6 @@ test_SolrQuery <- function() {
   .testSort(sc, docs)
   .testTransform(sc, docs)
   .testFacets(s, docs)
-  
-  solr$kill()
 }
 
 .testSubset <- function(s, docs) {

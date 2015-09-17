@@ -8,12 +8,11 @@ test_SolrSchema_creation <- function() {
   doc <- as(schema, "XMLDocument")
   checkIdentical(XML::saveXML(doc), XML::saveXML(schema))
 
-  solr <- rsolr:::TestSolr(schema)
+  solr <- TestSolr(schema, restart=TRUE)
   sr <- SolrFrame(solr$uri)
   sr[] <- Cars93
-  ## Differences: columns are in arbitrary order, factors lost
+  ## Differences: factors lost
   checkDfIdentical <- function(df, truth) {
-    df <- df[names(truth)]
     factorCols <- vapply(truth, is.factor, logical(1L))
     df[factorCols] <- mapply(factor, df[factorCols],
                              lapply(truth[factorCols], levels), SIMPLIFY=FALSE)
@@ -24,8 +23,7 @@ test_SolrSchema_creation <- function() {
 ### TODO: check single column extraction
   
   schema <- deriveSolrSchema(Cars93, uniqueKey="Model")
-  solr$kill()
-  solr <- rsolr:::TestSolr(schema)
+  solr <- TestSolr(schema, restart=TRUE)
   sr <- SolrFrame(solr$uri)
   sr[] <- Cars93
   df <- as.data.frame(sr["Integra",])

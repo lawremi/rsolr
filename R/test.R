@@ -2,7 +2,9 @@
 .solrVersion <- "5.3.0"
 
 .test <- function() {
-  BiocGenerics:::testPackage("rsolr")
+    solr <- TestSolr()
+    on.exit(solr$kill())
+    BiocGenerics:::testPackage("rsolr")
 }
 
 uriPort <- function(x) {
@@ -17,13 +19,17 @@ portIsOpen <- function(x) {
     close(con)
   })
   s <- suppressWarnings(make.socket(port = x, fail=FALSE))
-  if (s$socket == 0L)
-    FALSE
-  else TRUE
+  if (s$socket == 0L) {
+      FALSE
+  } else {
+      close.socket(s)
+      TRUE
+  }
 }
 
 solrIsReady <- function(uri) {
-    !is(try(read(uri), silent=TRUE), "try-error")
+    schema <- try(read(RestUri(uri)$schema), silent=TRUE)
+    !is(schema, "try-error")
 }
 
 getSolrHome <- function() {
@@ -141,24 +147,16 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
               methods = list(
                 start = function() {
                   if (.self$isRunning()) {
-                    warning("server already running (port is open); killing it")
                     .self$kill()
                   }
                   populateSolrHome(.self$customSchema)
                   message("Starting Solr...")
                   message("Use options(verbose=TRUE) to diagnose any problems.")
                   runSolr()
-                  port <- uriPort(.self$uri)
-                  while(!portIsOpen(port)) {
-                      Sys.sleep(0.1)
-                  }
-                  if (isTRUE(getOption("verbose"))) {
-                      message("Port ", port, " is open, pinging Solr service")
-                  }
                   while(!solrIsReady(.self$uri)) {
                       Sys.sleep(0.1)
                   }
-                  Sys.sleep(2) # a bit more time to let it start
+                  ##Sys.sleep(2) # a bit more time to let it start
                   message("Solr started at: ", .self$uri)
                 },
                 kill = function() {
@@ -176,18 +174,14 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                 },
                 isRunning = function() {
                   portIsOpen(uriPort(uri))
-                },
-                finalize = function() {
-                  if (.self$isRunning())
-                    .self$kill()
                 }))
 
-TestSolr <- function(schema = NULL, start = TRUE)
+TestSolr <- function(schema = NULL, start = TRUE, restart=FALSE)
 {
   uri <- file.path("http://localhost:8983/solr",
                    if (is.null(schema)) "techproducts" else name(schema))
   solr <- .ExampleSolr$new(uri = uri, customSchema = schema)
-  if (start) {
+  if (start && (!solr$isRunning() || restart)) {
     solr$start()
   }
   solr

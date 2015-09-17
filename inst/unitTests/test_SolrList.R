@@ -109,8 +109,6 @@ test_SolrList_accessors <- function() {
   l <- as.list(s)
   dl <- c(dc, docs["5"])
   checkResponseEquals(l, dl)
-  
-  solr$kill()
 }
 
 test_SolrList_queries <- function() {
@@ -229,6 +227,4 @@ test_SolrList_queries <- function() {
   correct.sa <- aggregate(price ~ inStock, df, unique)
   names(correct.sa$price) <- NULL
   checkIdentical(sa, correct.sa)
-  
-  solr$kill()
 }
