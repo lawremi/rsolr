@@ -78,12 +78,16 @@ unpack <- function(file, exdir) {
 }
 
 maybeInstallSolr <- function() {
-    message("Install solr?")
-    res <- readline("y/n: ")
-    if (res == "y") {
+    if (!interactive()) {
         installSolr()
     } else {
-        stop("Please install Solr to run tests/examples")
+        message("Install solr?")
+        res <- readline("y/n: ")
+        if (res == "y") {
+            installSolr()
+        } else {
+            stop("Please install Solr to run tests/examples")
+        }
     }
 }
 
