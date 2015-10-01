@@ -256,7 +256,7 @@ setMethod("as.table", "Facets", function(x) {
 
 setMethod("show", "Facets", function(object) {
               if (length(object) > 0L)
-                  cat(BiocGenerics:::labeledLine("subfacets", names(object),
+                  cat(S4Vectors:::labeledLine("subfacets", names(object),
                                                  sep=", "))
               show(stats(object))
           })

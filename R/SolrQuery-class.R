@@ -1021,7 +1021,7 @@ facetsForShow <- function(x) {
 }
 
 showLine <- function(...) {
-    cat(BiocGenerics:::labeledLine(...))
+    cat(S4Vectors:::labeledLine(...))
 }
 
 setMethod("show", "SolrQuery", function(object) {

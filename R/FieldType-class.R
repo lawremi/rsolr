@@ -411,24 +411,24 @@ setMethod("as.data.frame", "FieldTypeList",
 ###
 
 setMethod("show", "FieldType", function(object) {
-  cat(BiocGenerics:::labeledLine("class", class(object), count=FALSE),
+  cat(S4Vectors:::labeledLine("class", class(object), count=FALSE),
       sep="")
 })
 
 setMethod("show", "SubTypeFieldType", function(object) {
   callNextMethod()
   if (!is.null(object@subFieldType)) {
-    cat(BiocGenerics:::labeledLine("subFieldType", object@subFieldType,
+    cat(S4Vectors:::labeledLine("subFieldType", object@subFieldType,
                                    count=FALSE))
   } else {
-    cat(BiocGenerics:::labeledLine("subFieldSuffix", object@subFieldSuffix,
+    cat(S4Vectors:::labeledLine("subFieldSuffix", object@subFieldSuffix,
                                    count=FALSE))
   }
 })
 
 setMethod("show", "solr.PointType", function(object) {
   callNextMethod()
-  cat(BiocGenerics:::labeledLine("dimension", object@dimension, count=FALSE))
+  cat(S4Vectors:::labeledLine("dimension", object@dimension, count=FALSE))
 })
 
 setMethod("show", "FieldTypeList", function(object) {
