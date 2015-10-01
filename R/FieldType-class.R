@@ -185,6 +185,7 @@ setClass("solr.PreAnalyzedField", contains="CharacterField")
 setClass("solr.ICUCollationField", contains="CharacterField")
 setClass("solr.RandomSortField", contains="FieldType")
 setClass("solr.ExternalFileField", contains="NumericField")
+setClass("solr.GeoHashField", contains="CharacterField")
 
 setClass("AnyField", contains="FieldType")
 
