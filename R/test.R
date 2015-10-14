@@ -160,7 +160,8 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                   while(!solrIsReady(.self$uri)) {
                       Sys.sleep(0.1)
                   }
-                  ##Sys.sleep(2) # a bit more time to let it start
+                  if (!interactive())
+                      Sys.sleep(60)
                   message("Solr started at: ", .self$uri)
                 },
                 kill = function() {
