@@ -206,8 +206,6 @@ PredicatedSolrSymbolPromise <- function(expr, context) {
 
 setMethod("length", "SolrPromise", function(x) nrow(context(x)))
 
-setGeneric("lengths", function (x, use.names = TRUE) standardGeneric("lengths"))
-
 setMethod("lengths", "SolrSymbolPromise", function(x, use.names = TRUE) {
               if (is.null(grouping(context(x)))) {
                   field <- fields(schema(context(x)), name(expr(x)))
