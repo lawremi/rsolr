@@ -1,0 +1,332 @@
+% \VignetteIndexEntry{Introduction to rsolr}
+% \VignetteDepends{nycflights}
+% \VignetteKeywords{Solr}
+% \VignettePackage{rsolr}
+
+\documentclass[11pt]{article}
+\author{Michael Lawrence}
+\date{\today}
+\title{Introduction to rsolr}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+
+\section{Introduction}
+\label{sec-1}
+The \texttt{rsolr} package provides an idiomatic (R-like) and extensible
+interface between R and Solr, a search engine and database. Like an
+onion, the interface consists of several layers, along a gradient of
+abstraction, so that simple problems are solved simply, while more
+complex problems may require some peeling and perhaps tears. The
+interface is idiomatic, syntactically but also in terms of
+\emph{intent}. While Solr provides a search-oriented interface, we
+recognize it as a document-oriented database. While not entirely
+schemaless, its schema is extremely flexible, which makes Solr an
+effective database for prototyping and adhoc analysis. R is designed
+for manipulating data, so \texttt{rsolr} maps common R data manipulation
+verbs to the Solr database and its (limited) support for
+analytics. In other words, \texttt{rsolr} is for analysis, not search,
+which has presented some fun challenges in design. Hopefully it is
+useful --- we had not tried it until writing this document.
+
+We have interfaced with all of the Solr features that are relevant
+to data analysis, with the aim of implementing many of the
+fundamental data munging operations. Those operations are listed in
+the table below, along with how we have mapped those operations to
+existing and well-known functions in the base R API, with some
+important extensions. When called on \texttt{rsolr} data structures, those
+functions should behave analogously to the existing implementations
+for \texttt{data.frame}. Note that more complex operations, such as joining
+and reshaping tables, are best left to more sophisticated
+frameworks, and we encourage others to implement our extended base R
+API on top of such systems. After all, Solr is a search engine. Give
+it a break.
+
+\begin{center}
+\begin{tabular}{ll}
+Operation & R function\\
+\hline
+Filtering & \texttt{subset}\\
+Transformation & \texttt{transform}\\
+Sorting & \texttt{sort}\\
+Aggregation & \texttt{aggregate}\\
+\end{tabular}
+\end{center}
+
+\section{Demonstration}
+\label{sec-2}
+\subsection{The Dataset}
+\label{sec-2-1}
+As part demonstration and part proof of concept, we will attempt to
+follow the introductory workflow from the \texttt{dplyr} vignette. The
+dataset describes all of the airline flights departing New York City
+in 2013. It is provided by the \texttt{nycflights13} package, so please see
+its documentation for more details.
+<<loadData>>=
+library(nycflights13)
+dim(flights)
+head(flights)
+@ 
+
+\subsection{Populating a Solr core}
+\label{sec-2-2}
+
+The first step is getting the data into a Solr \emph{core}, which is
+what Solr calls a database. This involves writing a schema in XML,
+installing and configuring Solr, launching the server, and
+populating the core with the actual data. Our expectation is that
+most use cases of \texttt{rsolr} will involve accessing an existing,
+centrally deployed, usually read-only Solr instance, so those are
+typically not major concerns. However, to conveniently demonstrate
+the software, we need to violate all of those assumptions.
+Luckily, we have managed to embed an example Solr installation
+within \texttt{rsolr}. We also provide a mechanism for autogenerating a
+Solr schema from a \texttt{data.frame}. This could be useful in practice
+for producing a template schema that can be tweaked and deployed in
+shared Solr installations. Taken together, the process turns out to
+not be very intimidating.
+
+We begin by generating the schema and starting the demo Solr
+instance. Note that this instance is really only meant for
+demonstrations. You should not abuse it like the people abused the
+poor built-in R HTTP daemon.
+<<startSolr>>=
+library(rsolr)
+schema <- deriveSolrSchema(flights)
+solr <- rsolr:::TestSolr(schema)
+@ 
+
+Next, we need to populate the core with our data. This requires a
+way to interact with the core from R. \texttt{rsolr} provides direct
+access to cores, as well as two high-level interfaces that
+represent a dataset derived from a core (rather than the core
+itself). The two interfaces each correspond to a particular shape
+of data. \emph{SolrList} behaves like a list, while \emph{SolrFrame} behaves
+like a table (data frame). \emph{SolrList} is useful for when the data
+are ragged, as is often the case for data stored in Solr. The Solr
+schema is so dynamic that we could trivially define a schema with a
+virtually infinite number of fields, and each document could have
+its own unique set of fields. However, since our data are tabular,
+we will use \emph{SolrFrame} for this exercise.
+<<SolrFrame>>=
+sr <- SolrFrame(solr$uri)
+@ 
+Finally, we load our data into the Solr dataset:
+<<uploadData>>=
+sr[] <- flights
+@ 
+This takes a while, since Solr has to generate all sorts of
+indices, etc.
+
+As \emph{SolrFrame} behaves much like a base R data frame, we can
+retrieve the dimensions and look at the head of the dataset:
+<<previewSolrFrame>>=
+dim(sr)
+head(sr)
+@ 
+The \texttt{head()} method returns virtually instantaneously, because the
+query is executed lazily, whenever the data are requested. One
+example of a request is when we print the object, as above.
+
+Comparing the output above the that of the earlier call to
+\texttt{head(flights)} reveals that the data are virtually identical. As
+Solr is just a search engine (on steroids), a significant amount of
+engineering was required to achieve that result.
+
+\subsection{Restricting by row}
+\label{sec-2-3}
+The simplest operation is filtering the data, i.e., restricting it
+to a subset of interest. Even a search engine should be good at
+that. Below, we use \texttt{subset} to restrict to the flights to those
+departing on January 1 (2013).
+<<subset>>=
+subset(sr, month == 1 & day == 1)
+@ 
+Note how the records at the bottom contain missing values. Solr
+does not provide any facilities for missing value representation,
+but we mimic it by excluding those fields from those documents.
+
+We can also extract ranges of data using the canonical \texttt{window()}
+function:
+<<window>>=
+window(sr, start=1L, end=10L)
+@ 
+Or, as we have already seen, the more convenient:
+<<head>>=
+head(sr, 10L)
+@ 
+It is unfortunately not feasible to randomly access Solr records by
+index, because numeric indexing is a foreign concept to a search
+engine. Solr does however support retrieval by a key that has a
+unique value for each document. These data lack such a key, but it
+is easy to add one and indicate as such to \texttt{deriveSolrSchema()}.
+
+\subsection{Sorting}
+\label{sec-2-4}
+To sort the data, we just call \texttt{sort()} and describe the order by
+passing a formula via the \texttt{by} argument. For example, we sort by
+year, breaking ties with month, then day:
+<<sort>>=
+sort(sr, by = ~ year + month + day)
+@ 
+
+To sort in decreasing order, just pass \texttt{decreasing=TRUE} as usual:
+<<sortDecreasing>>=
+sort(sr, by = ~ arr_delay, decreasing=TRUE)
+@ 
+
+\subsection{Restricting by field}
+\label{sec-2-5}
+Just as we can use \texttt{subset} to restrict by row, we can also use it
+to restrict by column:
+<<select>>=
+subset(sr, select=c(year, month, day))
+@ 
+The \texttt{select} argument is analogous to that of \texttt{subset.data.frame}:
+it is evaluated to set of field names to which the dataset is
+restricted. The above example is static, so it is equivalent to:
+<<bracket>>=
+sr[c("year", "month", "day")]
+@ 
+
+But with \texttt{subset} we can also specify dynamic expressions,
+including ranges:
+<<selectRange>>=
+subset(sr, select=year:day)
+@ 
+And exclusion:
+<<selectExclude>>=
+subset(sr, select=-(year:day))
+@ 
+
+Solr also has native support for globs:
+<<globs>>=
+sr[c("arr_*", "dep_*")]
+@ 
+
+While we are dealing with fields, we should mention that renaming
+is also (in principle) possible:
+<<rename>>=
+### FIXME: broken in current Solr CSV writer
+### rename(sr, tail_num = "tailnum")
+@ 
+
+\subsection{Transformation}
+\label{sec-2-6}
+To compute new columns from existing ones, we can, as usual, call
+the \texttt{transform} function:
+<<transform>>=
+sr2 <- transform(sr,
+                 gain = arr_delay - dep_delay,
+                 speed = distance / air_time * 60)
+sr2[c("gain", "speed")]
+@ 
+
+\subsubsection{Advanced note}
+\label{sec-2-6-1}
+The \texttt{transform} function essentially quotes and evaluates its
+arguments in the given frame, and then adds the results as columns
+in the return value. Direct evaluation affords more flexibility,
+such as constructing a table with only the newly computed
+columns. By default, evaluation is completely eager --- each
+referenced column is downloaded in its entirety. But we can make
+the computation lazier by calling \texttt{defer} prior to the evaluation
+via \texttt{with}:
+<<advanced-with>>=
+with(defer(sr), data.frame(gain = head(arr_delay - dep_delay),
+                           speed = head(distance / air_time * 60)))
+@ 
+Note that this approach, even though it is partially deferred, is
+potentially less efficient than \texttt{transform} two reasons:
+\begin{enumerate}
+\item It makes two requests to the database, one for each column,
+\item The two result columns are downloaded eagerly, since the result
+must be a \texttt{data.frame} (and thus practicalities required us to
+take the \texttt{head} of each promised column prior to constructing
+the data frame).
+\end{enumerate}
+
+We can work around the second limitation by using a more general
+form of data frame, the \emph{DataFrame} object from S4Vectors:
+<<DataFrame>>=
+with(defer(sr),
+     S4Vectors::DataFrame(gain = arr_delay - dep_delay,
+                          speed = distance / air_time * 60))
+@ 
+Note that we did not need to take the \texttt{head} of the individual
+columns, since \emph{DataFrame} does not require the data to be stored
+in-memory as a base R vector.
+
+\subsection{Summarization}
+\label{sec-2-7}
+Data summarization is about reducing large, complex data to
+smaller, simpler data that we can understand.
+
+A common type of summarization is aggregation, which is typically
+defined as a three step process:
+\begin{enumerate}
+\item Split the data into groups, usually by the the interaction of
+some factor set,
+\item Summarize each group to a single value,
+\item Combine the summaries.
+\end{enumerate}
+
+Solr natively supports the following types of data aggregation:
+\begin{itemize}
+\item \texttt{mean},
+\item \texttt{min}, \texttt{max},
+\item \texttt{median}, \texttt{quantile},
+\item \texttt{var}, \texttt{sd} (\emph{not yet working with rsolr, as Solr is evolving}),
+\item \texttt{sum},
+\item count (\texttt{table}),
+\item counting of unique values (for which we introduce \texttt{nunique}).
+\end{itemize}
+
+The rsolr package combines and modifies these operations to support
+high-level summaries corresponding to the R functions \texttt{any}, \texttt{all},
+\texttt{range}, \texttt{weighted.mean}, \texttt{IQR}, \texttt{mad}, etc.
+
+A prerequisite of aggregation is finding the distinct field
+combinations that correspond to each correspond to a group. Those
+combinations themselves constitute a useful summary, and we can
+retrieve them with \texttt{unique}:
+<<unique>>=
+unique(sr["tailnum"])
+unique(sr[c("origin", "tailnum")])
+@ 
+
+Solr also supports extracting the top or bottom N documents, after
+ranking by some field, optionally by group.
+
+The convenient, top-level function for aggregating data is
+\texttt{aggregate}. To compute a global aggregation,
+we just specify the computation as an expression (via a named
+argument, mimicking \texttt{transform}):
+<<aggregate>>=
+aggregate(sr, delay = mean(dep_delay, na.rm=TRUE))
+@ 
+It is also possible to specify a function (as the \texttt{FUN} argument),
+which would be passed the entire frame.
+
+As with \texttt{stats::aggregate}, we can pass a grouping as a formula:
+<<aggregate-formula>>=
+delay <- aggregate(~ tailnum, sr,
+                       count = TRUE,
+                       dist = mean(distance, na.rm=TRUE),
+                       delay = mean(arr_delay, na.rm=TRUE))
+delay <- subset(delay, count > 20 & dist < 2000)
+@ 
+The special \texttt{count} argument is a convenience for the common case
+of computing the number of documents in each group.
+
+Here is an example of using \texttt{nunique} and \texttt{ndoc}:
+<<nunique>>=
+head(aggregate(~ dest, sr,
+               nplanes = nunique(tailnum),
+               nflights = ndoc(tailnum)))
+@ 
+% Emacs 24.5.1 (Org mode 8.2.10)
+\end{document}
