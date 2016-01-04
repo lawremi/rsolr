@@ -406,5 +406,7 @@ setAs("Solr", "environment", function(from) list2LazyEnv(from))
 
 setMethod("show", "Solr", function(object) {
               cat("'", name(core(object)), "' (",
-                  ndoc(object), "x", nfield(object), ")\n", sep="")
+                  "ndoc:", ndoc(object),
+                  ", nfield:", nfield(object), ")\n",
+                  sep="")
           })
