@@ -11,7 +11,7 @@ Description: A comprehensive R API for querying Apache Solr databases.
              base R API. Queries are processed
              lazily, i.e., a query is only sent to the database when
              the data are required. 
-License: file GNE_LICENSE
+License: Apache License (== 2.0)
 Imports:
     restfulr (>= 0.0.2),
     graph,
