@@ -324,6 +324,9 @@ processSolrResponse <- function(response, type = "json") {
 ## So we reissue the query with JSON when one occurs
 SolrErrorHandler <- function(core, query) {
   function(e) {
+    if (is(e, "Not_Found")) {
+        stop("Solr core '", name(core), "' does not exist", call.=FALSE)
+    }
     if (!is(e, "Bad_Request")) {
       stop(e)
     }
