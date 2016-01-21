@@ -238,7 +238,8 @@ setMethod("aggregateByFormula", "Solr",
               na.action <- normNAAction(na.action)
               useNA <- identical(na.action, na.pass)
               if (!missing(subset)) {
-                  query(data) <- rsolr::subset(query, .(substitute(subset)))
+                  query(data) <- rsolr::subset(query(data),
+                                               .(substitute(subset)))
               }
               if (!isTRUEorFALSE(simplify)) {
                   stop("'simplify' should be TRUE or FALSE")
