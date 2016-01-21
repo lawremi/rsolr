@@ -78,6 +78,7 @@
 \alias{[,SolrPromise-method}
 \alias{[,SolrSymbolPromise-method}
 \alias{[<-,Promise,ANY,ANY,ANY-method}
+\alias{[<-,SolrPromise,SolrPromise,ANY,ANY-method}
 \alias{anyNA,SolrPromise-method}
 \alias{complete.cases,SolrFunctionPromise-method}
 \alias{complete.cases,SolrLuceneSymbolPromise-method}
@@ -170,12 +171,17 @@
   the computations will be forced if one performs an operation that is
   not supported by Solr.
 
-  These functions are also supported, but they are eager: \code{window},
+  These functions are also supported, but they are eager: \code{cbind},
+  \code{rbind}, \code{window},
   \code{head}, \code{tail}, \code{unique}, \code{intersect},
   \code{setdiff}, \code{union}, \code{table} and \code{ftable}. These
   functions from the \code{Math} group generic are eager: \code{cummax},
   \code{cummin}, \code{cumprod}, \code{cumsum}, \code{log2}, and
   \code{*gamma}.
+
+  The \code{[<-} function will be lazy as long as both \code{x} and
+  \code{i} are promises. \code{i} is assumed to represent a logical
+  subscript. Otherwise, \code{[<-} is eager.
 
   \code{SolrPromise} also extends the R API with some new operations:
   \code{nunique} (number of unique elements), \code{rescale} (rescale

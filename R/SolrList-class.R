@@ -44,6 +44,11 @@ setMethod("names", "SolrList", function(x) {
 ## behavior in R. Instead, we need an extra argument, 'insert', to
 ## indicate that we do not want to replace the existing data.
 
+## Do we want to require a writable() cast before allowing the user to
+## write to the database (assuming it is publicly modifiable)?
+## Currently, [<-,SolrList always writes, while [<-,SolrPromise is a
+## dynamic override.
+
 setReplaceMethod("[", "SolrList", function(x, i, j, insert=FALSE, ..., value) {
   if (!isTRUEorFALSE(insert)) {
     stop("'insert' must be TRUE or FALSE")

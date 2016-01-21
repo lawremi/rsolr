@@ -388,6 +388,18 @@ setMethod("[", "SolrPromise", function(x, i, j, ..., drop = TRUE) {
               x
           })
 
+setReplaceMethod("[", c("SolrPromise", "SolrPromise"),
+                 function (x, i, j, ..., value) {
+                     if (!missing(j) || !missing(...)) {
+                         stop("'[<-' does not accept 'j' and '...'")
+                     }
+                     if (is(value, "Promise") || length(value) == 1L) {
+                         ifelse(i, value, x)
+                     } else {
+                         callNextMethod()
+                     }
+                 })
+
 setMethod("grepl", c("character", "SolrSymbolPromise"),
           function(pattern, x, ignore.case = FALSE, perl = FALSE,
                    fixed = FALSE, useBytes = FALSE) {
