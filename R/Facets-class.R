@@ -152,6 +152,9 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
             stats <- stats[FALSE,,drop=FALSE]
         }
         stats$count <- as.integer(stats$count)
+        if (is.null(facet)) {
+            stats <- data.frame(stats, lapply(exprs, function(x) numeric(0L)))
+        }
     } else {
         step <- path[[1L]]
         query <- query[[step]]
@@ -159,6 +162,9 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
             buckets <- pluck(facet$buckets, step)
             bstats <- lapply(buckets, collapseFacet, query, path[-1L], step)
             stats <- do.call(rbind, bstats)
+            if (is.null(stats)) {
+                stats <- collapseFacet(NULL, query, path[-1L], step)
+            }
             if (length(bstats) > 0L) {
                 val <- rep(val, vapply(bstats, nrow, integer(1L)))
             }
