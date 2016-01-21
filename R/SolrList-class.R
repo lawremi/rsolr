@@ -144,7 +144,10 @@ MAX_LUCENE_QUERY_LENGTH <- 1024
   if (!missing(i)) {
 ### FIXME: lazy 'i' does not handle NAs (was fine for subset(), but not '[')
     lazyI <- is(i, "Promise") || is(i, "Expression")
-    if ((!readColumn || lazyReadColumn) && !lazyI) {
+    if (is.integer(i) && isTRUE(all(diff(i) == 1L))) {
+        query <- window(query, head(i, 1L), tail(i, 1L))
+        lazyI <- TRUE
+    } else if ((!readColumn || lazyReadColumn) && !lazyI) {
         if (is.null(uniqueKey(schema(core(x))))) {
             stop("retrieving a doc by ID requires a 'uniqueKey' in the schema")
         }
