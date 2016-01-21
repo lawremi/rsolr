@@ -69,6 +69,10 @@ as.data.frame.Promise <- function(x, row.names = NULL, optional = FALSE, ...) {
 
 as.list.Promise <- function(x, ...) as.list(fulfill(x))
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Default methods that just fulfill
+###
+
 setReplaceMethod("[", "Promise", function (x, i, j, ..., value) {
                      if (!missing(i) && is(i, "Promise"))
                          i <- fulfill(i)
@@ -79,6 +83,30 @@ setReplaceMethod("[", "Promise", function (x, i, j, ..., value) {
                      x <- fulfill(x)
                      callGeneric()
                  })
+
+setMethod("cbind2", c("ANY", "Promise"), function(x, y) {
+              cbind(x, fulfill(y))
+          })
+
+setMethod("cbind2", c("Promise", "ANY"), function(x, y) {
+              cbind(fulfill(x), y)
+          })
+
+setMethod("cbind2", c("Promise", "Promise"), function(x, y) {
+              cbind(fulfill(x), fulfill(y))
+          })
+
+setMethod("rbind2", c("ANY", "Promise"), function(x, y) {
+              rbind(x, fulfill(y))
+          })
+
+setMethod("rbind2", c("Promise", "ANY"), function(x, y) {
+              rbind(fulfill(x), y)
+          })
+
+setMethod("rbind2", c("Promise", "Promise"), function(x, y) {
+              rbind(fulfill(x), fulfill(y))
+          })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Show

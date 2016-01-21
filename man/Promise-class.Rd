@@ -16,6 +16,14 @@
 \alias{fulfill,Promise-method}
 \alias{fulfill,ANY-method}
 
+% Default implementations that force:
+\alias{cbind2,ANY,Promise-method}
+\alias{cbind2,Promise,ANY-method}
+\alias{cbind2,Promise,Promise-method}
+\alias{rbind2,ANY,Promise-method}
+\alias{rbind2,Promise,ANY-method}
+\alias{rbind2,Promise,Promise-method}
+
 % Construction:
 \alias{Promise}
 
