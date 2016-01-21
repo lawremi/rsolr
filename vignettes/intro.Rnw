@@ -56,7 +56,7 @@ Aggregation & \texttt{aggregate}\\
 \end{tabular}
 \end{center}
 
-\section{Demonstration}
+\section{Demonstration: nycflights13}
 \label{sec-2}
 \subsection{The Dataset}
 \label{sec-2-1}
@@ -158,11 +158,16 @@ Or, as we have already seen, the more convenient:
 <<head>>=
 head(sr, 10L)
 @ 
-It is unfortunately not feasible to randomly access Solr records by
-index, because numeric indexing is a foreign concept to a search
-engine. Solr does however support retrieval by a key that has a
-unique value for each document. These data lack such a key, but it
-is easy to add one and indicate as such to \texttt{deriveSolrSchema()}.
+We could also call \texttt{:} to generate a contiguous sequence:
+<<sequence>>=
+sr[1:10,]
+@ 
+
+Unfortunately, it is generally infeasible to randomly access Solr
+records by index, because numeric indexing is a foreign concept to a
+search engine. Solr does however support retrieval by a key that has a
+unique value for each document. These data lack such a key, but it is
+easy to add one and indicate as such to \texttt{deriveSolrSchema()}.
 
 \subsection{Sorting}
 \label{sec-2-4}
@@ -218,6 +223,7 @@ is also (in principle) possible:
 \label{sec-2-6}
 To compute new columns from existing ones, we can, as usual, call
 the \texttt{transform} function:
+% FIXME: showing 'sr2' breaks due to bug in CSV writer 
 <<transform>>=
 sr2 <- transform(sr,
                  gain = arr_delay - dep_delay,
@@ -328,5 +334,34 @@ head(aggregate(~ dest, sr,
                nplanes = nunique(tailnum),
                nflights = ndoc(tailnum)))
 @ 
-% Emacs 24.5.1 (Org mode 8.2.10)
+
+There is limited support for dynamic expressions in the aggregation
+formula. At a minimum, the expression should evaluate to logical. For
+example, we can condition on whether the distance is more than 1000
+miles.
+<<aggregate-dynamic>>=
+head(aggregate(~ I(distance > 1000) + tailnum, sr,
+               delay = mean(arr_delay, na.rm=TRUE)))
+@ 
+
+It also works for values naturally coercible to logical, such as using
+the modulus to identify odd numbers. For clarity, we label the
+variable using \texttt{transform} prior to aggregating.
+<<aggreate-evenodd>>=
+head(aggregate(~ odd + tailnum, transform(sr, odd = distance %% 2),
+               delay = mean(arr_delay, na.rm=TRUE)))
+@ 
+
+Aggregate and subset in the same command, as with data.frame:
+<<aggregate-subset>>=
+head(aggregate(~ tailnum, sr,
+               subset = distance > 500,
+               delay = mean(arr_delay, na.rm=TRUE)))
+@ 
+
+Aggregate the entire dataset:
+<<aggregate-all>>=
+aggregate(sr, delay = mean(arr_delay, na.rm=TRUE))
+@ 
+
 \end{document}
