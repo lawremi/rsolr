@@ -12,6 +12,9 @@
 \alias{as.integer,Promise-method}
 \alias{as.logical,Promise-method}
 \alias{as.numeric,Promise-method}
+\alias{fulfill}
+\alias{fulfill,Promise-method}
+\alias{fulfill,ANY-method}
 
 % Construction:
 \alias{Promise}

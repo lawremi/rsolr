@@ -132,6 +132,7 @@
 
 % Coercion:
 \alias{as.data.frame,SolrPromise-method}
+\alias{fulfill,PredicatedSolrSymbolPromise-method}
 
 % Should be in BiocGenerics:
 \alias{ftable}

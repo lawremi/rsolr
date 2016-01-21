@@ -31,7 +31,7 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
               facet, ngroup, complete.cases, as.table, nunique, translate,
-              grouping, searchDocs, symbolFactory, "symbolFactory<-")
+              grouping, searchDocs, symbolFactory, "symbolFactory<-", fulfill)
 exportClasses(SolrList, SolrFrame, SolrQuery, SolrCore,
               ListSolrResult, SolrResult, Grouping, Facets, SolrSchema,
               FieldInfo, Promise, SimplePromise, SolrPromise, SolrLucenePromise,
