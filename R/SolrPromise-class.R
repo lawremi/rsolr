@@ -796,6 +796,10 @@ setAs("SolrPromise", "SolrFunctionPromise", function(from) {
                               context(from))
       })
 
+setMethod("fulfill", "PredicatedSolrSymbolPromise", function(x) {
+              fulfill(as(x, "SolrFunctionPromise"))
+          })
+
 setAs("PredicatedSolrSymbolPromise", "SolrFunctionPromise", function(from) {
           ctx <- subset(context(from), .(expr(from)@predicate))
           SolrSymbolPromise(expr(from)@subject, ctx)
