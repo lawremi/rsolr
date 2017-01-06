@@ -1,2 +1,4 @@
 /src/*.o
 /src/rsolr.so
+*/.Rhistory
+/vignettes/auto/intro.el
