@@ -121,12 +121,13 @@
 \alias{round,SolrPromise-method}
 \alias{sd,SolrPromise-method}
 \alias{setdiff,SolrSymbolPromise,SolrSymbolPromise-method}
+\alias{signif,SolrPromise-method}
 \alias{table,SolrSymbolPromise-method}
 \alias{tail,SolrPromise-method}
 \alias{union,SolrSymbolPromise,SolrSymbolPromise-method}
 \alias{unique,PredicatedSolrSymbolPromise-method}
 \alias{unique,SolrSymbolPromise-method}
-\alias{var,SolrPromise-method}
+\alias{var,SolrPromise,ANY-method}
 \alias{weighted.mean,SolrPromise,SolrPromise-method}
 \alias{window,SolrPromise-method}
 \alias{windows,SolrPromise-method}
@@ -161,7 +162,8 @@
   \code{\link{Math}}, and \code{\link{Summary}} group generics, as well
   as \code{length}, \code{lengths}, \code{\%in\%},
   \code{complete.cases}, \code{is.na}, \code{[}, \code{grepl},
-  \code{grep}, \code{round}, \code{ifelse}, \code{pmax}, \code{pmin},
+  \code{grep}, \code{round}, \code{signif}, \code{ifelse},
+  \code{pmax}, \code{pmin},
   \code{cut}, \code{mean}, \code{quantile}, \code{median},
   \code{weighted.mean}, \code{IQR}, \code{mad}, and \code{anyNA}. All of
   these functions are lazy, in that they return another promise.

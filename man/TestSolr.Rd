@@ -8,7 +8,7 @@
 }
 
 \usage{
-TestSolr(schema = NULL, start = TRUE)
+TestSolr(schema = NULL, start = TRUE, restart = FALSE)
 }
 
 \arguments{
@@ -18,7 +18,11 @@ TestSolr(schema = NULL, start = TRUE)
   }
   \item{start}{
     Whether to actually start the server (it can be started later by
-    interacting with the returned object)
+    interacting with the returned object). If there is already a server
+    running, the return value points to that instance.
+  }
+  \item{restart}{
+    Force the Solr server to restart.
   }
 }
 \value{
