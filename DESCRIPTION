@@ -1,6 +1,6 @@
 Package: rsolr
 Type: Package
-Title: R to Solr interface
+Title: R to Solr Interface
 Version: 0.0.4
 Author: Michael Lawrence, Gabe Becker, Jan Vogel
 Maintainer: Michael Lawrence <michafla@gene.com>
