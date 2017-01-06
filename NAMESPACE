@@ -7,11 +7,13 @@ importClassesFrom(graph, graph)
 importFrom(rjson, fromJSON, toJSON)
 importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
            xmlValue, getNodeSet, getEncoding)
+importFrom(RCurl, base64)
 #importClassesFrom(XML, XMLDocument, XMLNode)
 importFrom(parallel, mcparallel)
 importFrom(tools, pskill, file_path_sans_ext, file_ext)
-importFrom(utils, stack)
-importFrom(stats, quantile)
+importFrom(utils, stack, close.socket, glob2rx, make.socket, unzip)
+importFrom(stats, as.formula, model.frame, na.omit, na.pass,
+           setNames, terms, quantile)
 importFrom(S4Vectors, isSingleString, isSingleNumber, isTRUEorFALSE,
            isSingleNumberOrNA, recycleIntegerArg, recycleCharacterArg,
            recycleLogicalArg)
