@@ -1,5 +1,5 @@
 % \VignetteIndexEntry{Introduction to rsolr}
-% \VignetteDepends{nycflights}
+% \VignetteDepends{nycflights13}
 % \VignetteKeywords{Solr}
 % \VignettePackage{rsolr}
 
@@ -96,7 +96,7 @@ poor built-in R HTTP daemon.
 <<startSolr>>=
 library(rsolr)
 schema <- deriveSolrSchema(flights)
-solr <- rsolr:::TestSolr(schema)
+solr <- TestSolr(schema)
 @ 
 
 Next, we need to populate the core with our data. This requires a
