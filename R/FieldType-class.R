@@ -265,6 +265,8 @@ setMethod("solrType", "list",
             type <- solrType(unlist(x, use.names=FALSE))
             initialize(type, multiValued=TRUE)
           })
+setMethod("solrType", "POSIXt", function(x) new("solr.TrieDateField"))
+setMethod("solrType", "raw", function(x) new("solr.BinaryField"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Conversion
