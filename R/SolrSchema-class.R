@@ -406,7 +406,8 @@ setMethod("deriveSolrSchema", "data.frame",
               indexed <- normColIndex(x, indexed)
               stored <- normColIndex(x, stored)
               types <- lapply(x, solrType)
-              names(types) <- vapply(x, class, character(1L))
+              firstClass <- function(xi) class(xi)[1L]
+              names(types) <- vapply(x, firstClass, character(1L))
               docValues <- vapply(types, isDocValueType, logical(1L))
               fields <- FieldInfo(names(x),
                                   typeName=names(types),
