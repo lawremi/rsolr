@@ -17,13 +17,16 @@ Imports:
     graph,
     S4Vectors (>= 0.7.18),
     rjson,
-    XML
+    XML,
+    RCurl
 Depends:
     R (>= 3.2.0),
     BiocGenerics (>= 0.15.1),
     methods
 Suggests:
-    nycflights13
+    nycflights13,
+    RUnit,
+    MASS
 Collate:
     utils.R
     pminmax.R
