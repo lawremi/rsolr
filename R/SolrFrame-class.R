@@ -19,6 +19,10 @@ SolrFrame <- function(uri, ...) {
   .SolrFrame(SolrCore(uri), SolrQuery(...))
 }
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Basic accessors
+###
+
 setMethod("dimnames", "SolrFrame", function(x) {
   list(rownames(x), colnames(x))
 })
@@ -71,6 +75,10 @@ setMethod("names", "SolrFrame", function(x) {
 
 setMethod("fieldNames", "SolrFrame", function(x, includeStatic=TRUE, ...) {
   callNextMethod(x, includeStatic=includeStatic, ...)
+})
+
+setMethod("schema", "SolrFrame", function(x) {
+    schema(core(x), query(x))
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -200,7 +208,7 @@ setMethod("summary", "SolrFrame",
                    digits = max(3L, getOption("digits") - 3L))
     {
         fn <- fieldNames(object)
-        types <- fieldTypes(schema(core(object)), fn)
+        types <- fieldTypes(schema(object), fn)
         num <- vapply(types, is, logical(1L), "NumericField")
         p <- c(0.25, 0.5, 0.75)
         query <- query(object)

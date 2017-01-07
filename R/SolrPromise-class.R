@@ -145,7 +145,7 @@ setClass("PredicatedSolrSymbolPromise",
 computedFieldPromise <- function(solr, name) {
     fl <- params(query(solr))$fl[[name]]
     if (!is.null(fl)) {
-        expr <- translate(fl, SolrFunctionExpression(), core(solr))
+        expr <- translate(fl, SolrFunctionExpression(), solr)
         SolrFunctionPromise(expr, solr)
     }
 }
@@ -224,6 +224,14 @@ setMethod("lengths", "SolrPromise", function(x, use.names = TRUE) {
                   lengths(as.list(x))
               }
           })
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Basic coercions
+###
+
+setAs("SolrPromise", "Context", function(from) {
+   transform(context(from), x = .(expr(from)))["x"]
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Low-level conveniences for dealing with missing values (*eager*)
@@ -549,6 +557,8 @@ setMethod("Logic", c("SolrPromise", "logical"),
 setMethod("!", "SolrFunctionPromise", function(x) {
               SolrFunctionPromise(invert(expr(x)), context(x))
           })
+
+## TODO: at some point use gt(), lt(), etc functions new in Solr 6.2.0
 
 numericCompare <- function(.Generic, e1, e2) {
     `>` <- function(e1, e2) (e2 - e1) < 0L
@@ -1167,7 +1177,7 @@ setMethod("windows", "SolrPromise",
               if (is.null(grouping(context(x)))) {
                   stop("context(x) is not grouped")
               }
-              ctx <- transform(context(x), x = .(expr(x)))["x"]
+              ctx <- as(x, "Context")
               windows(ctx, start=start, end=end)$x
           })
 
@@ -1222,6 +1232,14 @@ setMethod("ftable", "SolrSymbolPromise",
               ftable(table(..., exclude=exclude), row.vars=row.vars,
                      col.vars=col.vars)
           })
+
+summary.SolrPromise <- function(object, ...) {
+    summary(object, ...)
+}
+
+setMethod("summary", "SolrPromise", function(object, ...) {
+    drop(summary(as(object, "Context"), ...))
+})
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Lazy evaluation of aggregate manipulation

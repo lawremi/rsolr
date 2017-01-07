@@ -14,7 +14,9 @@
 setClass("SolrSummary",
          representation(facets="Facets",
                         colnames="character",
-                        digits="integer"))
+                        digits="integer",
+                        dropped="logical"),
+         prototype=list(dropped=FALSE))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
@@ -45,8 +47,37 @@ transposeStats <- function(x) {
 }
 
 formatColumnSummary <- function(x, maxlen, digits) {
-    ans <- paste0(format(x[[1L]]), ":", format(x[[2L]], digits=digits), "  ")
+    ans <- paste0(format(x[[1L]]), ":",
+                  c(head(format(x[[2L]], digits=digits), -1L),
+                    tail(x[[2L]], 1L)),
+                  "  ")
     c(ans, rep("", maxlen - length(ans)))
+}
+
+setMethod("drop", "SolrSummary", function(x) {
+    x@dropped <- TRUE
+    x
+})
+
+formatVectorSummary <- function(x, digits) {
+    m <- signif(x[[2L]], digits)
+    names(m) <- x[[1L]]
+    class(m) <- c("summaryDefault", "table")
+    m
+}
+
+formatFrameSummary <- function(x, digits) {
+    maxlen <- max(vapply(x, nrow, integer(1L)))
+    m <- do.call(cbind,
+                 lapply(x, formatColumnSummary, maxlen,
+                        digits))
+    rownames(m) <- rep("", nrow(m))
+    np <- pmax(nchar(m[1,]) - nchar(colnames(m)), 0L) / 2L
+    padding <- vapply(np, function(len) {
+        paste(character(len + 1L), collapse=" ")
+    }, character(1L))
+    colnames(m) <- paste0(padding, colnames(m))
+    as.table(m)
 }
 
 setMethod("as.table", "SolrSummary", function(x) {
@@ -58,10 +89,11 @@ setMethod("as.table", "SolrSummary", function(x) {
               colnames(s) <- statnames
               sv <- lapply(split(as.list(s), varnames), transposeStats)
               tabs <- c(sv, lapply(facets(x), stats))[x@colnames]
-              maxlen <- max(vapply(tabs, nrow, integer(1L)))
-              m <- do.call(cbind,
-                           lapply(tabs, formatColumnSummary, maxlen, x@digits))
-              as.table(m)
+              if (length(tabs) == 1L && x@dropped) {
+                  formatVectorSummary(tabs[[1L]], x@digits)
+              } else {
+                  formatFrameSummary(tabs, x@digits)
+              }
           })
 
 as.table.SolrSummary <- function(x, ...) as.table(x)
@@ -71,5 +103,5 @@ as.table.SolrSummary <- function(x, ...) as.table(x)
 ###
 
 setMethod("show", "SolrSummary", function(object) {
-              show(as.table(object))
+              print(as.table(object))
           })

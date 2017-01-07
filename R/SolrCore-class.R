@@ -46,7 +46,13 @@ setMethod("ndoc", "SolrCore", function(x, query = SolrQuery()) {
   min(numFound, p$rows)
 })
 
-schema <- function(x) x@schema
+setGeneric("schema", function(x, ...) standardGeneric("schema"))
+
+setMethod("schema", "SolrCore", function(x, query = NULL) {
+    if (!is.null(query))
+        augment(schema(x), query)
+    else x@schema
+})
 
 readLuke <- function(x) {
     processSolrResponse(read(x@uri$admin$luke, list(nTerms=0L, wt="json")))
@@ -70,7 +76,7 @@ retrieveFieldNames <- function(x) {
 }
 
 resolveFields <- function(x, query = NULL, ...) {
-    schema <- if (!is.null(query)) augment(schema(x), query) else schema(x)
+    schema <- schema(x, query)
     fn <- resolveFieldNames(x, query, ...)
     fields(schema)[fn]
 }
