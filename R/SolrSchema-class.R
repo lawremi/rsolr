@@ -258,17 +258,31 @@ augmentToInclude <- function(x, fields) {
     augmentComputed(x, fields[!existing])
 }
 
+.logical_funs <- c("and", "or", "xor", "not", "exists", "gt", "gte", "lt",
+                   "lte", "eq")
+
+returnsLogical <- function(x) {
+    x <- as.character(x)
+    prefixes <- paste0(.logical_funs, "(")
+    any(vapply(prefixes, startsWith, logical(1L), x=x))
+}
+
 augmentComputed <- function(x, fl) {
   if (length(fl) == 0L) {
     return(x)
   }
+  typeName <- "..computed.."
   if (is.list(fl)) {
-    fl <- names(fl)
+      typeName <- ifelse(vapply(fl, returnsLogical, logical(1L)),
+                         "..logical..", "..numeric..")
+      fl <- names(fl)
   }
   computed.info <- FieldInfo(name=fl,
-                             typeName="..computed..",
+                             typeName=typeName,
                              stored=TRUE)
-  computed.type <- FieldTypeList(..computed.. = new("AnyField"))
+  computed.type <- FieldTypeList(..computed.. = new("AnyField"),
+                                 ..logical.. = solrType(logical()),
+                                 ..numeric.. = solrType(numeric()))
   fields(x) <- append(fields(x), computed.info)
   fieldTypes(x) <- append(fieldTypes(x), computed.type)
   x
