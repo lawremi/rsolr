@@ -132,16 +132,58 @@ setClassUnion("formulaORNULL", c("formula", "NULL"))
 ### state should be on SolrQuery, and the DocDbFrame method should
 ### yield a GroupedSolrFrame if necessary.
 
+QueryHandle <- setRefClass("QueryHandle",
+                           fields=c(i="character"),
+                           methods=list(
+                               get = function() QUERY_STORE$get(.self),
+                               finalize = function() QUERY_STORE$remove(.self)
+                           ))
+
+setMethod("show", "QueryHandle",
+          function(object) cat("QueryHandle:", as.character(object), "\n"))
+
+as.character.QueryHandle <- function(x) x$i
+
+QueryStore_store <- function(query) {
+    i <- as.character(length(.self$queries) + 1L)
+    .self$queries[[i]] <- query
+    QueryHandle(i=i)
+}
+
+QueryStore_get <- function(key) {
+    .self$queries[[as.character(key)]]
+}
+
+QueryStore_remove <- function(key) {
+    i <- as.character(key)
+    if (length(i) == 1L) { # be robust to dummy handle finalization
+        .self$queries[[i]] <- NULL
+    }
+    invisible(.self)
+}
+
+QUERY_STORE <- setRefClass("QueryStore",
+                           fields=c(queries="list"),
+                           methods = list(add=QueryStore_store,
+                                          get=QueryStore_get,
+                                          remove=QueryStore_remove))()
+
+length.QueryStore <- function(x) length(x$queries)
+
+setMethod("show", "QueryStore",
+          function(object) cat("QueryStore with", length(object), "queries\n"))
+
 setClass("SolrQueryTranslationSource",
          representation(expr="ANY",
-                        query="SolrQuery",
+                        queryHandle="QueryHandle",
                         env="environment",
                         grouping="formulaORNULL"),
          contains="Expression")
 
 setMethod("translate", c("SolrQueryTranslationSource", "Expression"),
           function(x, target, core, ...) {
-              frame <- group(.SolrFrame(core, x@query), x@grouping)
+              query <- x@queryHandle$get()
+              frame <- group(.SolrFrame(core, query), x@grouping)
               context <- DelegateContext(frame, x@env)
               translate(expr(x), target, context, ...)
           })
@@ -157,8 +199,9 @@ setMethod("as.character", "SolrQueryTranslationSource",
 
 deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
-    src <- new("SolrQueryTranslationSource", expr=expr, query=x, env=env,
-               grouping=grouping)
+    queryHandle <- QUERY_STORE$add(x)
+    src <- new("SolrQueryTranslationSource", expr=expr, queryHandle=queryHandle,
+               env=env, grouping=grouping)
     new("TranslationRequest", src=src, target=target)
 }
 
