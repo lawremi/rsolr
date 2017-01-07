@@ -662,7 +662,10 @@ normLuceneLiteral <- function(x) {
 }
 
 setMethod("as.character", "SolrFunctionExpression", function(x) {
-              as.character(x@name)
+              ans <- as.character(x@name)
+              if (is.logical(x@name))
+                  ans <- tolower(ans)
+              ans
           })
 
 normSolrArg <- function(x) {
