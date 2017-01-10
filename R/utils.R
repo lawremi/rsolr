@@ -194,6 +194,14 @@ varsEnv <- function(expr, frame, parent) {
     list2env(setNames(objs, vars), parent=parent)
 }
 
+funsEnv <- function(expr, frame, parent=emptyenv()) {
+### FIXME: we really want an "all.funs()"
+    nms <- all.names(expr, unique=TRUE)
+    objs <- mget(nms, frame, mode="function", ifnotfound=list(NULL),
+                 inherits=TRUE)
+    list2env(Filter(Negate(is.null), objs), parent=parent)
+}
+
 startsWith <- function(x, prefix) {
     substring(x, 1L, nchar(prefix)) == prefix
 }

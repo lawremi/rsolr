@@ -135,8 +135,8 @@ setClassUnion("formulaORNULL", c("formula", "NULL"))
 QueryHandle <- setRefClass("QueryHandle",
                            fields=c(i="character"),
                            methods=list(
-                               get = function() QUERY_STORE$get(.self),
-                               finalize = function() QUERY_STORE$remove(.self)
+                               get = function() QUERY_HEAP$get(.self),
+                               finalize = function() QUERY_HEAP$remove(.self)
                            ))
 
 setMethod("show", "QueryHandle",
@@ -144,34 +144,47 @@ setMethod("show", "QueryHandle",
 
 as.character.QueryHandle <- function(x) x$i
 
-QueryStore_store <- function(query) {
-    i <- as.character(length(.self$queries) + 1L)
-    .self$queries[[i]] <- query
+QueryHeap_store <- function(query) {
+    key <- .self$nextKey()
+    .self$queries[[as.character(key)]] <- query
+    key
+}
+
+QueryHeap_nextKey <- function() {
+    if (length(.self$free) > 0L) {
+        i <- .self$free[1L]
+        .self$free <- .self$free[-1L]
+    } else {
+        i <- as.character(length(.self))
+    }
     QueryHandle(i=i)
 }
 
-QueryStore_get <- function(key) {
+QueryHeap_get <- function(key) {
     .self$queries[[as.character(key)]]
 }
 
-QueryStore_remove <- function(key) {
+QueryHeap_remove <- function(key) {
     i <- as.character(key)
     if (length(i) == 1L) { # be robust to dummy handle finalization
-        .self$queries[[i]] <- NULL
+        rm(list=i, envir=.self$queries)
+        .self$free <- c(.self$free, i)
     }
     invisible(.self)
 }
 
-QUERY_STORE <- setRefClass("QueryStore",
-                           fields=c(queries="list"),
-                           methods = list(add=QueryStore_store,
-                                          get=QueryStore_get,
-                                          remove=QueryStore_remove))()
+QUERY_HEAP <- setRefClass("QueryHeap",
+                           fields=c(queries="environment",
+                                    free="character"),
+                           methods = list(add=QueryHeap_store,
+                                          nextKey=QueryHeap_nextKey,
+                                          get=QueryHeap_get,
+                                          remove=QueryHeap_remove))()
 
-length.QueryStore <- function(x) length(x$queries)
+length.QueryHeap <- function(x) length(x$queries)
 
-setMethod("show", "QueryStore",
-          function(object) cat("QueryStore with", length(object), "queries\n"))
+setMethod("show", "QueryHeap",
+          function(object) cat("QueryHeap with", length(object), "queries\n"))
 
 setClass("SolrQueryTranslationSource",
          representation(expr="ANY",
@@ -199,9 +212,10 @@ setMethod("as.character", "SolrQueryTranslationSource",
 
 deferTranslation <- function(x, expr, target, env, grouping=NULL) {
     expr <- preprocessExpression(expr, env)
-    queryHandle <- QUERY_STORE$add(x)
+    queryHandle <- QUERY_HEAP$add(x)
+    fenv <- funsEnv(expr, env)
     src <- new("SolrQueryTranslationSource", expr=expr, queryHandle=queryHandle,
-               env=env, grouping=grouping)
+               env=fenv, grouping=grouping)
     new("TranslationRequest", src=src, target=target)
 }
 
