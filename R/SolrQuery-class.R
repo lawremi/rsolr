@@ -1063,6 +1063,8 @@ groupForShow <- function(x) {
 }
 
 facetForShow <- function(x) {
+    if (is(x, "TranslationRequest"))
+        return(as.character(x))
     if (x$type == "query") {
         as.character(x$q)
     } else if (x$type == "range") {
@@ -1073,8 +1075,7 @@ facetForShow <- function(x) {
 }
 
 facetsForShow <- function(x) {
-    c(unname(vapply(x, facetForShow, character(1L))),
-      names(x)[!vapply(x, is.list, logical(1L))])
+    vapply(x, facetForShow, character(1L))
 }
 
 showLine <- function(...) {
