@@ -563,7 +563,7 @@ setMethod("facetParams", c("SolrQuery", "character"),
               params
           })
 
-setMethod("facetParams", c("SolrQuery", "name"),
+setMethod("facetParams", c("SolrQuery", "Symbol"),
           function(x, by, where, grouping, ...) {
               facetParams(x, as.character(by), ...)[[1L]]
           })

@@ -203,22 +203,25 @@ summary.SolrFrame <- function(object, ...) {
     summary(object, ...)
 }
 
+`NA's` <- function(x) sum(is.na(x))
+
 setMethod("summary", "SolrFrame",
           function(object, maxsum = 7L,
                    digits = max(3L, getOption("digits") - 3L))
     {
         fn <- fieldNames(object)
         types <- fieldTypes(schema(object), fn)
-        num <- vapply(types, is, logical(1L), "NumericField")
+        num <- vapply(types, is, logical(1L), "NumericField") |
+            vapply(types, is, logical(1L), "solr.DateField")
         p <- c(0.25, 0.5, 0.75)
         query <- query(object)
-        `NA's` <- function(x) sum(is.na(x))
         for (f in fn[num])
             query <- facet(query, NULL, min(.field(f), na.rm=TRUE),
                            mean(.field(f), na.rm=TRUE),
                            quantile(.field(f), .(p), na.rm=TRUE),
                            max(.field(f), na.rm=TRUE), `NA's`(.field(f)))
-        query <- facet(query, fn[!num], limit=maxsum, useNA=TRUE, drop=FALSE)
+        query <- facet(query, fn[!num], limit=maxsum, useNA=TRUE, drop=FALSE,
+                       sort=~count, decreasing=TRUE)
         SolrSummary(facets(core(object), query), fn, digits)
     })
 

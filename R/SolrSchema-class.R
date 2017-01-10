@@ -236,10 +236,15 @@ setMethod("fromSolr", c("ANY", "SolrSchema"), fromSolr_default)
 ### to add those fields to our schema during conversion.
 ###
 
+representsSymbol <- function(x) {
+    is(x, "Symbol") || (is(x, "TranslationRequest") &&
+                        representsSymbol(x@src@expr))
+}
+
 augment <- function(x, query) {
   fl <- params(query)$fl
   new.fl <- fl[nzchar(names(fl))]
-  computed <- vapply(new.fl, function(fi) !is(fi, "Symbol"), logical(1L))
+  computed <- vapply(new.fl, Negate(representsSymbol), logical(1L))
   x <- augmentComputed(x, new.fl[computed])
   x <- augmentAliases(x, new.fl[!computed])
   x

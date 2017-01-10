@@ -122,6 +122,8 @@
 \alias{sd,SolrPromise-method}
 \alias{setdiff,SolrSymbolPromise,SolrSymbolPromise-method}
 \alias{signif,SolrPromise-method}
+\alias{summary,SolrPromise-method}
+\alias{summary.SolrPromise}
 \alias{table,SolrSymbolPromise-method}
 \alias{tail,SolrPromise-method}
 \alias{union,SolrSymbolPromise,SolrSymbolPromise-method}
@@ -165,7 +167,7 @@
   \code{grep}, \code{round}, \code{signif}, \code{ifelse},
   \code{pmax}, \code{pmin},
   \code{cut}, \code{mean}, \code{quantile}, \code{median},
-  \code{weighted.mean}, \code{IQR}, \code{mad}, and \code{anyNA}. All of
+  \code{weighted.mean}, \code{IQR}, \code{mad}, \code{anyNA}. All of
   these functions are lazy, in that they return another promise.
 
   The promise is really only known to rsolr, as all actual Solr queries
@@ -174,7 +176,7 @@
   not supported by Solr.
 
   These functions are also supported, but they are eager: \code{cbind},
-  \code{rbind}, \code{window},
+  \code{rbind}, \code{summary}, \code{window},
   \code{head}, \code{tail}, \code{unique}, \code{intersect},
   \code{setdiff}, \code{union}, \code{table} and \code{ftable}. These
   functions from the \code{Math} group generic are eager: \code{cummax},

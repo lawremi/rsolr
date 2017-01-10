@@ -1237,8 +1237,8 @@ summary.SolrPromise <- function(object, ...) {
     summary(object, ...)
 }
 
-setMethod("summary", "SolrPromise", function(object, ...) {
-    drop(summary(as(object, "Context"), ...))
+setMethod("summary", "SolrPromise", function(object, maxsum = 100L, ...) {
+    as.table(summary(as(object, "Context"), maxsum=maxsum, ...), drop=TRUE)
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

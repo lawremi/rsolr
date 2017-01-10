@@ -14,9 +14,7 @@
 setClass("SolrSummary",
          representation(facets="Facets",
                         colnames="character",
-                        digits="integer",
-                        dropped="logical"),
-         prototype=list(dropped=FALSE))
+                        digits="integer"))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Constructors
@@ -46,6 +44,16 @@ transposeStats <- function(x) {
     data.frame(stat=names(x), value=unlist(x, use.names=FALSE))
 }
 
+statsWithOther <- function(x, count) {
+    s <- stats(x)
+    if (sum(s[[2L]]) < count) {
+        other <- data.frame("(Other)", count-sum(s[[2L]]))
+        colnames(other) <- colnames(s)
+        s <- rbind(s, other)
+    }
+    s
+}
+
 formatColumnSummary <- function(x, maxlen, digits) {
     ans <- paste0(format(x[[1L]]), ":",
                   c(head(format(x[[2L]], digits=digits), -1L),
@@ -53,11 +61,6 @@ formatColumnSummary <- function(x, maxlen, digits) {
                   "  ")
     c(ans, rep("", maxlen - length(ans)))
 }
-
-setMethod("drop", "SolrSummary", function(x) {
-    x@dropped <- TRUE
-    x
-})
 
 formatVectorSummary <- function(x, digits) {
     m <- signif(x[[2L]], digits)
@@ -80,16 +83,17 @@ formatFrameSummary <- function(x, digits) {
     as.table(m)
 }
 
-setMethod("as.table", "SolrSummary", function(x) {
+setMethod("as.table", "SolrSummary", function(x, drop=FALSE) {
               s <- stats(facets(x))
+              cnt <- s$count
               s$count <- NULL
               dotpos <- regexpr("\\.[^.]*$", colnames(s))
               statnames <- substring(colnames(s), dotpos+1L)
               varnames <- substring(colnames(s), 1L, dotpos-1L)
               colnames(s) <- statnames
               sv <- lapply(split(as.list(s), varnames), transposeStats)
-              tabs <- c(sv, lapply(facets(x), stats))[x@colnames]
-              if (length(tabs) == 1L && x@dropped) {
+              tabs <- c(sv, lapply(facets(x), statsWithOther, cnt))[x@colnames]
+              if (length(tabs) == 1L && drop) {
                   formatVectorSummary(tabs[[1L]], x@digits)
               } else {
                   formatFrameSummary(tabs, x@digits)

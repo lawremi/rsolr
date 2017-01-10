@@ -196,6 +196,10 @@ collapseQueryFacets <- function(facets) {
     initialize(facets, lapply(facets, collapseQueryFacets))
 }
 
+### FIXME: at some level it would be nice to cast date statistics back
+### to dates (POSIXt), e.g,
+## as.POSIXct(x / 1000L, origin="1970-01-01 00:00.00 UTC")
+### but it would be tricky to infer the return type.
 
 postprocessStats <- function(facet, query, schema) {
     postprocessStat <- function(stat, expr, addChild = FALSE) {
