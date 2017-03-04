@@ -7,7 +7,7 @@ setOldClass("package_version")
 setClass("SolrSchema",
          representation(name="character",
                         version="package_version",
-                        uniqueKey="characterORNULL",
+                        uniqueKey="character_OR_NULL",
                         copyFields="graph",
                         fields="FieldInfo",
                         fieldTypes="FieldTypeList"),

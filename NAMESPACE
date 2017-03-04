@@ -17,6 +17,7 @@ importFrom(stats, as.formula, model.frame, na.omit, na.pass,
 importFrom(S4Vectors, isSingleString, isSingleNumber, isTRUEorFALSE,
            isSingleNumberOrNA, recycleIntegerArg, recycleCharacterArg,
            recycleLogicalArg)
+importClassesFrom(S4Vectors, character_OR_NULL)
 
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,

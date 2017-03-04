@@ -86,7 +86,7 @@ setClass("SolrLuceneRangeTerm",
 setClass("SolrQParserExpression",
          representation(query="Expression",
                         useValueParam="logical",
-                        tag="characterORNULL"),
+                        tag="character_OR_NULL"),
          prototype(useValueParam=FALSE),
          contains="SolrExpression",
          validity=function(object) {

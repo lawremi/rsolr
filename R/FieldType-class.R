@@ -156,7 +156,7 @@ setClassUnion("SubFieldType",
               c("FieldType", "FieldTypeList", "character", "NULL"))
 setClass("SubTypeFieldType",
          representation(subFieldType="SubFieldType",
-                        subFieldSuffix="characterORNULL"),
+                        subFieldSuffix="character_OR_NULL"),
          contains=c("CharacterField", "VIRTUAL"),
          validity=function(object) {
            if (!is.null(subFieldType) && !is.null(subFieldSuffix))
