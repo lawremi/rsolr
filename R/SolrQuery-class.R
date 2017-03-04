@@ -1053,8 +1053,12 @@ sortFieldsByQuery <- function(x, query) {
 ###
 
 sortForShow <- function(x) {
-    decreasing <- vapply(x, function(s) s@target@decreasing, logical(1L))
-    paste0("`", lapply(x, as.character), "`:", ifelse(decreasing, "v", "^"))
+    requests <- vapply(x, is, logical(1L), "TranslationRequest")
+    decreasing <- vapply(x[requests],
+                         function(s) s@target@decreasing, logical(1L))
+    str <- paste0("`", vapply(x, as.character, character(1L)), "`")
+    str[requests] <- paste0(":", str[requests], ifelse(decreasing, "v", "^"))
+    str
 }
 
 groupForShow <- function(x) {
