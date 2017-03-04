@@ -264,12 +264,14 @@ augmentToInclude <- function(x, fields) {
 }
 
 .logical_funs <- c("and", "or", "xor", "not", "exists", "gt", "gte", "lt",
-                   "lte", "eq")
+                   "lte", "eq", "query")
 
 returnsLogical <- function(x) {
-    x <- as.character(x)
-    prefixes <- paste0(.logical_funs, "(")
-    any(vapply(prefixes, startsWith, logical(1L), x=x))
+    if (is(x, "SolrFunctionCall")) {
+        if (x@name == "if")
+            returnsLogical(x@args[[2L]]) && returnsLogical(x@args[[3L]])
+        else x@name %in% .logical_funs
+    } else is.logical(x)
 }
 
 augmentComputed <- function(x, fl) {
