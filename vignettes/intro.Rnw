@@ -364,4 +364,11 @@ Aggregate the entire dataset:
 aggregate(sr, delay = mean(arr_delay, na.rm=TRUE))
 @ 
 
+\section{Cleaning up}
+
+Having finished our demonstration, we kill our Solr server:
+<<kill>>=
+solr$kill()
+@ 
+
 \end{document}
