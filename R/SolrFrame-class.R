@@ -77,10 +77,6 @@ setMethod("fieldNames", "SolrFrame", function(x, includeStatic=TRUE, ...) {
   callNextMethod(x, includeStatic=includeStatic, ...)
 })
 
-setMethod("schema", "SolrFrame", function(x) {
-    schema(core(x), query(x))
-})
-
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### CREATE/UPDATE/DELETE
 ###

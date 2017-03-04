@@ -6,6 +6,7 @@
 
 % Accessors:
 \alias{ngroup,Grouping-method}
+\alias{schema,Grouping-method}
 
 % Coercion:
 \alias{coerce,Grouping,list-method}

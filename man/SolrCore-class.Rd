@@ -8,6 +8,7 @@
 \alias{name,SolrCore-method}
 \alias{ndoc,SolrCore-method}
 \alias{schema}
+\alias{schema,SolrCore-method}
 \alias{fieldNames,SolrCore-method}
 \alias{version}
 \alias{version,SolrCore-method}
@@ -204,7 +205,7 @@
      )
      update(sc, docs)
 
-     q <- SolrQuery(id %in% as.character(2:4))
+     q <- SolrQuery(id \%in\% as.character(2:4))
      read(sc, q)
 
      solr$kill()

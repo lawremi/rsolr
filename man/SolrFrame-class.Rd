@@ -32,6 +32,7 @@
 \alias{nfield,Solr-method}
 \alias{core}
 \alias{query}
+\alias{schema,Solr-method}
 \alias{facets,SolrSummary-method}
 \alias{grouping,Solr-method}
 \alias{ids,Solr-method}

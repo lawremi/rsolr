@@ -79,6 +79,8 @@ setMethod("ngroup", "Grouping", function(x) {
               length(x@groups)
           })
 
+setMethod("schema", "Grouping", function(x) x@schema)
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion
 ###
