@@ -194,7 +194,7 @@ varsEnv <- function(expr, frame, parent) {
     list2env(setNames(objs, vars), parent=parent)
 }
 
-funsEnv <- function(expr, frame, parent=emptyenv()) {
+funsEnv <- function(expr, frame, parent=.BaseNamespaceEnv) {
 ### FIXME: we really want an "all.funs()"
     nms <- all.names(expr, unique=TRUE)
     objs <- mget(nms, frame, mode="function", ifnotfound=list(NULL),
