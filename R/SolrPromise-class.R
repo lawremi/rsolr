@@ -914,30 +914,34 @@ setMethod("Summary", "SolrPromise",
               postprocess <- NULL
               if (.Generic == "range") {
                   child <- min(x, na.rm=TRUE)
-                  postprocess <- function(max, min) {
+                  postprocess_range <- function(max, min) {
                       min[is.na(max)] <- NA
                       cbind(min, max)
                   }
+                  postprocess <- postprocess_range
               } else if (.Generic == "any") {
                   if (!na.rm) {
                       na.rm <- TRUE
                       child <- anyNA(x)
-                      postprocess <- function(sum, anyNA) {
+                      postprocess_any_na <- function(sum, anyNA) {
                           ifelse(sum > 0L, TRUE, ifelse(anyNA, NA, FALSE))
                       }
+                      postprocess <- postprocess_any_na
                   } else {
-                      postprocess <- function(sum, count) sum > 0
+                      postprocess_any <- function(sum, count) sum > 0
+                      postprocess <- postprocess_any
                   }
               } else if (.Generic == "all") {
                   .na.rm <- na.rm
                   na.rm <- TRUE
                   child <- if (length(missables(x)) > 0L) sum(exists(x))
-                  postprocess <- function(sum, countExists) {
+                  postprocess_all <- function(sum, countExists) {
                       count <- attr(countExists, "child")
                       ifelse(sum < countExists, FALSE,
                              if(.na.rm) TRUE
                              else ifelse(count > countExists, NA, TRUE))
                   }
+                  postprocess <- postprocess_all
               }
               prom <- solrAggregate(fun, x, na.rm, child=child,
                                     postprocess=postprocess)

@@ -323,9 +323,9 @@ setMethod("show", "DocCollection", function(object) {
 
 showDoc <- function(x, title) {
     cat(title, "\n")
-    lines <- S4Vectors:::labeledLine(names(x), unname(x),
-                                     count = lengths(x) > 1L,
-                                     vectorized=TRUE)
+    lines <- labeledLine(names(x), unname(x),
+                         count = lengths(x) > 1L,
+                         vectorized=TRUE)
     cat(lines, "\n", sep="")
 }
 

@@ -321,3 +321,6 @@ makePrettyMatrixForCompactPrinting <-
   ans
 }
 
+.qualifyByName <- get(".qualifyByName", getNamespace("S4Vectors"))
+
+labeledLine <- get("labeledLine", getNamespace("S4Vectors"))

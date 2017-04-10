@@ -160,6 +160,7 @@ QueryHeap_nextKey <- function() {
     QueryHandle(i=i)
 }
 
+globalVariables(".self")
 QueryHeap_get <- function(key) {
     .self$queries[[as.character(key)]]
 }
@@ -870,7 +871,7 @@ responseType <- function(x) {
 
 paramToCSV <- function(x) {
     if (!is.null(names(x)))
-        x <- S4Vectors:::.qualifyByName(x, ":")
+        x <- .qualifyByName(x, ":")
     if (length(x) > 0L)
         paste(x, collapse=",")
     else x
@@ -1083,7 +1084,7 @@ facetsForShow <- function(x) {
 }
 
 showLine <- function(...) {
-    cat(S4Vectors:::labeledLine(...))
+    cat(labeledLine(...))
 }
 
 setMethod("show", "SolrQuery", function(object) {

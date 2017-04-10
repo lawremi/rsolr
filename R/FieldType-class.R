@@ -413,24 +413,22 @@ setMethod("as.data.frame", "FieldTypeList",
 ###
 
 setMethod("show", "FieldType", function(object) {
-  cat(S4Vectors:::labeledLine("class", class(object), count=FALSE),
-      sep="")
+  cat(labeledLine("class", class(object), count=FALSE), sep="")
 })
 
 setMethod("show", "SubTypeFieldType", function(object) {
   callNextMethod()
   if (!is.null(object@subFieldType)) {
-    cat(S4Vectors:::labeledLine("subFieldType", object@subFieldType,
-                                   count=FALSE))
+    cat(labeledLine("subFieldType", object@subFieldType, count=FALSE))
   } else {
-    cat(S4Vectors:::labeledLine("subFieldSuffix", object@subFieldSuffix,
+    cat(labeledLine("subFieldSuffix", object@subFieldSuffix,
                                    count=FALSE))
   }
 })
 
 setMethod("show", "solr.PointType", function(object) {
   callNextMethod()
-  cat(S4Vectors:::labeledLine("dimension", object@dimension, count=FALSE))
+  cat(labeledLine("dimension", object@dimension, count=FALSE))
 })
 
 setMethod("show", "FieldTypeList", function(object) {

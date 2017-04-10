@@ -4,7 +4,7 @@
 .test <- function() {
     solr <- TestSolr()
     on.exit(solr$kill())
-    BiocGenerics:::testPackage("rsolr")
+    get("testPackage", getNamespace("BiocGenerics"))("rsolr")
 }
 
 uriPort <- function(x) {

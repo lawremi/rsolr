@@ -474,7 +474,6 @@ copyEdgesAsCharacter <- function(object) {
 
 setMethod("show", "SolrSchema", function(object) {
   cat("SolrSchema object\n")
-  labeledLine <- S4Vectors:::labeledLine
   cat(labeledLine("name", name(object), count=FALSE),
       labeledLine("version", version(object), count=FALSE),
       if (!is.null(uniqueKey(object)))

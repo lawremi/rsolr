@@ -266,7 +266,6 @@ setMethod("as.table", "Facets", function(x) {
 
 setMethod("show", "Facets", function(object) {
               if (length(object) > 0L)
-                  cat(S4Vectors:::labeledLine("subfacets", names(object),
-                                                 sep=", "))
+                  cat(labeledLine("subfacets", names(object), sep=", "))
               show(stats(object))
           })
