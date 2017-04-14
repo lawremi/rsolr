@@ -1,4 +1,3 @@
-useDynLib(rsolr)
 import(methods)
 import(BiocGenerics)
 import(restfulr)

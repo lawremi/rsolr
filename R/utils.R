@@ -87,17 +87,8 @@ validHomogeneousTree <- function(x, type) {
         paste("all leaf elements of", class(x), "must be", type, "objects")
 }
 
-top_prenv <- function(x) {
-  sym <- substitute(x)
-  if (!is.name(sym)) {
-    stop("'x' did not substitute to a symbol")
-  }
-  .Call("top_prenv", sym, parent.frame(), PACKAGE="rsolr")
-}
-
-top_prenv_dots <- function(...) {
-  .Call("top_prenv_dots", environment(), PACKAGE="rsolr")
-}
+top_prenv <- get("top_prenv", getNamespace("S4Vectors"))
+top_prenv_dots <- get("top_prenv_dots", getNamespace("S4Vectors"))
 
 slotsAsList <- function(x) {
   sapply(slotNames(x), slot, object=x, simplify=FALSE)
