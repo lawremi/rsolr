@@ -192,8 +192,6 @@
 
 \examples{
      solr <- TestSolr()
-     solr$kill()
-     solr <- TestSolr()
      sr <- SolrList(solr$uri)
      length(sr)
      head(sr)

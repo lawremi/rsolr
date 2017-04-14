@@ -326,14 +326,13 @@
 }
 
 \examples{
-     library(nycflights13)
-     schema <- deriveSolrSchema(flights)
+     schema <- deriveSolrSchema(mtcars)
      solr <- TestSolr(schema)
      sr <- SolrFrame(solr$uri)
-     sr[] <- flights
+     sr[] <- mtcars
      dim(sr)
      head(sr)
-     subset(sr, month == 1 & day == 1)
+     subset(sr, mpg > 20 & cyl == 4)
      solr$kill()
      ## see the vignette for more
 }
