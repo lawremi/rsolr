@@ -497,17 +497,21 @@ normNAAction <- function(na.action) {
 setMethod("xtabs", "SolrQuery",
           function(formula, data,
                    subset, sparse = FALSE, 
-                   na.action, exclude = NULL,
+                   na.action, addNA = FALSE, exclude = if (!addNA) NA,
                    drop.unused.levels = FALSE) {
               if (!identical(sparse, FALSE)) {
                   stop("'sparse' must be FALSE")
               }
               na.action <- normNAAction(na.action)
+              if (!isTRUEorFALSE(addNA)) {
+                  stop("'addNA' must be TRUE or FALSE")
+              }
               if (!is.null(exclude) &&
                   !(length(exclude)==1L && is.na(exclude))) {
                   stop("'exclude' should be 'NA' or 'NULL'")
               }
-              useNA <- is.null(exclude) && identical(na.action, na.pass)
+              useNA <- addNA ||
+                  is.null(exclude) && identical(na.action, na.pass)
               if (!missing(subset)) {
                   data <- rsolr::subset(data, .(substitute(subset)))
               }

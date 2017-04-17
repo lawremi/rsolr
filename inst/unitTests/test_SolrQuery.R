@@ -334,7 +334,7 @@ test_SolrQuery <- function() {
     }
     checkTable2 <- function(formula, subset, ...) {
         tab <- xtabs(formula, df, exclude=NULL, ...)
-        fct <- facets(sc, xtabs(formula, query, ...))[[formula]]
+        fct <- facets(sc, xtabs(formula, query, exclude=NULL, ...))[[formula]]
         checkIdentical(as.table(fct), toTable(tab))
     }
 
