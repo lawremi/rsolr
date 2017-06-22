@@ -15,7 +15,7 @@ License: Apache License (== 2.0)
 Imports:
     restfulr (>= 0.0.2),
     graph,
-    S4Vectors (>= 0.7.18),
+    S4Vectors (>= 0.14.3),
     rjson,
     XML,
     RCurl
