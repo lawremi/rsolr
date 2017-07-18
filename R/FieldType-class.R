@@ -168,8 +168,12 @@ setClass("solr.LatLonType", contains="SubTypeFieldType")
 
 ## TODO: in theory, could make a WKT parser
 setClass("solr.AbstractSpatialFieldType", contains="CharacterField")
+setClass("solr.LatLonPointSpatialField",
+         contains="solr.AbstractSpatialFieldType")
 setClass("solr.SpatialRecursivePrefixTreeFieldType",
          contains="solr.AbstractSpatialFieldType")
+setClass("solr.RptWithGeometrySpatialField",
+         contains="solr.SpatialRecursivePrefixTreeFieldType")
 setClass("solr.BBoxField", contains="solr.AbstractSpatialFieldType")
 
 setClass("solr.DateField", contains="CharacterField")
