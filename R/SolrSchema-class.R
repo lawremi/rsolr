@@ -109,9 +109,12 @@ parseCopyFields <- function(copy.fields) {
 }
 
 parseFieldTypes <- function(types) {
-  setNames(new("FieldTypeList", lapply(types, function(t) {
-    parseFieldType(t, new(t$class))
-  })), pluck(types, "name"))
+    setNames(new("FieldTypeList",
+                 lapply(types, function(t) {
+                     if (!isClass(t$class))
+                         t$class <- "solr.StrField"
+                     parseFieldType(t, new(t$class))
+                 })), pluck(types, "name"))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
