@@ -84,20 +84,22 @@ SolrSchema <- function(name, version, uniqueKey, fields, copyFields, fieldTypes)
 parseFields <- function(fields, fieldTypes, dynamic) {
   typeName <- vpluck(fields, "type", character(1L))
   resolveFromType <- function(attrName) {
-    attr <- vpluck(fields, attrName, logical(1L), required=FALSE)
+    attr <- vpluck(fields, attrName, NA, required=FALSE)
     accessor <- match.fun(attrName)
     attr[is.na(attr)] <-
       vapply(fieldTypes[typeName[is.na(attr)]], accessor, logical(1L))
     attr
   }
+  docValues <- resolveFromType("docValues")
   FieldInfo(name=vpluck(fields, "name", character(1L)),
             typeName=typeName,
             multiValued=resolveFromType("multiValued"),
             dynamic=rep(dynamic, length(fields)),
             required=resolveFromType("required"),
             indexed=resolveFromType("indexed"),
-            stored=resolveFromType("stored"),
-            docValues=resolveFromType("docValues"))
+            stored=resolveFromType("stored") |
+                (resolveFromType("useDocValuesAsStored") & docValues),
+            docValues=docValues)
 }
 
 parseCopyFields <- function(copy.fields) {

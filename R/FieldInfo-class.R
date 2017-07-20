@@ -33,6 +33,7 @@ stored <- function(x) x@stored
 hidden <- function(x) grepl("^_.*_$", names(x))
 required <- function(x) x@required
 docValues <- function(x) x@docValues
+useDocValuesAsStored <- function(x) x@useDocValuesAsStored
 
 setMethod("length", "FieldInfo", function(x) length(x@name))
 

@@ -85,11 +85,17 @@
 
 setClass("FieldType",
          representation(multiValued="logical",
+                        required="logical",
                         indexed="logical",
-                        stored="logical"),
+                        stored="logical",
+                        docValues="logical",
+                        useDocValuesAsStored="logical"),
          prototype(multiValued=FALSE,
-                   indexed=FALSE,
-                   stored=FALSE),
+                   required=FALSE,
+                   indexed=TRUE,
+                   stored=TRUE,
+                   docValues=FALSE,
+                   useDocValuesAsStored=TRUE),
          contains="VIRTUAL")
 
 setClass("FieldTypeList", contains="list",
@@ -203,8 +209,10 @@ setClassUnion("FacetableField",
 
 setMethod("resolve", c("FieldType", "FieldInfo"), function(x, field, schema) {
   x@multiValued <- field@multiValued
+  x@required <- field@required
   x@indexed <- field@indexed
   x@stored <- field@stored
+  x@docValues <- field@docValues
   x
 })
 
@@ -369,8 +377,12 @@ setGeneric("parseFieldType",
 
 setMethod("parseFieldType", "FieldType", function(x, proto) {
   proto@multiValued <- if (is.null(x$multiValued)) FALSE else x$multiValued
+  proto@required <- if (is.null(x$required)) FALSE else x$required
   proto@indexed <- if (is.null(x$indexed)) TRUE else x$indexed
+  proto@docValues <- if (is.null(x$docValues)) FALSE else x$docValues
   proto@stored <- if (is.null(x$stored)) TRUE else x$stored
+  proto@useDocValuesAsStored <- if (is.null(x$useDocValuesAsStored)) TRUE
+                                else x$useDocValuesAsStored
   proto
 })
 
@@ -405,11 +417,11 @@ setMethod("as.data.frame", "FieldTypeList",
                   length(list(...)) > 0L) {
                   warning("all arguments besides 'x' are ignored")
               }
-              slots <- vapply(slotNames("FieldType"), function(s) {
+              slots <- lapply(slotNames("FieldType"), function(s) {
                                   vapply(x, slot, s, FUN.VALUE=logical(1L))
-                              }, logical(length(x)))
-              data.frame(class=vapply(x, class, character(1)), slots,
-                         row.names=NULL)
+                              })
+              names(slots) <- slotNames("FieldType")
+              data.frame(class=vapply(x, class, character(1)), slots)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
