@@ -161,7 +161,7 @@ setClassUnion("SolrSchemaORNULL", c("SolrSchema", "NULL"))
                       Sys.sleep(0.1)
                   }
                   if (!interactive())
-                      Sys.sleep(1)
+                      Sys.sleep(Sys.getenv("RSOLR_TEST_START_SLEEP", 1L))
                   message("Solr started at: ", .self$uri)
                 },
                 kill = function() {
