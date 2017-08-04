@@ -9,7 +9,8 @@ importFrom(XML, parseURI, xmlTree, newXMLDoc, saveXML, xmlAttrs, xmlRoot,
 importFrom(RCurl, base64)
 #importClassesFrom(XML, XMLDocument, XMLNode)
 importFrom(tools, pskill, file_path_sans_ext, file_ext)
-importFrom(utils, stack, close.socket, glob2rx, make.socket, unzip)
+importFrom(utils, stack, close.socket, glob2rx, make.socket, unzip,
+           download.file)
 importFrom(stats, as.formula, model.frame, na.omit, na.pass,
            setNames, terms, quantile)
 importFrom(S4Vectors, isSingleString, isSingleNumber, isTRUEorFALSE,
