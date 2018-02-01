@@ -38,7 +38,7 @@ parseSchemaXML <- function(doc) {
   }
   likeREST <-
     list(name=as.character(xmlAttrs(schema)["name"]),
-         version=as.numeric(xmlAttrs(schema)["version"]),
+         version=xmlAttrs(schema)["version"],
          uniqueKey=uniqueKey,
          fields=attrsToList(getNodeSet(schema, "//field")),
          dynamicFields=attrsToList(getNodeSet(schema, "//dynamicField")),
