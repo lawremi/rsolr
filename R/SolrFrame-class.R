@@ -85,6 +85,7 @@ setReplaceMethod("[", "SolrFrame", function(x, i, j, ..., value) {
   oneD <- (nargs() - length(list(...))) == 3L
   if (oneD) {
     if (missing(i))
+### FIXME: why does this not include 'j'?
       x[,,...] <- value
     else
       x[,i,...] <- value
@@ -211,11 +212,11 @@ setMethod("summary", "SolrFrame",
             vapply(types, is, logical(1L), "solr.DateField")
         p <- c(0.25, 0.5, 0.75)
         query <- query(object)
-        for (f in fn[num])
-            query <- facet(query, NULL, min(.field(f), na.rm=TRUE),
-                           mean(.field(f), na.rm=TRUE),
-                           quantile(.field(f), .(p), na.rm=TRUE),
-                           max(.field(f), na.rm=TRUE), `NA's`(.field(f)))
+        for (f in lapply(fn[num], as.name))
+            query <- facet(query, NULL, min(.(f), na.rm=TRUE),
+                           mean(.(f), na.rm=TRUE),
+                           quantile(.(f), .(p), na.rm=TRUE),
+                           max(.(f), na.rm=TRUE), `NA's`(.(f)))
         query <- facet(query, fn[!num], limit=maxsum, useNA=TRUE, drop=FALSE,
                        sort=~count, decreasing=TRUE)
         SolrSummary(facets(core(object), query), fn, digits)

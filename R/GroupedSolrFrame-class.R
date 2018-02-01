@@ -10,9 +10,8 @@
 ### internal rows, because conceptually the indexes and replacement
 ### values are themselves lists.
 ###
-### Eventually, we might want special grouped Promise subclasses,
-### where is.list(promise) returns TRUE. But for now we can get away
-### with basic promises.
+### Eventually, we might want special grouped Promise subclasses.
+### But for now we can get away with basic promises.
 
 ### FIXME: Need some way to transform based on grouped stats. Like:
 

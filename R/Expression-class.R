@@ -10,12 +10,12 @@ setClassUnion("Expression", "language")
 setClass("SimpleExpression",
          representation(expr="character"),
          prototype(expr=""),
-         contains="Expression",
          validity=function(object) {
            if (!isSingleString(object@expr)) {
              "'expr' must be a single, non-NA string"
            }
          })
+setIs("SimpleExpression", "Expression")
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Symbols
@@ -65,6 +65,11 @@ setClass("TranslationRequest",
          representation(src="Expression",
                         target="Expression"))
 
+setMethod("translate", c("TranslationRequest", "missing"),
+          function(x, target, ...) {
+    translate(x@src, x@target, ...)
+})
+
 setMethod("as.character", "TranslationRequest", function(x) as.character(x@src))
 
 setMethod("show", "TranslationRequest", function(object) {
@@ -78,6 +83,7 @@ setMethod("show", "TranslationRequest", function(object) {
 
 preprocessExpression <- function(expr, env) {
     while(!identical(expr, expr <- bquote2(expr, env))) { }
+### FIXME: is this .field() thing needed? Could just .(as.name())...?
     callsToNames(expr, quote(.field), env)
 }
 

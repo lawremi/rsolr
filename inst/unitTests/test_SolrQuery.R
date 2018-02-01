@@ -115,6 +115,10 @@ test_SolrQuery <- function() {
     subset.query <- subset(query, links %in% id)
     checkResponseEquals(read(sc, subset.query), joindocs)
 
+    subset.s <- defer(subset(s, price > 2))
+    subset.query <- subset(query, links %in% .(subset.s[,"id"]))
+    checkResponseEquals(read(sc, subset.query), joindocs[1])
+    
     s[] <- docs
 }
 

@@ -127,9 +127,6 @@ retrieve the dimensions and look at the head of the dataset:
 dim(sr)
 head(sr)
 @ 
-The \texttt{head()} method returns virtually instantaneously, because the
-query is executed lazily, whenever the data are requested. One
-example of a request is when we print the object, as above.
 
 Comparing the output above the that of the earlier call to
 \texttt{head(flights)} reveals that the data are virtually identical. As
@@ -285,7 +282,7 @@ Solr natively supports the following types of data aggregation:
 \item \texttt{mean},
 \item \texttt{min}, \texttt{max},
 \item \texttt{median}, \texttt{quantile},
-\item \texttt{var}, \texttt{sd} (\emph{not yet working with rsolr, as Solr is evolving}),
+\item \texttt{var}, \texttt{sd},
 \item \texttt{sum},
 \item count (\texttt{table}),
 \item counting of unique values (for which we introduce \texttt{nunique}).

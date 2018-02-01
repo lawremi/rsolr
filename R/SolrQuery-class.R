@@ -4,15 +4,6 @@
 
 ### Represents a query to a Solr search engine.
 
-### We want to take a lazy approach to query evaluation. The
-### alternative would be specifying a Solr query (which can be quite
-### complex) in a single call. The current "best practice" for complex
-### commands is to use a parameter object. For us, the parameter
-### object is a query, and the query is evaluated by a Solr core. The
-### main argument for deferred query evaluation is to manage
-### complexity, but there is also opportunity for optimization by
-### batching queries.
-
 ### A SolrQuery is evaluated by a SolrCore to yield a SolrResult.  All
 ### operations are deferred until evaluation, i.e., when eval() is
 ### called. Since the lazy behavior is explicit, it is paramount that
@@ -27,44 +18,6 @@
 ### evaluated in the environment. Finally, we extract the expression
 ### from each promise, coerce it to character, and collapse the
 ### results to the URL query string.
-
-### What happens if an expression evaluates to something other than a
-### SolrPromise that points to our core? Probably should throw an
-### error for now.
-
-### Support for Solr extensions
-## Custom functions: via methods on SolrPromise
-## Custom query parsers: via Expression framework, methods on SolrPromise
-## Custom search components: use low-level parameter API
-## Custom request handlers: use low-level restfulr API
-## Custom response writers and update handlers: via Media framework
-## Custom field types: via FieldType framework
-
-### ========================== ISSUES ============================
-
-### The concern is that users might infer behavior that is difficult
-### to support with Solr, because it is simply not designed for
-### analytics. A good example is the order of operations:
-
-## x <- transform(x, sqrtScore = sqrt(score))
-## subset(x, sqrtScore > 10)
-
-### Since 'sqrtScore' is defined by &fl, it is not subject to &fq
-### filtering (it is never indexed). In other words, some parameters
-### affect the query, while others manipulate the output of the query.
-### We can actually work around this by computing sqrtScore as part of
-### the query, i.e., we just substitute the expression. Also, any
-### aggregation used in queries or transforms are simply fulfilled and
-### substituted in the expression, as they are scalar. But there are
-### still problems:
-
-### * output restrictions, like head/tail, will not affect e.g. aggregation
-###   - we have to document that head/tail is a *summary*, not a filter
-
-### * Solr always applies filters before any aggregation. Aggregation
-###   inside transform() calls are fine, since we need to fulfill
-###   those before the main query anyway, but for facets we need to
-###   use the filter exclusion feature.
 
 setClass("SolrQuery",
          representation(params="list"),
@@ -263,6 +216,15 @@ setMethod("searchDocs", c("SolrQuery", "ANY"), function(x, q) {
               params(x)$q <- q
               sort(x, by=~score, decreasing=TRUE)
           })
+
+isSimpleFilter <- function(x) {
+    x@params$fq <- NULL
+    identical(x, SolrQuery())
+}
+
+predicateExpression <- function(x, core) {
+    if (isSimpleFilter(x)) translate(x@params$fq, core=core)
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Output manipulation

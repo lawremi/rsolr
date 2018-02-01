@@ -22,6 +22,7 @@
 ###   cov() could do sum(x*y - mean(x)*mean(y)) / (n-1L)
 ###   cor() could do cov(x, y) / (sd(x)*sd(y))
 ###    - It would be nice if sd() worked first.
+###      - This may now work as of Solr 6.6
 ###   split() would just split the underlying Solr, similar for unlist()
 ###    - Should support formulas
 ###   tapply() and by(), via split() and as.table()
@@ -267,7 +268,15 @@ setMethod("%in%", c("SolrSymbolPromise", "PredicatedSolrSymbolPromise"),
 
 setMethod("%in%", c("SolrSymbolPromise", "SolrSymbolPromise"),
           function(x, table) {
-              x %in% table[]
+              predicate <- predicateExpression(query(context(table)),
+                                               core(context(table)))
+              if (!is.null(predicate)) {
+                  symbol <- PredicatedSolrSymbol(expr(table), predicate)
+                  table <- PredicatedSolrSymbolPromise(symbol, context(x))
+              } else {
+                  table <- table[]
+              }
+              x %in% table
           })
 
 setMethod("%in%", c("SolrSymbolPromise", "vector"),
