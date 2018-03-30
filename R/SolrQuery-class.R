@@ -218,6 +218,8 @@ setMethod("searchDocs", c("SolrQuery", "ANY"), function(x, q) {
           })
 
 isSimpleFilter <- function(x) {
+    if (is.null(x@params$fq))
+        return(FALSE)
     x@params$fq <- NULL
     identical(x, SolrQuery())
 }
