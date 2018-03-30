@@ -21,6 +21,7 @@
 
 % Translation:
 \alias{translate,ANY,Expression-method}
+\alias{translate,TranslationRequest,missing-method}
 \alias{eval,ANY,DelegateContext-method}
 \alias{translate}
 \alias{SymbolFactory}
