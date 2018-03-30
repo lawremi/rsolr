@@ -1,5 +1,5 @@
-.undertowVersion <- "1.5.0-RC1"
-.solrVersion <- "5.3.0"
+.undertowVersion <- "1.6.0"
+.solrVersion <- "5.5.0"
 
 .test <- function() {
     solr <- TestSolr()
@@ -59,7 +59,7 @@ populateSolrHome <- function(customSchema=NULL) {
 
 getDownloadURL <- function() {
     paste0("https://github.com/bremeld/solr-undertow/releases/download/",
-           "v", .undertowVersion, "/solr-undertow-", .undertowVersion,
+           "v", .undertowVersion, "-release/solr-undertow-", .undertowVersion,
            "-with-solr-", .solrVersion, ".zip")
 }
 

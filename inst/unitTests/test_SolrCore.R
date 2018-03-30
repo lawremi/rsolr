@@ -13,7 +13,7 @@ test_SolrCore_accessors <- function() {
   checkIdentical(name(sc), "example")
   checkIdentical(ndoc(sc), 32L)
   checkIdentical(uniqueKey(schema(sc)), "id")
-  checkIdentical(version(sc), package_version("5.3.0"))
+  checkIdentical(version(sc), package_version("5.5.0"))
 
   delete(sc)
   purgeCache(sc)
