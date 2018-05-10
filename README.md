@@ -19,7 +19,7 @@ data are required.
 -   Experiment with the embedded Solr instance
 -   Extend to support additional/custom Solr features
 
-# Example
+# Example using data from R
 
 This is inspired by some manipulations in the `dplyr` vignette.
 
@@ -60,3 +60,14 @@ Aggregate:
               count = TRUE,
               dist = mean(distance, na.rm=TRUE),
               delay = mean(arr_delay, na.rm=TRUE))
+
+# Example using existing Solr core
+
+Construct a SolrFrame using the URL to the existing core:
+
+	sr <- SolrFrame("http://my.host.com/solr/mycore")
+	
+Convert the SolrFrame to a data.frame, typically after some filtering
+or aggregation:
+
+	df <- as.data.frame(sr)
