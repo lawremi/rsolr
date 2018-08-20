@@ -273,8 +273,9 @@ readSchemaXMLFile <- function(uri) {
 readSchema <- function(uri) {
   tryCatch(readSchemaXMLFile(uri), error = function(e) {
     tryCatch(readSchemaFromREST(uri), error = function(e) {
-        stop("Failed to retrieve schema. ",
-             "rsolr requires schema via REST or as XML from the admin module.")
+        stop("Failed to retrieve schema.\n",
+             "rsolr requires schema via REST or as XML from admin module.\n",
+             paste("Error from REST:", e))
     })
   })
 }
