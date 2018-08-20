@@ -983,17 +983,17 @@ setMethod("var", "SolrPromise", function(x, na.rm=FALSE) {
               if (!identical(na.rm, FALSE)) {
                   stop("'na.rm' must be FALSE")
               }
-### FIXME: The new facet stats API does not yet support stdev()
-              stop("'var' is not yet supported (waiting on Solr)")
-              solrAggregate("stdev", x, na.rm=FALSE,
-                            postprocess=function(sd, count) sd^2)
+              if (version(core(context(x))) < "6.6.0")
+                  stop("'var' requires Solr version >= 6.6.0")
+              solrAggregate("variance", x, na.rm=FALSE)
           })
 
 setMethod("sd", "SolrPromise", function(x, na.rm=FALSE) {
               if (!identical(na.rm, FALSE)) {
                   stop("'na.rm' must be FALSE")
               }
-              stop("'sd' is not yet supported (waiting on Solr)")
+              if (version(core(context(x))) < "6.6.0")
+                  stop("'sd' requires Solr version >= 6.6.0")
               solrAggregate("stdev", x, na.rm=FALSE)
           })
 
