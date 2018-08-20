@@ -138,7 +138,7 @@ setMethods <- function (f, signatures = list(), definition,
 VariadicToBinary <- function(variadic, binary)
 {
     args <- formals(variadic)
-    args$... <- NULL
+    args[["..."]] <- NULL
     forwardArgs <- setNames(lapply(names(args), as.name), names(args))
     reduceBody <- as.call(c(list(binary, quote(..x), quote(..y)),
                             forwardArgs))
