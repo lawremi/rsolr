@@ -191,6 +191,7 @@
 }
 
 \examples{
+\donttest{
      solr <- TestSolr()
      sr <- SolrList(solr$uri)
      length(sr)
@@ -201,6 +202,7 @@
      as.list(subset(sr, price > 100))[,"price"]
      }
      solr$kill()
+}
 }
 
 \keyword{methods}

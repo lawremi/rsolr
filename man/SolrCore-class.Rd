@@ -190,6 +190,7 @@
 }
 
 \examples{
+\donttest{
      solr <- TestSolr()
      sc <- SolrCore(solr$uri)
      name(sc)
@@ -209,6 +210,7 @@
      read(sc, q)
 
      solr$kill()
+}
 }
 
 \keyword{methods}

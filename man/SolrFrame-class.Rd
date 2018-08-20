@@ -326,6 +326,7 @@
 }
 
 \examples{
+\donttest{
      schema <- deriveSolrSchema(mtcars)
      solr <- TestSolr(schema)
      sr <- SolrFrame(solr$uri)
@@ -335,6 +336,7 @@
      subset(sr, mpg > 20 & cyl == 4)
      solr$kill()
      ## see the vignette for more
+}
 }
 
 \keyword{methods}
