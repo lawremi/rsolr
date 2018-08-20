@@ -1033,11 +1033,8 @@ setMethod("nunique", "SolrPromise",
                             child=child, postprocess=postprocess)
           })
 
-setGeneric("quantile",
-           function (x, ...) standardGeneric("quantile"))
-
-setMethod("quantile", "SolrPromise",
-          function (x, probs = seq(0, 1, 0.25), na.rm = FALSE) {
+quantile.SolrPromise <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...)
+{
               probs <- probs * 100
               solrAggregate("percentile", x, na.rm, as.list(probs),
                             postprocess = function(percentile, count) {
@@ -1045,14 +1042,16 @@ setMethod("quantile", "SolrPromise",
                                 colnames(percentile) <- paste0(probs, "%")
                                 percentile
                             })
-          })
+}
+
+median.SolrPromise <- function(x, na.rm=FALSE, ...) median(x, na.rm=na.rm)
 
 setMethod("median", "SolrPromise", function(x, na.rm=FALSE) {
               solrAggregate("percentile", x, na.rm, list(50))
           })
 
-setGeneric("weighted.mean", function(x, w, ...)
-    standardGeneric("weighted.mean"))
+weighted.mean.SolrPromise <- function(x, w, na.rm=FALSE, ...)
+    weighted.mean(x, w, na.rm=na.rm)
 
 setMethod("weighted.mean", c("SolrPromise", "SolrPromise"),
           function(x, w, na.rm=FALSE) {
@@ -1193,6 +1192,10 @@ setMethod("windows", "SolrPromise",
               ctx <- as(x, "Context")
               windows(ctx, start=start, end=end)$x
           })
+
+unique.SolrPromise <- function(x, incomparables = FALSE, ...) {
+    unique(x, incomparables=incomparables)
+}
 
 setMethod("unique", "SolrSymbolPromise", function (x, incomparables = FALSE) {
               unique(context(x)[expr(x)@name],

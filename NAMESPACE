@@ -30,7 +30,7 @@ exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               eval, nrow, rownames, ncol, colnames, heads, tails, windows,
               with, within, sort, unique, as.list, "%in%", Logic, "!", Compare,
               grepl, grep, Arith, "-", Math, round, rescale, ifelse, pmin2,
-              pmax2, Summary, mean, var, sd, quantile, median, weighted.mean,
+              pmax2, Summary, mean, var, sd,
               IQR, mad, intersect, setdiff, union, table, ftable, rename, rev,
               facet, ngroup, complete.cases, as.table, nunique, translate,
               grouping, searchDocs, symbolFactory, "symbolFactory<-", fulfill)
@@ -75,6 +75,10 @@ S3method(tail, Solr)
 S3method(transform, SolrQuery)
 S3method(transform, Solr)
 S3method(cut, SolrPromise)
+S3method(quantile, SolrPromise)
+S3method(weighted.mean, SolrPromise)
+S3method(median, SolrPromise)
+S3method(unique, SolrPromise)
 
 S3method(solrFormat, POSIXt)
 S3method(solrFormat, Date)
