@@ -21,7 +21,7 @@ importClassesFrom(S4Vectors, character_OR_NULL)
 export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,
        query, core, params, "params<-", stats, defer, docs, pmin, pmax,
-       lengths, ungroup, dynamic, multiValued, typeName, indexed, stored,
+       ungroup, dynamic, multiValued, typeName, indexed, stored,
        required, docValues, Promise)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
               fieldNames, subset, xtabs, facets, transform, summary,
