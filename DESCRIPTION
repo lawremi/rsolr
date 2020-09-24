@@ -1,7 +1,7 @@
 Package: rsolr
 Type: Package
 Title: R to Solr Interface
-Version: 0.0.9
+Version: 0.0.10
 Author: Michael Lawrence, Gabe Becker, Jan Vogel
 Maintainer: Michael Lawrence <michafla@gene.com>
 Description: A comprehensive R API for querying Apache Solr databases.

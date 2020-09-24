@@ -71,7 +71,7 @@ test_SolrFrame_accessors <- function() {
   s[["timestamp_dt"]] <- NULL
   checkIdentical(setdiff(fieldNames(s, onlyStored=TRUE), "price_c"),
                  setdiff(storedColumns, "timestamp_dt"))
-  checkEquals(s[["timestamp_dt"]], as.POSIXct(rep(NA, 5)))
+  checkEquals(s[["timestamp_dt"]], as.POSIXct(rep(NA, 5), tz="UTC"))
   s[["timestamp_dt"]] <- allDocs$timestamp_dt
   checkEquals(s[["timestamp_dt"]], allDocs$timestamp_dt, tolerance=1)
   s$price <- allDocs$price + 1L
