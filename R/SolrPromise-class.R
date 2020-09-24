@@ -372,7 +372,7 @@ setMethods("Compare",
            })
 
 setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
-              if (!missing(j) || length(list(...)) > 0L || !missing(drop)) {
+              if (!missing(j) || length(list(...)) > 0L) {
                   stop("'[' only accepts x[i] or x[] syntax")
               }
               if (missing(i)) {
@@ -390,7 +390,7 @@ setMethod("[", "SolrSymbolPromise", function(x, i, j, ..., drop = TRUE) {
           })
 
 setMethod("[", "SolrPromise", function(x, i, j, ..., drop = TRUE) {
-              if (!missing(j) || length(list(...)) > 0L || !missing(drop)) {
+              if (!missing(j) || length(list(...)) > 0L) {
                   stop("'[' only accepts x[i] or x[] syntax")
               }
               if (missing(i)) {
