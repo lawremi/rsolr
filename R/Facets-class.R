@@ -132,7 +132,7 @@ collapseFacet <- function(facet, query, path=character(0L), name=NULL) {
         if (bucketed) {
             buckets <- facet$buckets
             if (!is.null(facet$missing) &&
-                (!dropEmptyBuckets || facet$missing > 0L)) {
+                (!dropEmptyBuckets || facet$missing$count > 0L)) {
                 buckets <- c(buckets, list(facet$missing))
             }
             stats <- getBucketStats(buckets, getProtoStats(exprs))
