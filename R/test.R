@@ -103,8 +103,7 @@ getSolrPath <- function() {
 }
 
 getInstallPath <- function() {
-    path.expand(file.path(Sys.getenv("XDG_DATA_HOME", "~/.local/share"),
-                          "R", "rsolr"))
+    tools::R_user_dir("rsolr")
 }
 
 solrIsInstalled <- function() {
