@@ -135,7 +135,7 @@ runSolr <- function() {
     writeLines(toHOCON(toJSON(config)), configPath)
     bin <- file.path(getSolrPath(), "bin", "solr-undertow")
     Sys.chmod(bin, "0755")
-    system(paste(bin, configPath),
+    system(paste(paste0('"', bin, '"'), paste0('"', configPath, '"')),
            wait=FALSE, ignore.stdout=!isTRUE(getOption("verbose")))
 }
 
