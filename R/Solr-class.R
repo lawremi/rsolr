@@ -227,19 +227,18 @@ setMethod("aggregate", "formula", function(x, ...) {
 })
 
 setGeneric("aggregateByFormula",
-           function(formula, data, ...) standardGeneric("aggregateByFormula"),
+           function(x, data, ...) standardGeneric("aggregateByFormula"),
            signature="data")
 
 setMethod("aggregateByFormula", "ANY",
-          function(formula, data, ...)
-              stats:::aggregate.formula(formula, data, ...))
+          function(x, data, ...) stats::aggregate(x, data, ...))
 
 ### NOTE: By default, this drops NAs, just like aggregate.formula,
 ###       except aggregate.formula drops records with NAs in the
 ###       response and factors, whereas we only drop those with NAs in
 ###       the factors. This is consistent with aggregate.data.frame.
 setMethod("aggregateByFormula", "Solr",
-          function(formula, data, FUN, ..., subset, na.action, simplify = TRUE,
+          function(x, data, FUN, ..., subset, na.action, simplify = TRUE,
                    count = FALSE) {
               na.action <- normNAAction(na.action)
               useNA <- identical(na.action, na.pass)
@@ -255,15 +254,15 @@ setMethod("aggregateByFormula", "Solr",
               }
               functionalStyle <- !missing(FUN)
               if (functionalStyle) {
-                  hasLHS <- length(formula) == 3L
+                  hasLHS <- length(x) == 3L
                   if (hasLHS) {
-                      response <- formula[[2L]]
-                      formula <- formula[-2L]
+                      response <- x[[2L]]
+                      x <- x[-2L]
                   }
-                  data <- group(as(data, "SolrFrame", strict=FALSE), formula)
+                  data <- group(as(data, "SolrFrame", strict=FALSE), x)
                   grouping <- grouping(data)
                   if (hasLHS) {
-                      env <- environment(formula)
+                      env <- environment(x)
                       arg <- eval(response, data, env)
                       resultName <- deparse(response)
                   } else {
@@ -287,7 +286,7 @@ setMethod("aggregateByFormula", "Solr",
                       return(ans)
                   }
               } else {
-                  grouping <- mergeGrouping(grouping(data), formula)
+                  grouping <- mergeGrouping(grouping(data), x)
                   query <- facet(query(data), grouping, useNA=useNA, ...)
               }
               fct <- facets(core(data), query)
