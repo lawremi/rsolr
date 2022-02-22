@@ -230,7 +230,9 @@ setGeneric("aggregateByFormula",
            function(formula, data, ...) standardGeneric("aggregateByFormula"),
            signature="data")
 
-setMethod("aggregateByFormula", "ANY", stats:::aggregate.formula)
+setMethod("aggregateByFormula", "ANY",
+          function(formula, data, ...)
+              stats:::aggregate.formula(formula, data, ...))
 
 ### NOTE: By default, this drops NAs, just like aggregate.formula,
 ###       except aggregate.formula drops records with NAs in the
