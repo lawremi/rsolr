@@ -2,6 +2,7 @@
 % \VignetteDepends{nycflights13}
 % \VignetteKeywords{Solr}
 % \VignettePackage{rsolr}
+% \VignetteEngine{knitr::knitr}
 
 \documentclass[11pt]{article}
 \author{Michael Lawrence}
@@ -65,6 +66,12 @@ follow the introductory workflow from the \texttt{dplyr} vignette. The
 dataset describes all of the airline flights departing New York City
 in 2013. It is provided by the \texttt{nycflights13} package, so please see
 its documentation for more details.
+<<checkDeps, echo = FALSE, results = "hide">>=
+if (is.na(suppressWarnings(packageDescription("nycflights13")))) {
+    knitr::opts_chunk$set(eval = FALSE)
+    message("Package nycflights13 not installed: not evaluating code chunks.")
+}
+@
 <<loadData>>=
 library(nycflights13)
 dim(flights)
