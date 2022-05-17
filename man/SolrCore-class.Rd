@@ -59,17 +59,17 @@
 \section{Accessor methods}{
   In the code snippets below, \code{x} is a \code{SolrCore} object.
 
-  \describe{
-    \item{}{\code{name(x)}: Gets the name of the core (specified by the
+  \itemize{
+    \item{\code{name(x)}: Gets the name of the core (specified by the
       schema).
     }
-    \item{}{\code{ndoc(x, query = SolrQuery())}: Gets the number of
+    \item{\code{ndoc(x, query = SolrQuery())}: Gets the number of
       documents in the core, given the \code{query} restriction.
     }
-    \item{}{\code{schema(x)}: Gets the \code{\linkS4class{SolrSchema}}
+    \item{\code{schema(x)}: Gets the \code{\linkS4class{SolrSchema}}
       satisfied by all documents in the core.
     }
-    \item{}{\code{fieldNames(x, query = NULL, onlyStored = FALSE,
+    \item{\code{fieldNames(x, query = NULL, onlyStored = FALSE,
         onlyIndexed = FALSE, includeStatic = FALSE)}: Gets the field
       names, given any restriction and/or transformation in
       \code{query}, which is a \code{SolrQuery} or a character vector of
@@ -79,15 +79,15 @@
       details). Setting \code{includeStatic} to \code{TRUE} ensures
       that all of the static fields in the schema are returned.
     }
-    \item{}{\code{version(x)}: Gets the version of the Solr instance
+    \item{\code{version(x)}: Gets the version of the Solr instance
       hosting the core.
     }
   }
 }
 
 \section{Constructor}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{SolrCore(uri, ...)}:
       Constructs a new \code{SolrCore} instance, representing a Solr
       core located at \code{uri}, which should be a string or a
@@ -98,33 +98,33 @@
 }
 
 \section{Reading}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{docs(x, query = SolrQuery(), as=c("list", "data.frame"))}:
       Get the documents selected by \code{query}, in the form indicated
       by \code{as}, i.e., either a list or a data frame.
     }
-    \item{}{
+    \item{
       \code{read(x, ...)}: Just an alias for \code{docs}.
     }
   }
 }
 
 \section{Summarizing}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{facets(x, by, ...)}:
       Gets the \code{\linkS4class{Facets}} results as requested by
       \code{by}, a \code{\linkS4class{SolrQuery}}. The \dots are passed
       down to \code{facets} on \code{\linkS4class{ListSolrResult}}.
     }
-    \item{}{
+    \item{
       \code{groupings(x, by, ...)}:
       Gets the list of \code{\linkS4class{Grouping}} objects as requested by
       the grouped query \code{by}. The \dots are passed
       down to \code{groupings} on \code{\linkS4class{ListSolrResult}}.
     }
-    \item{}{
+    \item{
       \code{ngroup(x)}: Gets the number of groupings that would be
       returned by \code{groupings}.
     }
@@ -132,8 +132,8 @@
 }
 
 \section{Updating}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{update(object, value, commit = TRUE, atomic = FALSE, ...)}:
       Load the documents in \code{value} (typically a list or data
       frame) into the SolrCore given by \code{object}. If \code{commit}
@@ -143,18 +143,18 @@
       existing documents are modified, rather than replaced, by the
       documents in \code{value}.
     }
-    \item{}{
+    \item{
       \code{delete(x, which = SolrQuery(), ...)}:
       Deletes the documents specified by \code{which} (all by default),
       where the \dots are passed down to \code{update}.
     }
-    \item{}{
+    \item{
       \code{commit(x, waitSearcher=TRUE, softCommit=FALSE,
         expungeDeletes=FALSE, optimize=TRUE, maxSegments=if (optimize) 1L)}:
       Commits the changes to the Solr index; see the Solr documentation
       for the meaning of the parameters.
     }
-    \item{}{
+    \item{
       \code{purgeCache(x)}: Purges the client-side HTTP cache, which is
       useful if the Solr instance is using expiration-based HTTP caching
       and one needs to see the result of an update immediately.
@@ -163,8 +163,8 @@
 }
 
 \section{Evaluation}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{eval(expr, envir, enclos)}:
       Evaluates the query \code{expr} in the core \code{envir},
       ignoring \code{enclos}. Unless otherwise requested by the query
@@ -175,8 +175,8 @@
 }
 
 \section{Coercion}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{as.data.frame(x, row.names=NULL, optional=FALSE, ...)}:
     }
   }

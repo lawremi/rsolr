@@ -28,32 +28,32 @@
   basic data frame accessors. Using these accessors allows code to be
   agnostic to whether the data are stored as a list or data.frame.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents (rows)
     }
-    \item{}{
+    \item{
       \code{nfield(x)}: Gets the number of fields (columns)
     }
-    \item{}{
+    \item{
       \code{ids(x), ids(x) <- value}: Gets or sets the document unique
       identifiers (may be \code{NULL}, treated as rownames)
     }
-    \item{}{
+    \item{
       \code{fieldNames(x, includeStatic=TRUE, ...)}: Gets the field
       (column) names
     }
-    \item{}{
+    \item{
       \code{docs(x)}: Just returns \code{x}, as \code{x} already
       represents a set of documents
     }
-    \item{}{
+    \item{
       \code{meta(x)}: Gets an auxillary data.frame of \dQuote{meta}
       columns that hold fields that describe, rather than compose, the
       documents. This feature should be considered unstable. Stay away
       for now.
     }
-    \item{}{
+    \item{
       \code{unmeta(x)}: Clears the metadata.
     }
   }

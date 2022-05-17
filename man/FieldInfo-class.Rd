@@ -46,41 +46,41 @@
 \section{Accessors}{
   These functions get the \dQuote{columns} from the field information
   \dQuote{table}:
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{name(x)}: Gets the name of the field.
     }
-    \item{}{
+    \item{
       \code{typeName(x)}: Gets the name of the field type, see
       \code{\link{fieldTypes}}.
     }
-    \item{}{
+    \item{
       \code{dynamic(x)}: Gets whether the field is dynamic, i.e.,
       whether its name is treated as a wildcard glob. If a document
       field does not match a static field name, it takes its
       properties from the first dynamic field (in schema order) that it
       matches.
     }
-    \item{}{
+    \item{
       \code{multiValued(x)}: Gets whether the field accepts multiple
       values. A multi-valued field is manifested in R as a list.
     }
-    \item{}{
+    \item{
       \code{required(x)}: Gets whether the field must have a value in
       every document. A non-required field will sometimes have NAs. This
       is useful for both ensuring data integrity and optimizations.
     }
-    \item{}{
+    \item{
       \code{indexed(x)}: Gets whether the field has been indexed. A
       field must be indexed for us to filter by it. Faceting requires a
       field to be indexed or have doc values.
     }
-    \item{}{
+    \item{
       \code{stored(x)}: Gets whether the data for a field have been
       stored in the database. We can search on any (indexed) field, but
       we can only retrieve data from stored fields.
     }
-    \item{}{
+    \item{
       \code{docValues(x)}: Gets whether the data have been additionally
       stored in a columnar format that accelerates Solr function calls
       (\code{transform}) and faceting (\code{aggregate}).
@@ -89,11 +89,13 @@
 }
 
 \section{Utilities}{
-  \describe{
-    \code{x \%in\% table}: Returns whether each field name in \code{x}
-    matches a field defined in \code{table}, a \code{FieldInfo}
-    object. This convenience is particularly needed when the schema
-    contains dynamic fields.
+  \itemize{
+    \item{
+      \code{x \%in\% table}: Returns whether each field name in \code{x}
+      matches a field defined in \code{table}, a \code{FieldInfo}
+      object. This convenience is particularly needed when the schema
+      contains dynamic fields.
+    }
   }
 }
 

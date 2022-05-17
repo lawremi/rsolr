@@ -35,8 +35,8 @@
   languages. The accessors below effectively allow one to specify the
   desired target language.
 
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{symbolFactory(x)}, \code{symbolFactory(x) <- value}: Get or
       set the current \code{SymbolFactory} (may be NULL).
     }

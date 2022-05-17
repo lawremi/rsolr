@@ -40,31 +40,31 @@
   derivative of \code{DocCollection}, which provides reasonable default
   implementations for most of them.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents
     }
-    \item{}{
+    \item{
       \code{nfield(x)}: Gets the number of fields
     }
-    \item{}{
+    \item{
       \code{ids(x), ids(x) <- value}: Gets or sets the document unique
       identifiers (may be \code{NULL})
     }
-    \item{}{
+    \item{
       \code{fieldNames(x, includeStatic=TRUE, ...)}: Gets the field names
     }
-    \item{}{
+    \item{
       \code{docs(x)}: Just returns \code{x}, as \code{x} already
       represents a set of documents
     }
-    \item{}{
+    \item{
       \code{meta(x)}: Gets an auxillary collection of \dQuote{meta}
       fields that hold fields that describe, rather than compose, the
       documents. This feature should be considered unstable. Stay away
       for now.
     }
-    \item{}{
+    \item{
       \code{unmeta(x)}: Clears the metadata.
     }
   }

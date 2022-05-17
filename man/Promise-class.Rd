@@ -54,8 +54,8 @@
 }
 
 \section{Construction}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{Promise(expr, context, ...)}: A generic constructor that
       dispatches on \code{expr} to construct a \code{Promise} object,
       the specific type of which corresponds to the language of
@@ -67,8 +67,8 @@
 }
 
 \section{Fulfillment}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{fulfill(x)}: Fulfills the promise by evaluating the deferred
       computation and returning a materialized object.
     }

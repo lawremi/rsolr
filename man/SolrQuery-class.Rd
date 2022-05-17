@@ -76,8 +76,8 @@
 }
 
 \section{Accessors}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{params(x), params(x) <- value}: Gets/sets the parameters of
       the query, which roughly correspond to the parameters of a Solr
       \dQuote{select} request. The only reason to manipulate the
@@ -88,8 +88,8 @@
 }
 
 \section{Querying}{
-  \describe{
-    \item{}{\code{subset(x, subset, select, fields, select.from =
+  \itemize{
+    \item{\code{subset(x, subset, select, fields, select.from =
         character())}: Behaves like the base \code{\link{subset}}, with
       some extensions. The \code{fields} argument is exclusive with
       \code{select}, and should be a character vector of field names,
@@ -99,7 +99,7 @@
       thus does not know the field set (in the future, we might use
       laziness to avoid this problem).
     }
-    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+    \item{\code{searchDocs(x, q)}: Performs a conventional document
       search using the query string \code{q}. The main difference to
       filtering (\code{subset}) is that (by default) Solr will order the
       result by score, i.e., how well each document matches the query.
@@ -108,8 +108,8 @@
 }
 
 \section{Constructor}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{SolrQuery(expr)}:
       Constructs a new \code{SolrQuery} instance. If \code{expr} is
       non-missing, it is passed to \code{subset} and thus serves as an
@@ -122,8 +122,8 @@
   The Solr facet component counts documents and calculates statistics on
   a group-wise basis.
 
-  \describe{
-    \item{}{\code{facet(x, by, ..., useNA=FALSE, sort=NULL,
+  \itemize{
+    \item{\code{facet(x, by, ..., useNA=FALSE, sort=NULL,
         decreasing=FALSE, limit=NA_integer_)}: Returns a query that will
         compute the number of documents in each group, where the
         grouping is given as \code{by}, typically a formula, or
@@ -155,8 +155,8 @@
   documents in each group. This functionality is \emph{not} related to
   aggregation; see \code{facet}.
 
-  \describe{
-    \item{}{\code{group(x, by, limit = .Machine$integer.max, offset =
+  \itemize{
+    \item{\code{group(x, by, limit = .Machine$integer.max, offset =
         0L, env = emptyenv())}: Returns the grouping of \code{x}
         according to \code{by}, which might be a formula, or an
         expression that evaluates (within \code{env}) to a factor. The
@@ -174,14 +174,14 @@
   These two functions are very low-level; users should almost never need
   to call these.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{translate(x, target, core)}: Translates the query \code{x}
       into the language of Solr, where \code{core} specifies the
       destination \code{SolrCore}. The \code{target} argument should be
       missing.
     }
-    \item{}{
+    \item{
       \code{as.character(x)}:
       Converts the query into a string to be sent to Solr. Remember to
       translate first, if necessary.

@@ -202,29 +202,29 @@
   vector usually only work if the vector is of length one (a scalar).
 
   Some specific notes:
-  \describe{
-    \item{}{\code{x[i]}: The index \code{i} is ideally a promise. The
+  \itemize{
+    \item{\code{x[i]}: The index \code{i} is ideally a promise. The
       return value will be restricted such that it will only combine
       with promises with the same restriction.
     }
-    \item{}{\code{x \%in\% table}: The \code{x} argument must always
+    \item{\code{x \%in\% table}: The \code{x} argument must always
       refer to a simple field, and the \code{table} argument should be
       either a field, potentially predicated via \code{table[i]} (where
       the index \code{i} is a promise), or a \dQuote{short} vector.
     }
-    \item{}{\code{grepl(pattern, x, fixed = FALSE)}: Applies when
+    \item{\code{grepl(pattern, x, fixed = FALSE)}: Applies when
       \code{x} is a promise. Besides \code{pattern}, only the
       \code{fixed} argument is supported from the base function.
     }
-    \item{}{\code{grep(pattern, x, value = FALSE, fixed = FALSE, invert
+    \item{\code{grep(pattern, x, value = FALSE, fixed = FALSE, invert
       = FALSE)}: One must always set \code{value=TRUE}. Beyond that,
       only \code{fixed} and \code{invert} are supported from the base
       function.
     }
-    \item{}{\code{cut(x, breaks, include.lowest = FALSE, right = TRUE)}:
+    \item{\code{cut(x, breaks, include.lowest = FALSE, right = TRUE)}:
       Only supports uniform (constant separation) breaks.
     }
-    \item{}{\code{mad(x, center = median(x, na.rm=na.rm), constant =
+    \item{\code{mad(x, center = median(x, na.rm=na.rm), constant =
         1.4826, na.rm = FALSE, low = FALSE, high = FALSE)}: The
       \code{low} and \code{high} parameters must be \code{FALSE}. If
       there any NAs, then \code{na.rm} must be \code{TRUE}. Does not

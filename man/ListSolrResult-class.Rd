@@ -34,23 +34,23 @@
   should only directly manipulate the Solr response when extending
   rsolr/Solr at a deep level. Higher-level accessors are described below.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{docs(x)}: Returns the found documents as
       a \code{\linkS4class{DocList}}
     }
-    \item{}{
+    \item{
       \code{ndoc(x)}: Returns the number of documents found
     }
-    \item{}{
+    \item{
       \code{facets(x)}: Returns any computed \code{\linkS4class{Facets}}
     }
-    \item{}{
+    \item{
       \code{groupings(x)}: If Solr was asked to group the documents in
       the response, this returns each \code{\linkS4class{Grouping}}
       (there can be more than one) in a list
     }
-    \item{}{
+    \item{
       \code{ngroup(x)}: Returns the number of groups in each grouping
     }
   }

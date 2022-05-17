@@ -175,21 +175,21 @@
   These are some accessors that \code{SolrFrame} adds on top of the
   basic data frame accessors. Most of these are for advanced use only.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents (rows); serves as an
       abstraction over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{nfield(x)}: Gets the number of fields (columns); serves as an
       abstraction over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{ids(x)}: Gets the document unique identifiers (may
       be \code{NULL}, treated as rownames); serves as an abstraction
       over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{fieldNames(x, includeStatic=TRUE, ...)}: Gets the name of
       each field represented by any document in the Solr core, with
       \dots being passed down to \code{fieldNames} on
@@ -202,10 +202,10 @@
       specified order in the schema, so we use the index order
       (lexicographical) for those cases.
     }
-    \item{}{
+    \item{
       \code{core(x)}: Gets the \code{SolrCore} wrapped by \code{x}
     }
-    \code{}{
+    \code{
       \code{query(x)}: Gets the query that is being constructed by
       \code{x}
     }
@@ -218,8 +218,8 @@
   Details). Below, we list some of the non-standard methods that might
   be seen as an extension of the data frame API.
 
-  \describe{
-    \item{}{\code{aggregate(x, data, FUN, ..., subset, na.action,
+  \itemize{
+    \item{\code{aggregate(x, data, FUN, ..., subset, na.action,
         simplify = TRUE, count = FALSE)}: If \code{x} is a formula,
         aggregates \code{data}, grouping by \code{x}, by either applying
         \code{FUN}, or evaluating an aggregating expression in \dots, on
@@ -254,23 +254,23 @@
         \code{ndoc} always returns document counts, and thus will return
         the size of each group.
     }
-    \item{}{\code{rename(x, ...)}: Renames the columns of \code{x},
+    \item{\code{rename(x, ...)}: Renames the columns of \code{x},
       where the names and character values of \dots indicates the
       mapping (\code{newname = oldname}). 
     }
-    \item{}{\code{group(x, by)}: Returns a
+    \item{\code{group(x, by)}: Returns a
       \code{\linkS4class{GroupedSolrFrame}} that is grouped by the
       factors in \code{by}, typically a formula. To get back to
       \code{x}, call \code{ungroup(x)}.
     }
-    \item{}{\code{grouping(x)}: Just returns \code{NULL}, since a
+    \item{\code{grouping(x)}: Just returns \code{NULL}, since a
       \code{SolrFrame} is not grouped (unless extended to be groupable).
     }
-    \item{}{\code{defer(x)}: Returns a \code{SolrFrame} that yields
+    \item{\code{defer(x)}: Returns a \code{SolrFrame} that yields
       \code{\linkS4class{SolrPromise}} objects instead of vectors
       whenever a field is retrieved
     }
-    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+    \item{\code{searchDocs(x, q)}: Performs a conventional document
       search using the query string \code{q}. The main difference to
       filtering is that (by default) Solr will order the result by
       score, i.e., how well each document matches the query.
@@ -279,8 +279,8 @@
 }
 
 \section{Constructor}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{SolrFrame(uri)}: Constructs a new \code{SolrFrame} instance,
       representing a Solr core located at \code{uri}, which should be a
       string or a \code{\link[restfulr]{RestUri}} object. The \dots are
@@ -291,8 +291,8 @@
 
 
 \section{Evaluation}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{eval(expr, envir, enclos)}: Evaluates \code{expr} in the
       \code{SolrFrame} \code{envir}, using \code{enclos} as the
       enclosing environment. The \code{expr} can be an R language object
@@ -303,15 +303,15 @@
 }
 
 \section{Coercion}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{as.data.frame(x, row.names=NULL, optional=FALSE, fill=TRUE)}:
       Downloads the data into an actual data.frame, specifically an
       instance of \code{\linkS4class{DocDataFrame}}. If \code{fill} is
       FALSE, only the fields represented in at least one document are
       added as columns. 
     }
-    \item{}{
+    \item{
       \code{as.list(x)}: Essentially \code{as.list(as.data.frame(x))},
       except returns a list of promises if \code{x} is deferred.
     }

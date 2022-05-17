@@ -41,25 +41,25 @@
 }
 
 \section{Accessors}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{x$name}, \code{x[[i]]}: Get the node that further groups by
       the named factor. The \code{i} argument can be a formula, where
       \code{[[} will recursively extract the corresponding element.
     }
-    \item{}{
+    \item{
       \code{x[i]}: Extract a new \code{Facets} object, restricted to the
       named groupings.
     }
-    \item{}{
+    \item{
       \code{stats(x)}: Gets the statistics at the current facet level.
     }
   }
 }
 
 \section{Coercion}{
-  \describe{
-    \item{}{\code{as.table(x)}: Converts the current node to a
+  \itemize{
+    \item{\code{as.table(x)}: Converts the current node to a
       table of conditional counts.
     }
   }

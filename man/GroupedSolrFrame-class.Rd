@@ -66,15 +66,15 @@
   \code{SolrFrame}; here we only outline concerns specific to grouped
   data.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents per group
     }
-    \item{}{
+    \item{
       \code{rownames(x)}: Forms unique group identifiers by
       concatenating the grouping factor values.
     }
-    \item{}{
+    \item{
       \code{x[i, j] <- value}: Inserts \code{value} into the Solr
       core, where \code{value} is a data.frame of lists, or just a list
       (representing a single column). Preferably, \code{i} is a promise,
@@ -87,7 +87,7 @@
       if the elements are character vectors (and thus represent document
       IDs).
     }
-    \item{}{
+    \item{
       \code{x[i, j, drop=FALSE]}: Extracts data from \code{x}, as usual,
       but see the entry immediate above this one for the expectations of
       \code{i}. Try to make it a promise, so that we do not need to
@@ -103,13 +103,13 @@
   Details). Below, we list some of the non-standard methods that might
   be seen as an extension of the data frame API.
 
-  \describe{
-    \item{}{\code{heads(x, n)}, \code{tails(x, n)}, \code{windows(x,
+  \itemize{
+    \item{\code{heads(x, n)}, \code{tails(x, n)}, \code{windows(x,
       start, end)}: Perform \code{head}, \code{tail} or \code{window} on
       each group separately, returning a data.frame with grouped (list)
       columns.
     }
-    \item{}{\code{ngroup(x)}: The number of groups, i.e., the number of
+    \item{\code{ngroup(x)}: The number of groups, i.e., the number of
       rows.
     }
   }

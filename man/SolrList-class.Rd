@@ -91,29 +91,29 @@
   These are some accessors that \code{SolrList} adds on top of the
   basic data frame accessors. Most of these are for advanced use only.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents (rows); serves as an
       abstraction over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{nfield(x)}: Gets the number of fields (columns); serves as an
       abstraction over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{ids(x)}: Gets the document unique identifiers (may
       be \code{NULL}, treated as rownames); serves as an abstraction
       over \code{SolrFrame} and \code{SolrList}
     }
-    \item{}{
+    \item{
       \code{fieldNames(x, ...)}: Gets the name of each field represented by
       any document in the Solr core, with \dots being passed down to
       \code{fieldNames} on \code{\linkS4class{SolrCore}}.
     }
-    \item{}{
+    \item{
       \code{core(x)}: Gets the \code{SolrCore} wrapped by \code{x}
     }
-    \code{}{
+    \item{
       \code{query(x)}: Gets the query that is being constructed by
       \code{x}
     }
@@ -126,16 +126,16 @@
   Details). Below, we list some of the non-standard methods that might
   be seen as an extension of the data frame API.
 
-  \describe{
-    \item{}{\code{rename(x, ...)}: Renames the columns of \code{x},
+  \itemize{
+    \item{\code{rename(x, ...)}: Renames the columns of \code{x},
       where the names and character values of \dots indicates the
       mapping (\code{newname = oldname}). 
     }
-    \item{}{\code{defer(x)}: Returns a \code{SolrList} that yields
+    \item{\code{defer(x)}: Returns a \code{SolrList} that yields
       \code{\linkS4class{SolrPromise}} objects instead of vectors
       whenever a field is retrieved
     }
-    \item{}{\code{searchDocs(x, q)}: Performs a conventional document
+    \item{\code{searchDocs(x, q)}: Performs a conventional document
       search using the query string \code{q}. The main difference to
       filtering is that (by default) Solr will order the result by
       score, i.e., how well each document matches the query.
@@ -144,8 +144,8 @@
 }
 
 \section{Constructor}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{SolrList(uri, ...)}:
       Constructs a new \code{SolrList} instance, representing a Solr
       core located at \code{uri}, which should be a string or a
@@ -157,8 +157,8 @@
 
 
 \section{Evaluation}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{eval(expr, envir, enclos)}: Evaluates R language \code{expr}
       in the \code{SolrList} \code{envir}, using \code{enclos} as the
       enclosing environment.
@@ -167,15 +167,15 @@
 }
 
 \section{Coercion}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{as.data.frame(x, row.names=NULL, optional=FALSE, fill=FALSE)}:
       Downloads the data into an actual data.frame, specifically an
       instance of \code{\linkS4class{DocDataFrame}}. If \code{fill} is
       FALSE, only the fields represented in at least one document are
       added as columns. 
     }
-    \item{}{
+    \item{
       \code{as.list(x), as(x, "DocCollection")}: Coerces \code{x} into
       the corresponding list, specifically an instance of
       \code{\linkS4class{DocList}}.

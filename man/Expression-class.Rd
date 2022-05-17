@@ -63,15 +63,15 @@
   computation, building on the existing expression. When evaluation is
   finished, we simply extract the expression from the returned promise.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{translate(x, target, context, ...)}: Translates the source
       expression \code{x} to the \code{target} \code{Expression}, where
       the symbols in the source expression are resolved in
       \code{context}, which is usually an R environment or some sort of
       database. The \dots are passed to \code{symbolFactory}.
     }
-    \item{}{
+    \item{
       \code{symbolFactory(x)}: Gets the \code{SymbolFactory} object
       that will construct the appropriate type of symbol for the target
       expression \code{x}.

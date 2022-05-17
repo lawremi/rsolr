@@ -36,24 +36,24 @@
 }
 
 \section{Accessors}{
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{name(x)}: Gets the name of the schema/dataset.
     }
-    \item{}{
+    \item{
       \code{uniqueKey(x)}: Gets the field that serves as the unique key,
       i.e., the document identifier.
     }
-    \item{}{
+    \item{
       \code{fields(x, which)}: Gets a \code{\linkS4class{FieldInfo}}
       object, restricted to the fields indicated by \code{which}.
     }
-    \item{}{
+    \item{
       \code{fieldTypes(x, fields)}: Gets a
       \code{\linkS4class{FieldTypeList}} object, containing the type
       definition for each field named in \code{fields}.
     }
-    \item{}{
+    \item{
       \code{copyFields(x)}: Gets the copy field relationships as
       a \link[graph:graph-class]{graph}.
     }
@@ -67,8 +67,8 @@
   \code{deriveSolrSchema}, save it to the standard XML format with
   \code{saveXML}. See the vignette for an example.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{deriveSolrSchema(x, name, version="1.5", uniqueKey=NULL,
         required=colnames(Filter(Negate(anyEmpty), x)),
         indexed=colnames(x), stored=colnames(x),
@@ -86,7 +86,7 @@
       schema, and Solr will use it to track document versions, which
       is needed for certain advanced features and generally recommended.
     }
-    \item{}{
+    \item{
       \code{saveXML(doc, file = NULL, compression = 0, indent = TRUE,
         prefix = "<?xml version=\"1.0\"?>\n", doctype = NULL, encoding =
         getEncoding(doc), ...)}: Writes the schema to XML. See

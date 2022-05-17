@@ -34,29 +34,29 @@
   basic list accessors. Using these accessors allows code to be
   agnostic to whether the data are stored as a list or data.frame.
   
-  \describe{
-    \item{}{
+  \itemize{
+    \item{
       \code{ndoc(x)}: Gets the number of documents (elements)
     }
-    \item{}{
+    \item{
       \code{nfield(x)}: Gets the number of unique field names over all
       of the documents
     }
-    \item{}{
+    \item{
       \code{ids(x), ids(x) <- value}: Gets or sets the document unique
       identifiers (may be \code{NULL}, treated as names)
     }
-    \item{}{
+    \item{
       \code{fieldNames(x, includeStatic=TRUE, ...)}: Gets the set of
       unique field names
     }
-    \item{}{
+    \item{
       \code{meta(x)}: Gets an auxillary list of \dQuote{meta} documents
       (lists) that hold fields that describe, rather than compose, the
       actual documents. This feature should be considered unstable. Stay
       away for now.
     }
-    \item{}{
+    \item{
       \code{unmeta(x)}: Clears the metadata.
     }
   }
