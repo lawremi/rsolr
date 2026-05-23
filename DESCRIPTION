@@ -20,7 +20,7 @@ VignetteBuilder: knitr
 Imports:
     restfulr (>= 0.0.2),
     graph,
-    S4Vectors (>= 0.14.3),
+    S4Vectors (>= 0.50.1),
     rjson,
     XML,
     RCurl
