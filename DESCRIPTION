@@ -1,7 +1,7 @@
 Package: rsolr
 Type: Package
 Title: R to Solr Interface
-Version: 0.0.14
+Version: 0.0.15
 Authors@R: c(
     person("Michael", "Lawrence", role = c("aut", "cre"),
            email = "lawremi@gmail.com"),

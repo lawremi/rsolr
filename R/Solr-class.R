@@ -178,9 +178,9 @@ setMethod("searchDocs", c("Solr", "ANY"), function(x, q) {
 
 transform.Solr <- function(`_data`, ...) transform(`_data`, ...)
 
-setMethod("transform", "Solr", function (`_data`, ...) {
-  query(`_data`) <- transform(query(`_data`), ...)
-  `_data`
+setMethod("transform", "Solr", function (x, ...) {
+  query(x) <- transform(query(x), ...)
+  x
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

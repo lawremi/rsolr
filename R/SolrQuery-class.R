@@ -234,13 +234,13 @@ predicateExpression <- function(x, core) {
 
 transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
 
-setMethod("transform", "SolrQuery", function (`_data`, ...) {
+setMethod("transform", "SolrQuery", function (x, ...) {
   e <- as.list(substitute(list(...))[-1L])
   if (length(e) == 0L)
-    return(`_data`)
+    return(x)
   if (is.null(names(e)))
     names(e) <- ""
-  fl <- mapply(deferTranslation, list(`_data`), e,
+  fl <- mapply(deferTranslation, list(x), e,
                list(SolrFunctionExpression()),
                top_prenv_dots(...))
   ## If a simple symbol is passed, Solr will rename the field, rather
@@ -249,9 +249,9 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
   ## we do not want to surprise the user.
   aliased <- vapply(e, is.name, logical(1L))
   identity.aliases <- unique(as.character(e[aliased]))
-  params(`_data`)$fl <- c(params(`_data`)$fl, setNames(fl, names(e)),
-                          setNames(identity.aliases, identity.aliases))
-  `_data`
+  params(x)$fl <- c(params(x)$fl, setNames(fl, names(e)),
+                    setNames(identity.aliases, identity.aliases))
+  x
 })
 
 ### Also exists in S4Vectors, but the mapping is opposite!
