@@ -1,5 +1,11 @@
 import(methods)
-import(BiocGenerics)
+# Keep rsolr's group() and version() generics and their own method tables.
+importFrom(BiocGenerics, "%in%", append, as.data.frame, as.list, as.vector,
+           basename, cbind, colnames, dirname, do.call, duplicated, eval,
+           Filter, format, get, grep, grepl, intersect, IQR, lapply, mad,
+           mapply, match, mean, mget, ncol, NCOL, nrow, NROW, order, paste,
+           pmax, pmin, rbind, Reduce, rownames, sapply, sd, setdiff, sort,
+           subset, t, table, union, unique, unlist, var, which, xtabs)
 import(restfulr)
 importFrom(graph, graphNEL, edges)
 importClassesFrom(graph, graph)
@@ -22,9 +28,9 @@ export(SolrList, SolrFrame, SolrQuery, SolrCore, TestSolr, uniqueKey, fields,
        copyFields, fieldTypes, name, version, schema, unmeta,
        query, core, params, "params<-", stats, defer, docs, pmin, pmax,
        ungroup, dynamic, multiValued, typeName, indexed, stored,
-       required, docValues, Promise)
+       required, docValues, Promise, transform)
 exportMethods(read, update, delete, commit, meta, purgeCache, ids, "ids<-",
-              fieldNames, subset, xtabs, facets, transform, summary,
+              fieldNames, subset, xtabs, facets, summary,
               head, tail, window, rev, aggregate, mean, sd, var, window, group,
               groupings, deriveSolrSchema, ndoc, nfield, as.data.frame, rename,
               eval, nrow, rownames, ncol, colnames, heads, tails, windows,
@@ -72,8 +78,8 @@ S3method(rev, SolrQuery)
 S3method(window, Solr)
 S3method(head, Solr)
 S3method(tail, Solr)
-S3method(transform, SolrQuery)
-S3method(transform, Solr)
+S3method(base::transform, SolrQuery)
+S3method(base::transform, Solr)
 S3method(cut, SolrPromise)
 S3method(quantile, SolrPromise)
 S3method(weighted.mean, SolrPromise)

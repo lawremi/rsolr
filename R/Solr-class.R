@@ -176,12 +176,10 @@ setMethod("searchDocs", c("Solr", "ANY"), function(x, q) {
 ### TODO: there should be a `_list` argument that is taken unquoted, to allow:
 ###  transform(x, lapply(subset(x, select=foo:bar), abs))
 
-transform.Solr <- function(`_data`, ...) transform(`_data`, ...)
-
-setMethod("transform", "Solr", function (`_data`, ...) {
+transform.Solr <- function(`_data`, ...) {
   query(`_data`) <- transform(query(`_data`), ...)
   `_data`
-})
+}
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Sorting

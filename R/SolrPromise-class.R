@@ -1225,18 +1225,26 @@ setMethod("unique", "PredicatedSolrSymbolPromise",
                      incomparables=incomparables)
           })
 
-setMethod("table", "SolrSymbolPromise",
-          function (..., exclude = c(NA, NaN)) {
-              ctx <- resolveContext(...)
-              syms <- lapply(list(...), function(p) expr(p)@name)
-              f <- as.formula(paste("~", paste(syms, collapse="+")))
-              tab <- xtabs(by, ctx, exclude=exclude)
-              if (!is.null(names(syms))) {
-                  aliased <- names(syms) != ""
-                  names(dimnames(tab))[aliased] <- names(syms)[aliased]
-              }
-              tab
-          })
+.tableSolrSymbols <- function(..., exclude = c(NA, NaN)) {
+    ctx <- resolveContext(...)
+    syms <- lapply(list(...), function(p) expr(p)@name)
+    f <- as.formula(paste("~", paste(syms, collapse="+")))
+    tab <- xtabs(f, ctx, exclude=exclude)
+    if (!is.null(names(syms))) {
+        aliased <- names(syms) != ""
+        names(dimnames(tab))[aliased] <- names(syms)[aliased]
+    }
+    tab
+}
+
+if (identical(getGeneric("table")@signature, "x")) {
+    setMethod("table", "SolrSymbolPromise",
+              function(x, ..., exclude = c(NA, NaN)) {
+                  .tableSolrSymbols(x, ..., exclude=exclude)
+              })
+} else {
+    setMethod("table", "SolrSymbolPromise", .tableSolrSymbols)
+}
 
 setGeneric("ftable", function (..., exclude = c(NA, NaN), row.vars = NULL,
                                col.vars = NULL) standardGeneric("ftable"),

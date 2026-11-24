@@ -179,6 +179,12 @@ test_SolrQuery <- function() {
     tform.docs["4","stocked"] <- NULL
     checkResponseEquals(read(sc, tform.query), tform.docs)
 
+    offset <- 1
+    tform.query <- rsolr::transform(query, x = price + .(offset))
+    tform.docs <- docs
+    tform.docs[, "x"] <- tform.docs[, "price"] + offset
+    checkResponseEquals(read(sc, tform.query), tform.docs)
+
     tform.query <- transform(query, membership = id %in% 3:5)
     tform.docs <- docs
     tform.docs[,"membership"] <- tform.docs[,"id"] %in% 3:5
@@ -345,7 +351,15 @@ test_SolrQuery <- function() {
 ### CHECK: missing
     checkTable2(~ val_b, exclude=NULL)
 
+### CHECK: table() dispatch on deferred fields
+    frame <- defer(as(s, "SolrFrame"))
+    checkIdentical(BiocGenerics::table(frame$cat_s),
+                   base::table(df$cat_s, dnn="cat_s"))
+    checkIdentical(BiocGenerics::table(frame$cat_s, location=frame$where_s),
+                   base::table(df$cat_s, df$where_s, dnn=c("cat_s", "location")))
+
 ### CHECK: nested facets
+    checkTable2(~ cat_s + where_s)
     checkTable2(~ cat_s + I(where_s == "NJ"))
     checkTable2(~ I(cat_s == "B") + I(where_s == "NJ"))
 

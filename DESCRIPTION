@@ -1,7 +1,7 @@
 Package: rsolr
 Type: Package
 Title: R to Solr Interface
-Version: 0.0.14
+Version: 0.0.15
 Authors@R: c(
     person("Michael", "Lawrence", role = c("aut", "cre"),
            email = "lawremi@gmail.com"),
@@ -25,7 +25,7 @@ Imports:
     XML,
     RCurl
 Depends:
-    R (>= 3.4.0),
+    R (>= 4.1.0),
     BiocGenerics (>= 0.15.1),
     methods
 Suggests:

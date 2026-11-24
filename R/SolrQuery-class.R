@@ -232,9 +232,10 @@ predicateExpression <- function(x, core) {
 ### Output manipulation
 ###
 
-transform.SolrQuery <- function(`_data`, ...) transform(`_data`, ...)
+## Keep 'x' available as a column name even when BiocGenerics masks transform.
+transform <- base::transform
 
-setMethod("transform", "SolrQuery", function (`_data`, ...) {
+transform.SolrQuery <- function(`_data`, ...) {
   e <- as.list(substitute(list(...))[-1L])
   if (length(e) == 0L)
     return(`_data`)
@@ -252,7 +253,7 @@ setMethod("transform", "SolrQuery", function (`_data`, ...) {
   params(`_data`)$fl <- c(params(`_data`)$fl, setNames(fl, names(e)),
                           setNames(identity.aliases, identity.aliases))
   `_data`
-})
+}
 
 ### Also exists in S4Vectors, but the mapping is opposite!
 setGeneric("rename", function(x, ...) standardGeneric("rename"))

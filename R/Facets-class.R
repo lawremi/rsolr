@@ -251,13 +251,15 @@ setMethod("as.table", "Facets", function(x) {
               countpos <- which(colnames(x@stats) == "count")
               df <- x@stats[1:countpos]
               count <- df$count
-              groupings <- df[-countpos]
+              groupings <- lapply(df[-countpos], as.character)
               if (length(groupings) == 0L) {
                   stop("no table for root facet")
               }
-              dn <- lapply(groupings, function(g) as.character(unique(g)))
-              dim <- unname(lengths(dn))
-              as.table(array(count, dim=dim, dimnames=dn))
+              dn <- lapply(groupings, unique)
+              indices <- mapply(match, groupings, dn, SIMPLIFY=FALSE)
+              ans <- array(0L, dim=unname(lengths(dn)), dimnames=dn)
+              ans[do.call(cbind, indices)] <- count
+              as.table(ans)
           })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

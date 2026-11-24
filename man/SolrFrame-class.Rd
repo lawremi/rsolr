@@ -44,7 +44,7 @@
 \alias{rename}
 \alias{rename,Solr-class}
 \alias{subset,Solr-method}
-\alias{transform,Solr-method}
+\alias{transform.Solr}
 \alias{sort,Solr-method}
 \alias{xtabs,Solr-method}
 \alias{aggregate,formula-method}

@@ -14,7 +14,8 @@
 % Restriction and manipulation:
 \alias{rename,SolrQuery-method}
 \alias{subset,SolrQuery-method}
-\alias{transform,SolrQuery-method}
+\alias{transform}
+\alias{transform.SolrQuery}
 \alias{sort,SolrQuery-method}
 \alias{xtabs,SolrQuery-method}
 \alias{facet,SolrQuery,NULL-method}
